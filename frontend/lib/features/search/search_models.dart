@@ -12,6 +12,7 @@ const searchPlatformLabels = {
   'douyin': '抖音',
   'weibo': '微博',
   'zhihu': '知乎',
+  'telegram': 'Telegram',
 };
 const searchStatusLabels = {
   'unprocessed': '未处理',
@@ -234,58 +235,58 @@ class UnifiedSearchResults {
     this.documentPages = const [],
   });
 
-  factory UnifiedSearchResults.fromJson(
-    Map<String, dynamic> json,
-  ) => UnifiedSearchResults(
-    query: json['query'] as String,
-    kind: json['kind'] as String,
-    contentScope: json['content_scope'] as String,
-    mode: json['mode'] as String,
-    page: json['page'] as int,
-    size: json['size'] as int,
-    contentTotal: json['content_total'] as int,
-    contentHasMore: json['content_has_more'] as bool,
-    contents: (json['contents'] as List<dynamic>)
-        .map(
-          (item) => UnifiedContentResult.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
-        .toList(growable: false),
-    events: (json['events'] as List<dynamic>)
-        .map(
-          (item) => UnifiedEventResult.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
-        .toList(growable: false),
-    people: (json['people'] as List<dynamic>)
-        .map(
-          (item) => UnifiedFacetResult.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
-        .toList(growable: false),
-    topics: (json['topics'] as List<dynamic>)
-        .map(
-          (item) => UnifiedFacetResult.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
-        .toList(growable: false),
-    timepoints: (json['timepoints'] as List<dynamic>)
-        .map(
-          (item) => UnifiedTimepointResult.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
-        .toList(growable: false),
-    documentPages: (json['document_pages'] as List)
-        .map(
-          (item) => DocumentPageResult.fromJson(item as Map<String, dynamic>),
-        )
-        .toList(growable: false),
-  );
+  factory UnifiedSearchResults.fromJson(Map<String, dynamic> json) =>
+      UnifiedSearchResults(
+        query: json['query'] as String,
+        kind: json['kind'] as String,
+        contentScope: json['content_scope'] as String,
+        mode: json['mode'] as String,
+        page: json['page'] as int,
+        size: json['size'] as int,
+        contentTotal: json['content_total'] as int,
+        contentHasMore: json['content_has_more'] as bool,
+        contents: (json['contents'] as List<dynamic>)
+            .map(
+              (item) => UnifiedContentResult.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList(growable: false),
+        events: (json['events'] as List<dynamic>)
+            .map(
+              (item) => UnifiedEventResult.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList(growable: false),
+        people: (json['people'] as List<dynamic>)
+            .map(
+              (item) => UnifiedFacetResult.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList(growable: false),
+        topics: (json['topics'] as List<dynamic>)
+            .map(
+              (item) => UnifiedFacetResult.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList(growable: false),
+        timepoints: (json['timepoints'] as List<dynamic>)
+            .map(
+              (item) => UnifiedTimepointResult.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList(growable: false),
+        documentPages: (json['document_pages'] as List)
+            .map(
+              (item) =>
+                  DocumentPageResult.fromJson(item as Map<String, dynamic>),
+            )
+            .toList(growable: false),
+      );
 
   final String query;
   final String kind;

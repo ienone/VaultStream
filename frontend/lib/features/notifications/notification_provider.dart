@@ -12,11 +12,8 @@ const NotificationQuery defaultNotificationQuery = (
   offset: 0,
 );
 
-final notificationInboxProvider =
-    FutureProvider.family<NotificationInbox, NotificationQuery>((
-      ref,
-      query,
-    ) async {
+final notificationInboxProvider = FutureProvider.autoDispose
+    .family<NotificationInbox, NotificationQuery>((ref, query) async {
       refreshOnEvents(ref, (event) => event.type == 'notification_updated');
 
       final dio = ref.watch(apiClientProvider);

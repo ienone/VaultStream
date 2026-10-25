@@ -1,6 +1,15 @@
+import '../../../../core/layout/workspace_geometry.dart';
+
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+
+import 'collection_grid_layout.dart';
+
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+
 import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import 'content_card.dart';
@@ -15,8 +24,8 @@ class CollectionList extends StatefulWidget {
     required this.onRefresh,
     required this.onOpenContent,
     required this.emptyState,
-    this.columns = 1,
     this.activeId,
+    this.onDeleted,
     this.isSelectionMode = false,
     this.selectedIds = const {},
     this.onToggleSelection,
@@ -31,8 +40,8 @@ class CollectionList extends StatefulWidget {
   final bool isLoadingMore;
   final RefreshCallback onRefresh;
   final ValueChanged<ShareCard> onOpenContent;
-  final int columns;
   final int? activeId;
+  final ValueChanged<int>? onDeleted;
   final bool isSelectionMode;
   final Set<int> selectedIds;
   final ValueChanged<int>? onToggleSelection;
@@ -48,6 +57,8 @@ class CollectionList extends StatefulWidget {
 
 class _CollectionListState extends State<CollectionList> {
   final _viewport = GlobalKey();
+  final _geometry = CollectionGridScrollGeometry();
+  final _cards = <int, Widget>{};
   final _keys = <int, GlobalKey>{};
   Offset? _down, _position;
   int? _anchor;
@@ -155,11 +166,27 @@ class _CollectionListState extends State<CollectionList> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _cards.clear();
+  }
+
+  @override
   void didUpdateWidget(CollectionList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (listEquals(oldWidget.items, widget.items) &&
+        oldWidget.selectionEnabled == widget.selectionEnabled &&
+        oldWidget.isSelectionMode == widget.isSelectionMode &&
+        setEquals(oldWidget.selectedIds, widget.selectedIds) &&
+        (!widget.isSelectionMode ||
+            (oldWidget.activeId == null) == (widget.activeId == null))) {
+      _cards.remove(oldWidget.activeId);
+      _cards.remove(widget.activeId);
+    } else {
+      _cards.clear();
+    }
     if (!widget.selectionEnabled ||
         (oldWidget.isSelectionMode && !widget.isSelectionMode) ||
-        oldWidget.columns != widget.columns ||
         oldWidget.items.length != widget.items.length ||
         oldWidget.items.indexed.any((e) => e.$2.id != widget.items[e.$1].id)) {
       _edgeTimer?.cancel();
@@ -172,89 +199,88 @@ class _CollectionListState extends State<CollectionList> {
   }
 
   @override
-  Widget build(BuildContext context) => Listener(
-    key: _viewport,
-    onPointerDown: (event) {
-      if (event.kind == PointerDeviceKind.mouse &&
-          event.buttons == kPrimaryMouseButton &&
-          widget.isSelectionMode &&
-          widget.selectionEnabled) {
-        _down = event.position;
-        setState(() => _mouseDown = true);
-      }
-    },
-    onPointerMove: (event) {
-      if (!_mouseDown || _down == null) return;
-      if (!_dragging && (event.position - _down!).distance > 5) _start(_down!);
-      if (_dragging) _update(event.position);
-    },
-    onPointerUp: (_) => _end(),
-    onPointerCancel: (_) => _end(),
-    child: RefreshIndicator(
-      onRefresh: widget.onRefresh,
-      notificationPredicate: (n) => !widget.isSelectionMode && n.depth == 0,
-      child: CustomScrollView(
-        key: PageStorageKey(
-          widget.activeId == null ? 'collection-overview' : 'collection-list',
-        ),
-        controller: widget.scrollController,
-        physics: _mouseDown
-            ? const NeverScrollableScrollPhysics()
-            : const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          if (widget.items.isEmpty && !widget.isLoadingMore)
-            SliverFillRemaining(hasScrollBody: false, child: widget.emptyState)
-          else
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                widget.columns == 1 ? 8 : 16,
-                4,
-                widget.columns == 1 ? 8 : 16,
-                16,
-              ),
-              sliver: SliverList.builder(
-                itemCount: (widget.items.length / widget.columns).ceil(),
-                itemBuilder: (context, row) => widget.columns == 1
-                    ? _card(row)
-                    : Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (var col = 0; col < widget.columns; col++) ...[
-                              if (col > 0) const SizedBox(width: 8),
-                              Expanded(
-                                child:
-                                    row * widget.columns + col <
-                                        widget.items.length
-                                    ? _card(row * widget.columns + col)
-                                    : const SizedBox(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-              ),
-            ),
-          if (widget.isLoadingMore || widget.onLoadMore != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: Center(
-                  child: widget.isLoadingMore
-                      ? const CircularProgressIndicator()
-                      : OutlinedButton.icon(
-                          onPressed: widget.onLoadMore,
-                          icon: const Icon(Icons.expand_more_rounded),
-                          label: const Text('加载更多'),
-                        ),
+  Widget build(BuildContext context) {
+    return Listener(
+      key: _viewport,
+      onPointerDown: (event) {
+        if (event.kind == PointerDeviceKind.mouse &&
+            event.buttons == kPrimaryMouseButton &&
+            widget.isSelectionMode &&
+            widget.selectionEnabled) {
+          _down = event.position;
+          setState(() => _mouseDown = true);
+        }
+      },
+      onPointerMove: (event) {
+        if (!_mouseDown || _down == null) return;
+        if (!_dragging && (event.position - _down!).distance > 5) {
+          _start(_down!);
+        }
+        if (_dragging) _update(event.position);
+      },
+      onPointerUp: (_) => _end(),
+      onPointerCancel: (_) => _end(),
+      child: RefreshIndicator(
+        onRefresh: widget.onRefresh,
+        notificationPredicate: (n) => !widget.isSelectionMode && n.depth == 0,
+        child: CustomScrollView(
+          key: const PageStorageKey('collection-list'),
+          scrollCacheExtent: const ScrollCacheExtent.pixels(0),
+          controller: widget.scrollController,
+          physics: CollectionGridScrollPhysics(
+            geometry: _geometry,
+            parent: _mouseDown
+                ? const NeverScrollableScrollPhysics()
+                : const AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            if (widget.items.isEmpty && !widget.isLoadingMore)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: widget.emptyState,
+              )
+            else
+              _CollectionGridSliver(
+                items: widget.items,
+                scrollGeometry: _geometry,
+                children: SliverChildBuilderDelegate(
+                  (context, index) => KeyedSubtree(
+                    key: ValueKey(widget.items[index].id),
+                    child: _cards.putIfAbsent(
+                      widget.items[index].id,
+                      () => _card(index),
+                    ),
+                  ),
+                  childCount: widget.items.length,
+                  findChildIndexCallback: (key) {
+                    final id = (key as ValueKey<int>).value;
+                    final index = widget.items.indexWhere(
+                      (item) => item.id == id,
+                    );
+                    return index < 0 ? null : index;
+                  },
                 ),
               ),
-            ),
-        ],
+            if (widget.isLoadingMore || widget.onLoadMore != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  child: Center(
+                    child: widget.isLoadingMore
+                        ? const CircularProgressIndicator()
+                        : OutlinedButton.icon(
+                            onPressed: widget.onLoadMore,
+                            icon: const Icon(Icons.expand_more_rounded),
+                            label: const Text('加载更多'),
+                          ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _card(int index) {
     final item = widget.items[index];
@@ -264,16 +290,17 @@ class _CollectionListState extends State<CollectionList> {
         i >= 0 &&
         i < widget.items.length &&
         widget.selectedIds.contains(widget.items[i].id);
-    final previous = selected && widget.columns == 1 && selectedAt(index - 1);
-    final next = selected && widget.columns == 1 && selectedAt(index + 1);
+    final previous =
+        selected && widget.activeId != null && selectedAt(index - 1);
+    final next = selected && widget.activeId != null && selectedAt(index + 1);
     final radius = BorderRadius.vertical(
       top: Radius.circular(previous ? 0 : 16),
       bottom: Radius.circular(next ? 0 : 16),
     );
     return Container(
       key: _keys.putIfAbsent(item.id, () => GlobalKey()),
-      margin: EdgeInsets.only(bottom: widget.columns == 1 && !next ? 4 : 0),
-      padding: EdgeInsets.only(bottom: widget.columns == 1 && next ? 4 : 0),
+      margin: EdgeInsets.only(bottom: !next ? 4 : 0),
+      padding: EdgeInsets.only(bottom: next ? 4 : 0),
       decoration: BoxDecoration(
         color: selected
             ? Theme.of(context).colorScheme.secondaryContainer
@@ -282,7 +309,7 @@ class _CollectionListState extends State<CollectionList> {
       ),
       child: ContentCard(
         content: item,
-        isList: widget.columns == 1,
+        onDeleted: () => widget.onDeleted?.call(item.id),
         isSelectionMode: widget.isSelectionMode,
         isSelected: selected,
         isActive: widget.activeId == item.id,
@@ -302,6 +329,63 @@ class _CollectionListState extends State<CollectionList> {
             widget.onOpenContent(item);
           }
         },
+      ),
+    );
+  }
+}
+
+/// Only the grid geometry depends on animation progress. Keep the scroll view
+/// and its child delegate stable while the pane changes width.
+class _CollectionGridSliver extends StatefulWidget {
+  const _CollectionGridSliver({
+    required this.items,
+    required this.scrollGeometry,
+    required this.children,
+  });
+  final List<ShareCard> items;
+  final CollectionGridScrollGeometry scrollGeometry;
+  final SliverChildDelegate children;
+
+  @override
+  State<_CollectionGridSliver> createState() => _CollectionGridSliverState();
+}
+
+class _CollectionGridSliverState extends State<_CollectionGridSliver> {
+  CollectionGridMetrics? _metrics;
+  (List<ShareCard>, double, double, double, TextTheme)? _metricsKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final pane = WorkspaceGeometry.of(context);
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+    final textTheme = Theme.of(context).textTheme;
+    final key = (
+      widget.items,
+      pane.overviewWidth,
+      pane.listWidth,
+      scale,
+      textTheme,
+    );
+    if (_metricsKey != key) {
+      _metricsKey = key;
+      _metrics = CollectionGridMetrics(
+        widget.items,
+        pane.overviewWidth,
+        pane.listWidth,
+        scale,
+        textTheme,
+        Directionality.of(context),
+      );
+    }
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(12, 12, 12, 24),
+      sliver: SliverGrid(
+        gridDelegate: CollectionGridDelegate(
+          metrics: _metrics!,
+          progress: pane.progress,
+          scrollGeometry: widget.scrollGeometry,
+        ),
+        delegate: widget.children,
       ),
     );
   }

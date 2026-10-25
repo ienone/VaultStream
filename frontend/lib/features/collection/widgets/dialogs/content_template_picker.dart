@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
-import '../../../../core/widgets/predictive_back_dialog.dart';
+import 'package:material_ui/material_ui.dart';
+
 import '../../../../theme/design_tokens.dart';
 
 Future<String?> showContentTemplatePicker(
@@ -18,12 +18,10 @@ Future<String?> showContentTemplatePicker(
     return showDialog<String>(
       context: context,
       animationStyle: animation,
-      builder: (_) => PredictiveBackDialog(
-        child: Dialog(
-          clipBehavior: Clip.antiAlias,
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: ContentTemplatePicker(current: current),
-        ),
+      builder: (_) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: ContentTemplatePicker(current: current),
       ),
     );
   }
@@ -59,21 +57,6 @@ class ContentTemplatePicker extends StatelessWidget {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '切换模板',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-            ),
-            IconButton(
-              tooltip: '关闭模板选择',
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.close),
-            ),
-          ],
-        ),
         Flexible(
           child: SingleChildScrollView(
             child: Column(

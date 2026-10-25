@@ -1,5 +1,7 @@
 import '../../../../../core/widgets/media_image_hero.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
+
 import '../../../../../core/widgets/media_image_button.dart';
 import '../../../../../core/media/media_asset.dart';
 import '../../../../../core/widgets/network_thumbnail.dart';
@@ -15,9 +17,8 @@ class MediaGalleryItem extends StatelessWidget {
   final Map<String, List<String>> fallbackUrlsByImage;
   final Map<String, MediaAsset> mediaAssetsByImage;
   final int contentId;
-  final Color? contentColor;
   final bool isVideoItem;
-  final String heroTag;
+  final MediaPresentation presentation;
   final BoxFit fit;
   final double? height;
   final double? width;
@@ -31,9 +32,8 @@ class MediaGalleryItem extends StatelessWidget {
     this.fallbackUrlsByImage = const {},
     this.mediaAssetsByImage = const {},
     required this.contentId,
-    this.contentColor,
     this.isVideoItem = false,
-    required this.heroTag,
+    this.presentation = MediaPresentation.gallery,
     this.fit = BoxFit.cover,
     this.height,
     this.width,
@@ -67,7 +67,27 @@ class MediaGalleryItem extends StatelessWidget {
       );
     }
 
-    return MediaImageButton(
+    final contained = fit == BoxFit.fitWidth || fit == BoxFit.contain;
+    final hero = MediaImageHero(
+      identity: mediaImageIdentity(
+        contentId: contentId,
+        url: url,
+        asset: mediaAsset,
+        presentation: presentation,
+      ),
+      borderRadius: effectiveBorderRadius,
+      child: NetworkThumbnail(
+        imageUrl: url,
+        mediaAsset: mediaAssetsByImage[url],
+        purpose: MediaPurpose.detail,
+        fallbackUrls: fallbackUrlsByImage[url] ?? const [],
+        width: contained ? null : width,
+        height: contained ? null : height,
+        fit: contained ? BoxFit.contain : fit,
+        errorIcon: Icons.broken_image,
+      ),
+    );
+    final image = MediaImageButton(
       label: '查看第 ${index + 1} 张图片，共 ${images.length} 张',
       onPressed: () => _showFullScreenImage(context),
       borderRadius: effectiveBorderRadius,
@@ -77,23 +97,23 @@ class MediaGalleryItem extends StatelessWidget {
         decoration: BoxDecoration(borderRadius: effectiveBorderRadius),
         child: ClipRRect(
           borderRadius: effectiveBorderRadius,
-          child: MediaImageHero(
-            tag: heroTag,
-            borderRadius: effectiveBorderRadius,
-            child: NetworkThumbnail(
-              imageUrl: url,
-              mediaAsset: mediaAssetsByImage[url],
-              purpose: MediaPurpose.detail,
-              fallbackUrls: fallbackUrlsByImage[url] ?? const [],
-              width: width,
-              height: height,
-              fit: fit,
-              errorIcon: Icons.broken_image,
-            ),
-          ),
+          child: contained ? Center(child: hero) : hero,
         ),
       ),
     );
+    if (fit == BoxFit.fitWidth && width == null && height == null) {
+      final sourceWidth = mediaAsset?.width;
+      final sourceHeight = mediaAsset?.height;
+      final ratio =
+          sourceWidth != null &&
+              sourceWidth > 0 &&
+              sourceHeight != null &&
+              sourceHeight > 0
+          ? sourceWidth / sourceHeight
+          : 16 / 9;
+      return AspectRatio(aspectRatio: ratio, child: image);
+    }
+    return image;
   }
 
   void _showFullScreenImage(BuildContext context) {
@@ -104,8 +124,7 @@ class MediaGalleryItem extends StatelessWidget {
       mediaAssetsByImage: mediaAssetsByImage,
       initialIndex: index,
       contentId: contentId,
-      contentColor: contentColor,
-      customHeroTag: heroTag,
+      presentation: presentation,
       onPageChanged: onPageChanged,
     );
   }

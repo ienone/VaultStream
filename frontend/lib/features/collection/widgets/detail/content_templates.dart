@@ -1,8 +1,14 @@
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:scroll_to_index/scroll_to_index.dart';
+
 import '../../../../core/widgets/media_image_hero.dart';
 import '../../../../core/widgets/media_image_button.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+
 import '../../../../core/widgets/markdown_reading.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
@@ -34,6 +40,7 @@ import 'gallery/gallery_navigation.dart';
 class TemplateContext {
   const TemplateContext({
     required this.detail,
+    required this.markdown,
     required this.metrics,
     required this.headerKeys,
     required this.images,
@@ -49,6 +56,7 @@ class TemplateContext {
   });
 
   final ContentDetail detail;
+  final MarkdownMetadata markdown;
   final WindowMetrics metrics;
   final Map<String, GlobalKey> headerKeys;
 
@@ -86,14 +94,28 @@ class TemplateContext {
 ///
 /// 详情页只有这一个模板入口，不存在第二套并行详情实现。
 class ContentTemplateBody extends StatelessWidget {
-  const ContentTemplateBody({super.key, required this.context_});
+  const ContentTemplateBody({
+    super.key,
+    required this.context_,
+    required this.scrollController,
+    required this.headerIndexes,
+    required this.onBlockCount,
+  });
 
   final TemplateContext context_;
+  final AutoScrollController scrollController;
+  final Map<String, int> headerIndexes;
+  final ValueChanged<int> onBlockCount;
 
   @override
   Widget build(BuildContext context) {
     final body = switch (context_.detail.template) {
-      ContentTemplate.article => _ArticleBody(ctx: context_),
+      ContentTemplate.article => _ArticleBody(
+        ctx: context_,
+        scrollController: scrollController,
+        headerIndexes: headerIndexes,
+        onBlockCount: onBlockCount,
+      ),
       ContentTemplate.imageNote => _ImageNoteStack(ctx: context_),
       ContentTemplate.shortPost => _ShortPostBody(ctx: context_),
       ContentTemplate.gallery => _GalleryBody(ctx: context_),
@@ -104,14 +126,19 @@ class ContentTemplateBody extends StatelessWidget {
       ContentTemplate.profile => _ProfileBody(ctx: context_),
       ContentTemplate.bookmark => _BookmarkBody(ctx: context_),
     };
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (context_.detail.hasSummary) ...[
-          ContentSummaryBlock(detail: context_.detail),
-          const SizedBox(height: AppSpacing.lg),
-        ],
-        body,
+    return SliverMainAxisGroup(
+      slivers: [
+        if (context_.detail.hasSummary)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.lg),
+              child: ContentSummaryBlock(detail: context_.detail),
+            ),
+          ),
+        if (context_.detail.template == ContentTemplate.article)
+          body
+        else
+          SliverToBoxAdapter(child: body),
       ],
     );
   }
@@ -138,7 +165,13 @@ class ImmersiveMediaDetail extends StatelessWidget {
       key: const ValueKey('immersive-media-detail'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(flex: 13, child: _ImmersiveMediaViewer(ctx: ctx)),
+        Expanded(
+          flex: 13,
+          child: ClipRRect(
+            borderRadius: AppShape.cardBorder,
+            child: _ImmersiveMediaViewer(ctx: ctx),
+          ),
+        ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
           flex: 8,
@@ -309,19 +342,34 @@ class _ImmersiveMediaViewerState extends State<_ImmersiveMediaViewer> {
                       AppSpacing.md,
                       ctx.images.length > 1 ? 92 : AppSpacing.md,
                     ),
-                    child: Center(
-                      child: MediaImageHero(
-                        tag: index == 0
-                            ? 'content-image-${ctx.detail.id}'
-                            : 'image-$index-${ctx.detail.id}',
-                        child: NetworkThumbnail(
-                          imageUrl: image,
-                          fallbackUrls: ctx.imageFallbacks[image] ?? const [],
-                          mediaAsset: ctx.imageAssets[image],
-                          purpose: MediaPurpose.detail,
-                          fit: BoxFit.contain,
-                        ),
-                      ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final pixelRatio = MediaQuery.devicePixelRatioOf(
+                          context,
+                        );
+                        return Center(
+                          child: MediaImageHero(
+                            identity: mediaImageIdentity(
+                              contentId: ctx.detail.id,
+                              url: image,
+                              asset: ctx.imageAssets[image],
+                            ),
+                            child: NetworkThumbnail(
+                              imageUrl: image,
+                              borderRadius: AppShape.cardMediaBorder,
+                              fallbackUrls:
+                                  ctx.imageFallbacks[image] ?? const [],
+                              mediaAsset: ctx.imageAssets[image],
+                              purpose: MediaPurpose.detail,
+                              fit: BoxFit.contain,
+                              maxWidthDiskCache:
+                                  (constraints.maxWidth * pixelRatio).ceil(),
+                              maxHeightDiskCache:
+                                  (constraints.maxHeight * pixelRatio).ceil(),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 );
@@ -385,9 +433,8 @@ class _PageCounter extends StatelessWidget {
         ),
         child: Text(
           '${index + 1} / $total',
-          style: Theme.of(
-            context,
-          ).textTheme.labelMedium?.copyWith(color: Colors.white),
+          style: Theme.of(context).textTheme.labelMedium
+              ?.copyWith(color: Colors.white),
         ),
       ),
     );
@@ -457,9 +504,12 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
       key: const ValueKey('immersive-media-thumbnails'),
       shape: const RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 68),
+        constraints: BoxConstraints(
+          maxWidth: (images.length * 56.0 + 8).clamp(0, 420),
+          maxHeight: 68,
+        ),
         child: ListView.separated(
-          shrinkWrap: true,
+          scrollCacheExtent: const ScrollCacheExtent.pixels(0),
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.all(AppSpacing.xs),
           itemCount: images.length,
@@ -469,14 +519,16 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
             final selected = selectedIndex == index;
             return Tooltip(
               message: '第 ${index + 1} 张',
-              child: InkWell(
+              child: MediaImageButton(
+                label: '第 ${index + 1} 张',
+                selected: selected,
                 borderRadius: BorderRadius.circular(AppRadius.sm),
-                onTap: () => onSelected(index),
+                onPressed: () => onSelected(index),
                 child: AnimatedContainer(
                   duration: MediaQuery.disableAnimationsOf(context)
                       ? Duration.zero
                       : AppMotion.stateChange,
-                  width: selected ? 58 : 48,
+                  width: 48,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(AppRadius.sm),
                     border: Border.all(
@@ -490,9 +542,15 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
                   child: NetworkThumbnail(
                     imageUrl: image,
                     fallbackUrls: fallbacks[image] ?? const [],
+                    failureBuilder: (_, _) =>
+                        const Center(child: Icon(Icons.hide_image_outlined)),
                     mediaAsset: mediaAssets[image],
                     purpose: MediaPurpose.detail,
                     fit: BoxFit.cover,
+                    maxWidthDiskCache:
+                        (64 * MediaQuery.devicePixelRatioOf(context)).ceil(),
+                    maxHeightDiskCache:
+                        (64 * MediaQuery.devicePixelRatioOf(context)).ceil(),
                   ),
                 ),
               ),
@@ -534,8 +592,8 @@ class _BodyText extends StatelessWidget {
 
     return RichContent(
       detail: detail,
+      inlineImageUrls: ctx.markdown.imageUrls,
       headerKeys: ctx.headerKeys,
-      useHero: false,
       hideMedia: hideMedia,
     );
   }
@@ -677,40 +735,59 @@ class _AttachedPlayback extends StatelessWidget {
 
 /// 文章：连续阅读为主，正文限宽。
 class _ArticleBody extends StatelessWidget {
-  const _ArticleBody({required this.ctx});
+  const _ArticleBody({
+    required this.ctx,
+    required this.scrollController,
+    required this.headerIndexes,
+    required this.onBlockCount,
+  });
 
   final TemplateContext ctx;
+  final AutoScrollController scrollController;
+  final Map<String, int> headerIndexes;
+  final ValueChanged<int> onBlockCount;
 
   @override
   Widget build(BuildContext context) {
-    final inlineImages =
-        ContentParser.extractMarkdownImageUrls(
-              ContentParser.getMarkdownContent(ctx.detail),
-            )
-            .expand(
-              (url) => ContentParser.imageCandidatesForUrl(ctx.detail, url),
-            )
-            .toSet();
+    final inlineImages = ctx.markdown.imageUrls
+        .expand((url) => ContentParser.imageCandidatesForUrl(ctx.detail, url))
+        .toSet();
     final attachments = ctx.images
         .where((url) => !inlineImages.contains(url))
         .toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _BodyText(ctx: ctx),
-        if (attachments.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xl),
-          const DetailSectionHeader(title: '其他图片'),
-          MediaGrid(
-            images: attachments,
-            fallbackUrlsByImage: ctx.imageFallbacks,
-            mediaAssetsByImage: ctx.imageAssets,
-            contentId: ctx.detail.id,
-            onImageTap: (index) =>
-                ctx.onImageTap(ctx.images.indexOf(attachments[index])),
-            isLandscape: false,
+    return SliverMainAxisGroup(
+      slivers: [
+        if (ctx.detail.hasBody)
+          RichContent(
+            detail: ctx.detail,
+            inlineImageUrls: ctx.markdown.imageUrls,
+            headerKeys: ctx.headerKeys,
+            hideMedia: true,
+            scrollController: scrollController,
+            headerIndexes: headerIndexes,
+            onBlockCount: onBlockCount,
+          )
+        else
+          SliverToBoxAdapter(child: _BodyText(ctx: ctx)),
+        if (attachments.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: AppSpacing.xl),
+                const DetailSectionHeader(title: '其他图片'),
+                MediaGrid(
+                  images: attachments,
+                  fallbackUrlsByImage: ctx.imageFallbacks,
+                  mediaAssetsByImage: ctx.imageAssets,
+                  contentId: ctx.detail.id,
+                  onImageTap: (index) =>
+                      ctx.onImageTap(ctx.images.indexOf(attachments[index])),
+                  isLandscape: false,
+                ),
+              ],
+            ),
           ),
-        ],
       ],
     );
   }
@@ -985,9 +1062,11 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
                           onPressed: _openFullScreen,
                           child: Center(
                             child: MediaImageHero(
-                              tag: index == 0
-                                  ? 'content-image-${ctx.detail.id}'
-                                  : 'image-$index-${ctx.detail.id}',
+                              identity: mediaImageIdentity(
+                                contentId: ctx.detail.id,
+                                url: image,
+                                asset: ctx.imageAssets[image],
+                              ),
                               borderRadius: AppShape.paneBorder,
                               child: NetworkThumbnail(
                                 imageUrl: image,
@@ -1041,16 +1120,18 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
               itemBuilder: (context, index) {
                 final image = ctx.images[index];
                 final selected = index == _index;
-                return InkWell(
+                return MediaImageButton(
+                  label: '第 ${index + 1} 张',
+                  selected: selected,
                   borderRadius: AppShape.cardMediaBorder,
-                  onTap: () => _controller.animateToPage(
+                  onPressed: () => _controller.animateToPage(
                     index,
                     duration: AppMotion.contentSwap,
                     curve: AppMotion.standardCurve,
                   ),
                   child: AnimatedContainer(
                     duration: AppMotion.stateChange,
-                    width: selected ? 76 : 58,
+                    width: 64,
                     decoration: BoxDecoration(
                       border: Border.all(
                         color: selected
@@ -1064,6 +1145,8 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
                     child: NetworkThumbnail(
                       imageUrl: image,
                       fallbackUrls: ctx.imageFallbacks[image] ?? const [],
+                      failureBuilder: (_, _) =>
+                          const Center(child: Icon(Icons.hide_image_outlined)),
                       mediaAsset: ctx.imageAssets[image],
                       purpose: MediaPurpose.detail,
                       fit: BoxFit.cover,
@@ -1188,6 +1271,9 @@ class _QuotedContent extends StatelessWidget {
               selectable: true,
               softLineBreak: true,
               styleSheet: readingMarkdownStyle(context),
+              builders: readingMarkdownBuilders(context),
+              inlineSyntaxes: readingInlineSyntaxes(),
+              blockSyntaxes: readingBlockSyntaxes(),
               onTapLink: (_, href, _) =>
                   SafeUrlLauncher.openExternal(context, href),
             ),
@@ -1310,7 +1396,9 @@ class _VideoBody extends StatelessWidget {
                 : null,
           ),
         ],
-        if (ContentParser.getMarkdownContent(ctx.detail).trim().isNotEmpty) ...[
+        if (ContentParser.getMarkdownContent(ctx.detail).trim().isNotEmpty &&
+            ContentParser.getMarkdownContent(ctx.detail).trim() !=
+                ctx.detail.title?.trim()) ...[
           const SizedBox(height: AppSpacing.lg),
           const DetailSectionHeader(title: '简介'),
           _BodyText(ctx: ctx),
@@ -1402,7 +1490,15 @@ class _CollectionIndexBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final blocks = ctx.detail.richPayload?['blocks'];
-    final hasMembers = blocks is List && blocks.isNotEmpty;
+    final memberCount = blocks is List
+        ? blocks
+              .whereType<Map>()
+              .where(
+                (block) => block['type'] == 'sub_item' && block['data'] is Map,
+              )
+              .length
+        : 0;
+    final hasMembers = memberCount > 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1412,10 +1508,10 @@ class _CollectionIndexBody extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
         ],
         DetailSectionHeader(
-          title: '收录条目',
+          title: ctx.detail.contentType == 'question' ? '已保存的回答' : '已保存的条目',
           trailing: hasMembers
               ? Text(
-                  '${(blocks).length} 条',
+                  '$memberCount 条',
                   style: Theme.of(context).textTheme.labelMedium,
                 )
               : null,
@@ -1555,49 +1651,21 @@ class ContentSupportingSections extends StatelessWidget {
 }
 
 /// 目录。仅文章模板在宽屏使用。
-class ContentOutline extends StatefulWidget {
+class ContentOutline extends StatelessWidget {
   const ContentOutline({
     super.key,
-    required this.detail,
+    required this.headers,
     required this.activeHeader,
-    required this.headerKeys,
+    required this.onSelectHeader,
     this.showTitle = true,
     this.padding = const EdgeInsets.all(AppSpacing.md),
   });
 
   final bool showTitle;
   final EdgeInsetsGeometry padding;
-  final ContentDetail detail;
+  final List<HeaderLine> headers;
   final String? activeHeader;
-  final Map<String, GlobalKey> headerKeys;
-
-  @override
-  State<ContentOutline> createState() => _ContentOutlineState();
-}
-
-class _ContentOutlineState extends State<ContentOutline> {
-  late List<HeaderLine> headers;
-
-  @override
-  void initState() {
-    super.initState();
-    _readHeaders();
-  }
-
-  void _readHeaders() {
-    headers = ContentParser.extractHeaders(
-      ContentParser.getMarkdownContent(widget.detail),
-    );
-  }
-
-  @override
-  void didUpdateWidget(ContentOutline oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (ContentParser.getMarkdownContent(oldWidget.detail) !=
-        ContentParser.getMarkdownContent(widget.detail)) {
-      _readHeaders();
-    }
-  }
+  final ValueChanged<String> onSelectHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -1610,7 +1678,7 @@ class _ContentOutlineState extends State<ContentOutline> {
     return Container(
       key: const ValueKey('content-detail-outline-surface'),
       width: double.infinity,
-      padding: widget.padding,
+      padding: padding,
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: AppShape.paneBorder,
@@ -1618,27 +1686,17 @@ class _ContentOutlineState extends State<ContentOutline> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.showTitle) const DetailSectionHeader(title: '目录'),
+          if (showTitle) const DetailSectionHeader(title: '目录'),
           const SizedBox(height: AppSpacing.xs),
           for (final header in headers)
             _OutlineEntry(
               header: header,
               depth: (header.level - minimumLevel).clamp(0, 3),
-              active: widget.activeHeader == header.uniqueId,
-              onTap: () => _scrollTo(header.uniqueId),
+              active: activeHeader == header.uniqueId,
+              onTap: () => onSelectHeader(header.uniqueId),
             ),
         ],
       ),
-    );
-  }
-
-  void _scrollTo(String headerId) {
-    final target = widget.headerKeys[headerId]?.currentContext;
-    if (target == null) return;
-    Scrollable.ensureVisible(
-      target,
-      duration: AppMotion.contentSwap,
-      curve: AppMotion.standardCurve,
     );
   }
 }

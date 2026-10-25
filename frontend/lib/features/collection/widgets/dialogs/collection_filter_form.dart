@@ -1,760 +1,295 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/widgets/predictive_back_dialog.dart';
+
+import '../../../../core/widgets/app_choice_segments.dart';
+import '../../../../core/widgets/app_multi_select.dart';
 import '../../providers/tag_provider.dart';
-import '../../../../theme/design_tokens.dart';
 import '../../../search/search_models.dart';
 
 class CollectionFilterForm extends ConsumerStatefulWidget {
-  final UnifiedSearchRequest request;
-
   const CollectionFilterForm({super.key, required this.request});
-
+  final UnifiedSearchRequest request;
   @override
   ConsumerState<CollectionFilterForm> createState() =>
       _CollectionFilterFormState();
 }
 
 class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
-  final _bodyKey = GlobalKey();
-  late Set<String> _selectedPlatforms;
-  late Set<String> _selectedStatuses;
-  late TextEditingController _authorController;
-  late TextEditingController _tagInputController;
-  late DateTimeRange? _dateRange;
-  late Set<String> _selectedTags;
-  late String _searchMode;
-  late double _semanticTopK;
-  late String _semanticScope;
+  late Set<String> _platforms, _statuses, _tags;
+  late final TextEditingController _author;
+  late String _mode;
+  late double _topK;
+  DateTimeRange? _range;
   bool _dateChanged = false;
-
   @override
   void initState() {
     super.initState();
-    final request = widget.request;
-    _selectedPlatforms = Set<String>.from(request.platforms);
-    _selectedStatuses = Set<String>.from(request.statuses);
-    _authorController = TextEditingController(text: request.author);
-    _tagInputController = TextEditingController();
-    _dateRange =
-        request.dateFrom != null &&
-            request.dateTo != null &&
-            !request.dateFrom!.isAfter(request.dateTo!)
-        ? DateTimeRange(
-            start: request.dateFrom!.toLocal(),
-            end: request.dateTo!.toLocal(),
-          )
-        : null;
-    _selectedTags = Set<String>.from(request.tags);
-    _searchMode = request.mode;
-    _semanticTopK = request.topK.toDouble().clamp(1, 100);
-    _semanticScope = request.contentScope;
+    final r = widget.request;
+    _platforms = r.platforms.toSet();
+    _statuses = r.statuses.toSet();
+    _tags = r.tags.toSet();
+    _author = TextEditingController(text: r.author);
+    _mode = r.mode;
+    _topK = r.topK.toDouble().clamp(1, 100);
+    if (r.dateFrom != null &&
+        r.dateTo != null &&
+        !r.dateFrom!.isAfter(r.dateTo!)) {
+      _range = DateTimeRange(
+        start: r.dateFrom!.toLocal(),
+        end: r.dateTo!.toLocal(),
+      );
+    }
   }
 
   @override
   void dispose() {
-    _authorController.dispose();
-    _tagInputController.dispose();
+    _author.dispose();
     super.dispose();
   }
 
-  void _resetAll() {
-    setState(() {
-      _selectedPlatforms.clear();
-      _selectedStatuses.clear();
-      _authorController.clear();
-      _tagInputController.clear();
-      _dateRange = null;
-      _dateChanged = true;
-      _selectedTags.clear();
-      _searchMode = 'keyword';
-      _semanticTopK = 20;
-      _semanticScope = 'library';
-    });
-  }
-
-  void _addTag(String tag) {
-    setState(() {
-      _selectedTags.add(tag);
-      _tagInputController.clear();
-    });
-  }
-
-  int? _presetDays(DateTimeRange range) {
-    final today = DateUtils.dateOnly(DateTime.now());
-    if (!DateUtils.isSameDay(range.end, today)) return null;
-    for (final days in [0, 7, 30]) {
-      if (DateUtils.isSameDay(
-        range.start,
-        today.subtract(Duration(days: days)),
-      )) {
-        return days;
-      }
-    }
-    return null;
-  }
-
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 8),
-      child: Text(
-        title,
-        style: Theme.of(
-          context,
-        ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+  void _reset() => setState(() {
+    _platforms.clear();
+    _statuses.clear();
+    _tags.clear();
+    _author.clear();
+    _range = null;
+    _dateChanged = true;
+  });
+  void _apply() {
+    final end = _range?.end;
+    Navigator.of(context).pop(
+      widget.request.copyWith(
+        page: 1,
+        platforms: _platforms.toList(),
+        statuses: _statuses.toList(),
+        tags: _tags.toList(),
+        author: _author.text.trim().isEmpty ? null : _author.text.trim(),
+        dateFrom: _dateChanged ? _range?.start : widget.request.dateFrom,
+        dateTo: _dateChanged
+            ? (end == null
+                  ? null
+                  : DateTime(
+                      end.year,
+                      end.month,
+                      end.day + 1,
+                    ).subtract(const Duration(microseconds: 1)))
+            : widget.request.dateTo,
+        mode: _mode,
+        topK: _topK.round(),
       ),
     );
   }
 
-  Widget _buildChoiceChip(
-    String label,
-    bool isSelected,
-    ValueChanged<bool> onSelected,
-  ) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: onSelected,
-      showCheckmark: true,
-      side: isSelected
-          ? BorderSide.none
-          : BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-    );
+  int _preset() {
+    final today = DateUtils.dateOnly(DateTime.now());
+    if (_range == null) return -1;
+    if (DateUtils.isSameDay(_range!.end, today)) {
+      for (final days in [0, 7, 30]) {
+        if (DateUtils.isSameDay(
+          _range!.start,
+          today.subtract(Duration(days: days)),
+        )) {
+          return days;
+        }
+      }
+    }
+    return -2;
   }
 
-  Widget _buildFilterChip(
-    String label,
-    bool isSelected,
-    ValueChanged<bool> onSelected,
-  ) => FilterChip(
-    label: Text(label),
-    selected: isSelected,
-    onSelected: onSelected,
-    showCheckmark: true,
-    side: isSelected
-        ? BorderSide.none
-        : BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final allTagsAsync = ref.watch(allTagsProvider);
-    final tagQuery = _tagInputController.text.trim().toLowerCase();
-    final tagSuggestions = tagQuery.isEmpty
-        ? const <String>[]
-        : (allTagsAsync.value ?? const <TagInfo>[])
-              .map((tag) => tag.name)
-              .where(
-                (tag) =>
-                    tag.toLowerCase().contains(tagQuery) &&
-                    !_selectedTags.contains(tag),
-              )
-              .take(10)
-              .toList();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final shortHeight = constraints.maxHeight < 360;
-        final minimalHeight = constraints.maxHeight < 180;
-        final header = <Widget>[
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '搜索筛选',
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+  Future<void> _pickDates() async {
+    final picked = await showDialog<DateTimeRange>(
+      context: context,
+      animationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      builder: (context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
+            child: LayoutBuilder(
+              builder: (context, box) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(size: box.biggest),
+                child: DateRangePickerDialog(
+                  initialDateRange: _range,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime.now().add(const Duration(days: 1)),
+                  helpText: '保存日期',
+                  saveText: '应用',
+                  confirmText: '应用',
+                  cancelText: '取消',
                 ),
               ),
-              IconButton(
-                tooltip: '关闭筛选',
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ],
+            ),
           ),
-        ];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (!minimalHeight) ...header,
-              Expanded(
-                child: SingleChildScrollView(
-                  key: _bodyKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (minimalHeight)
-                        Column(children: header)
-                      else
-                        const SizedBox.shrink(),
-                      _buildSectionHeader('内容平台'),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: searchPlatformLabels.keys
-                            .map(
-                              (p) => _buildFilterChip(
-                                searchPlatformLabels[p]!,
-                                _selectedPlatforms.contains(p),
-                                (selected) => setState(
-                                  () => selected
-                                      ? _selectedPlatforms.add(p)
-                                      : _selectedPlatforms.remove(p),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _range = picked;
+      _dateChanged = true;
+    });
+  }
 
-                      _buildSectionHeader('处理状态'),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: searchStatusLabels.keys
-                            .map(
-                              (s) => _buildFilterChip(
-                                searchStatusLabels[s]!,
-                                _selectedStatuses.contains(s),
-                                (selected) => setState(
-                                  () => selected
-                                      ? _selectedStatuses.add(s)
-                                      : _selectedStatuses.remove(s),
-                                ),
-                              ),
-                            )
-                            .toList(),
+  Widget _heading(String title) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(title, style: Theme.of(context).textTheme.titleSmall),
+  );
+  Widget _actions() => Row(
+    children: [
+      TextButton(onPressed: _reset, child: const Text('清除筛选')),
+      const Spacer(),
+      FilledButton(onPressed: _apply, child: const Text('应用筛选')),
+    ],
+  );
+  @override
+  Widget build(BuildContext context) {
+    final tagData = ref.watch(allTagsProvider);
+    final tagNames = {..._tags, ...?tagData.value?.map((tag) => tag.name)};
+    return LayoutBuilder(
+      builder: (context, box) {
+        final short = box.maxHeight < 360;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '筛选',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭筛选',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Flexible(
+              fit: FlexFit.tight,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _heading('处理状态'),
+                    AppChoiceSegments<String>(
+                      options: const {
+                        'unprocessed': '未处理',
+                        'processing': '处理中',
+                        'parse_success': '成功',
+                        'parse_failed': '失败',
+                      },
+                      selected: _statuses,
+                      multiple: true,
+                      allowEmpty: true,
+                      onChanged: (values) => setState(() => _statuses = values),
+                    ),
+                    const SizedBox(height: 24),
+                    AppMultiSelect(
+                      label: '内容平台',
+                      hint: '全部平台',
+                      options: searchPlatformLabels,
+                      selected: _platforms,
+                      onChanged: (values) =>
+                          setState(() => _platforms = values),
+                    ),
+                    const SizedBox(height: 24),
+                    AppMultiSelect(
+                      label: '标签',
+                      hint: '不限标签',
+                      options: {for (final name in tagNames) name: name},
+                      selected: _tags,
+                      onChanged: (values) => setState(() => _tags = values),
+                    ),
+                    if (tagData.hasError)
+                      TextButton.icon(
+                        onPressed: () => ref.invalidate(allTagsProvider),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('标签加载失败，重试'),
                       ),
-
-                      _buildSectionHeader('标签'),
-                      if (_selectedTags.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _selectedTags
-                                .map(
-                                  (tag) => Tooltip(
-                                    message: tag,
-                                    child: Chip(
-                                      label: Text(
-                                        '#$tag',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      onDeleted: () => setState(
-                                        () => _selectedTags.remove(tag),
-                                      ),
-                                      deleteButtonTooltipMessage: '移除标签 $tag',
-                                      backgroundColor:
-                                          colorScheme.secondaryContainer,
-                                      labelStyle: TextStyle(
-                                        color: colorScheme.onSecondaryContainer,
-                                      ),
-                                      side: BorderSide.none,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ),
-                      _buildTextField(
-                        controller: _tagInputController,
-                        label: '添加标签',
-                        hint: '搜索已有标签',
-                        icon: Icons.tag_rounded,
-                        onChanged: (_) => setState(() {}),
-                        suffixIcon: allTagsAsync.isLoading
-                            ? const Padding(
-                                padding: EdgeInsets.all(14),
-                                child: SizedBox.square(
-                                  dimension: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              )
-                            : null,
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: _author,
+                      decoration: const InputDecoration(
+                        labelText: '作者',
+                        hintText: '不限作者',
+                        prefixIcon: Icon(Icons.person_outline_rounded),
                       ),
-                      if (tagQuery.isNotEmpty &&
-                          !allTagsAsync.isLoading &&
-                          !allTagsAsync.hasError &&
-                          tagSuggestions.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            '没有可添加的匹配标签',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      if (allTagsAsync.hasError)
-                        TextButton.icon(
-                          onPressed: () => ref.invalidate(allTagsProvider),
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('标签加载失败，重试'),
-                        ),
-                      if (tagSuggestions.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: tagSuggestions
-                                .map(
-                                  (tag) => Tooltip(
-                                    message: tag,
-                                    child: ActionChip(
-                                      side: BorderSide(
-                                        color: colorScheme.outlineVariant,
-                                      ),
-                                      avatar: const Icon(
-                                        Icons.add_rounded,
-                                        size: 18,
-                                      ),
-                                      label: Text(
-                                        tag,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      onPressed: () => _addTag(tag),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ),
+                    ),
+                    const SizedBox(height: 24),
+                    _heading('保存日期'),
+                    AppChoiceSegments<int>(
+                      options: const {-1: '不限', 0: '今天', 7: '7 天', 30: '30 天'},
+                      selected: _preset() == -2 ? <int>{} : {_preset()},
+                      allowEmpty: true,
+                      onChanged: (values) => setState(() {
+                        final days = values.isEmpty ? -1 : values.first;
+                        final today = DateUtils.dateOnly(DateTime.now());
+                        _range = days == -1
+                            ? null
+                            : DateTimeRange(
+                                start: today.subtract(Duration(days: days)),
+                                end: today,
+                              );
+                        _dateChanged = true;
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: _pickDates,
+                      icon: const Icon(Icons.date_range_outlined),
+                      label: Text(
+                        _range == null
+                            ? '自选日期范围'
+                            : '${DateFormat('yyyy/MM/dd').format(_range!.start)} — ${DateFormat('yyyy/MM/dd').format(_range!.end)}',
+                      ),
+                    ),
+                    if (widget.request.query.trim().isNotEmpty) ...[
                       const SizedBox(height: 24),
-                      _buildTextField(
-                        controller: _authorController,
-                        label: '作者',
-                        hint: '输入作者名称',
-                        icon: Icons.person_search_rounded,
+                      _heading('搜索方式'),
+                      AppChoiceSegments<String>(
+                        options: const {'keyword': '关键词', 'semantic': '语义'},
+                        selected: {_mode},
+                        onChanged: (values) =>
+                            setState(() => _mode = values.first),
                       ),
-
-                      _buildSectionHeader('时间范围'),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _buildChoiceChip(
-                            '全部时间',
-                            _dateRange == null &&
-                                (_dateChanged ||
-                                    (widget.request.dateFrom == null &&
-                                        widget.request.dateTo == null)),
-                            (s) => setState(() {
-                              _dateRange = null;
-                              _dateChanged = true;
-                            }),
-                          ),
-                          _buildDatePresetChip('今天', 0),
-                          _buildDatePresetChip('过去 7 天', 7),
-                          _buildDatePresetChip('过去 30 天', 30),
-                          ActionChip(
-                            label: const Text('自定义日期'),
-                            avatar: const Icon(
-                              Icons.calendar_today_rounded,
-                              size: 16,
-                            ),
-                            onPressed: _showExpressiveDatePicker,
-                            backgroundColor:
-                                (_dateRange != null &&
-                                    _presetDays(_dateRange!) == null)
-                                ? colorScheme.primaryContainer
-                                : null,
-                            labelStyle: TextStyle(
-                              color:
-                                  (_dateRange != null &&
-                                      _presetDays(_dateRange!) == null)
-                                  ? colorScheme.onPrimaryContainer
-                                  : null,
-                              fontWeight:
-                                  (_dateRange != null &&
-                                      _presetDays(_dateRange!) == null)
-                                  ? FontWeight.bold
-                                  : null,
-                            ),
-                            side: BorderSide(
-                              color:
-                                  (_dateRange != null &&
-                                      _presetDays(_dateRange!) == null)
-                                  ? colorScheme.primary
-                                  : colorScheme.outlineVariant,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_dateRange != null &&
-                          _presetDays(_dateRange!) == null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            '${DateFormat.yMd('zh_CN').format(_dateRange!.start)} — '
-                            '${DateFormat.yMd('zh_CN').format(_dateRange!.end)}',
-                          ),
-                        ),
-                      _buildSectionHeader('搜索模式'),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _buildChoiceChip('关键词', _searchMode == 'keyword', (
-                            selected,
-                          ) {
-                            if (selected) {
-                              setState(() => _searchMode = 'keyword');
-                            }
-                          }),
-                          _buildChoiceChip('语义', _searchMode == 'semantic', (
-                            selected,
-                          ) {
-                            if (selected) {
-                              setState(() => _searchMode = 'semantic');
-                            }
-                          }),
-                        ],
-                      ),
-                      ...[
+                      if (_mode == 'semantic') ...[
                         const SizedBox(height: 12),
-                        Text('检索范围', style: theme.textTheme.bodyMedium),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _buildChoiceChip(
-                              '收藏库',
-                              _semanticScope == 'library',
-                              (selected) {
-                                if (selected) {
-                                  setState(() => _semanticScope = 'library');
-                                }
-                              },
-                            ),
-                            _buildChoiceChip(
-                              '探索池',
-                              _semanticScope == 'discovery',
-                              (selected) {
-                                if (selected) {
-                                  setState(() => _semanticScope = 'discovery');
-                                }
-                              },
-                            ),
-                            _buildChoiceChip('全部', _semanticScope == 'all', (
-                              selected,
-                            ) {
-                              if (selected) {
-                                setState(() => _semanticScope = 'all');
-                              }
-                            }),
-                          ],
-                        ),
-                      ],
-                      if (_searchMode == 'semantic') ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '最多显示 ${_semanticTopK.round()} 条结果',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+                        Text('最多显示 ${_topK.round()} 条结果'),
                         Slider(
-                          value: _semanticTopK,
+                          value: _topK,
                           min: 1,
                           max: 100,
                           divisions: 99,
-                          label: _semanticTopK.round().toString(),
-                          onChanged: (v) => setState(() => _semanticTopK = v),
+                          label: _topK.round().toString(),
+                          onChanged: (value) => setState(() => _topK = value),
                         ),
                       ],
-                      const SizedBox(height: 24),
-                      if (shortHeight) _buildActions(),
                     ],
-                  ),
+                    if (short) ...[const SizedBox(height: 16), _actions()],
+                  ],
                 ),
               ),
-              if (!shortHeight) const Divider(),
-              if (!shortHeight) const SizedBox(height: 8),
-              if (!shortHeight) _buildActions(),
-            ],
-          ),
+            ),
+            if (!short)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 24, 16),
+                  child: _actions(),
+                ),
+              ),
+          ],
         );
       },
-    );
-  }
-
-  Widget _buildActions() => Row(
-    children: [
-      Expanded(
-        child: TextButton(
-          onPressed: _resetAll,
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-          child: const Text('重置'),
-        ),
-      ),
-      const SizedBox(width: 16),
-      Expanded(
-        flex: 2,
-        child: FilledButton(
-          onPressed: () {
-            final end = _dateRange?.end;
-            Navigator.of(context).pop(
-              widget.request.copyWith(
-                page: 1,
-                platforms: _selectedPlatforms.toList(),
-                statuses: _selectedStatuses.toList(),
-                author: _authorController.text.trim().isEmpty
-                    ? null
-                    : _authorController.text.trim(),
-                dateFrom: _dateChanged
-                    ? _dateRange?.start
-                    : widget.request.dateFrom,
-                dateTo: _dateChanged
-                    ? (end == null
-                          ? null
-                          : DateTime(
-                              end.year,
-                              end.month,
-                              end.day + 1,
-                            ).subtract(const Duration(microseconds: 1)))
-                    : widget.request.dateTo,
-                tags: _selectedTags.toList(),
-                mode: _searchMode,
-                topK: _semanticTopK.round(),
-                contentScope: _semanticScope,
-              ),
-            );
-          },
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-          child: const Text('应用筛选'),
-        ),
-      ),
-    ],
-  );
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    ValueChanged<String>? onChanged,
-    Widget? suffixIcon,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return TextField(
-      controller: controller,
-      onChanged: onChanged,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, size: 20),
-        suffixIcon: suffixIcon,
-        filled: true,
-        fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        border: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: AppShape.cardBorder,
-          borderSide: BorderSide(color: colorScheme.primary, width: 1.5),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDatePresetChip(String label, int days) {
-    final now = DateTime.now();
-    final start = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: days));
-    final range = DateTimeRange(start: start, end: now);
-    final isSelected = _dateRange != null && _presetDays(_dateRange!) == days;
-
-    return _buildChoiceChip(
-      label,
-      isSelected,
-      (s) => setState(() {
-        _dateRange = s ? range : null;
-        _dateChanged = true;
-      }),
-    );
-  }
-
-  Future<void> _showExpressiveDatePicker() async {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final picked = await showDialog<DateTimeRange>(
-      context: context,
-      animationStyle: reducedMotion
-          ? AnimationStyle.noAnimation
-          : const AnimationStyle(
-              duration: AppMotion.surfaceEnter,
-              reverseDuration: AppMotion.surfaceExit,
-              curve: AppMotion.standardCurve,
-            ),
-      builder: (context) => PredictiveBackDialog(
-        child: _DateRangeSurface(initialRange: _dateRange),
-      ),
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        _dateRange = picked;
-        _dateChanged = true;
-      });
-    }
-  }
-}
-
-class _DateRangeSurface extends StatefulWidget {
-  const _DateRangeSurface({required this.initialRange});
-  final DateTimeRange? initialRange;
-
-  @override
-  State<_DateRangeSurface> createState() => _DateRangeSurfaceState();
-}
-
-class _DateRangeSurfaceState extends State<_DateRangeSurface> {
-  final _scrollController = ScrollController();
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Size? _lastSize;
-  DatePickerEntryMode? _initialEntryMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(12, 12, 12, 12 + media.viewInsets.bottom),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final scrolling = constraints.maxHeight < 360;
-          final surfaceWidth = constraints.maxWidth.clamp(
-            0.0,
-            constraints.maxHeight < 420 ? AppPane.formMaxWidth : 480.0,
-          );
-          final surfaceHeight = constraints.maxHeight.clamp(360.0, 600.0);
-          final surfaceColor = Theme.of(
-            context,
-          ).colorScheme.surfaceContainerHigh;
-          final shape = RoundedRectangleBorder(
-            borderRadius: scrolling ? BorderRadius.zero : AppShape.sheetBorder,
-          );
-          _initialEntryMode ??= constraints.maxHeight < 420
-              ? DatePickerEntryMode.input
-              : DatePickerEntryMode.calendar;
-          if (_lastSize != constraints.biggest) {
-            _lastSize = constraints.biggest;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
-              final focusContext = FocusManager.instance.primaryFocus?.context;
-              if (focusContext == null) return;
-              BuildContext target = focusContext;
-              focusContext.visitAncestorElements((element) {
-                if (element.widget is TextField) {
-                  target = element;
-                  return false;
-                }
-                return true;
-              });
-              Scrollable.ensureVisible(target, alignment: 0.5);
-            });
-          }
-          return Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: surfaceWidth,
-                maxHeight: 600,
-              ),
-              child: Material(
-                type: scrolling
-                    ? MaterialType.canvas
-                    : MaterialType.transparency,
-                color: scrolling ? surfaceColor : null,
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppShape.sheetBorder,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Scrollbar(
-                  controller: _scrollController,
-                  thumbVisibility: scrolling,
-                  child: SingleChildScrollView(
-                    controller: _scrollController,
-                    child: SizedBox(
-                      // The native range form has a fixed minimum layout. Scroll
-                      // that layout when the keyboard leaves too little room.
-                      height: surfaceHeight,
-                      child: MediaQuery(
-                        data: media.copyWith(
-                          size: Size(surfaceWidth, surfaceHeight),
-                          viewInsets: media.viewInsets.copyWith(bottom: 0),
-                        ),
-                        child: Theme(
-                          data: Theme.of(context).copyWith(
-                            datePickerTheme: Theme.of(context).datePickerTheme
-                                .copyWith(
-                                  rangePickerShape: shape,
-                                  shape: shape,
-                                  elevation: scrolling ? 0 : null,
-                                  rangePickerElevation: scrolling ? 0 : null,
-                                  backgroundColor: scrolling
-                                      ? surfaceColor
-                                      : null,
-                                  rangePickerBackgroundColor: scrolling
-                                      ? surfaceColor
-                                      : null,
-                                  rangePickerHeaderBackgroundColor: scrolling
-                                      ? surfaceColor
-                                      : null,
-                                ),
-                          ),
-                          child: Localizations.override(
-                            context: context,
-                            locale: const Locale('zh', 'CN'),
-                            child: DateRangePickerDialog(
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now().add(
-                                const Duration(days: 1),
-                              ),
-                              initialDateRange: widget.initialRange,
-                              initialEntryMode: _initialEntryMode!,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }

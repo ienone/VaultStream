@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../../theme/design_tokens.dart';
 
@@ -53,7 +53,17 @@ class _SkeletonCardState extends State<_SkeletonCard>
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: AppMotion.skeletonPulse,
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.stop();
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {

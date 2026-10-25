@@ -9,11 +9,7 @@ final knowledgeEventsProvider = FutureProvider.autoDispose
           .read(apiClientProvider)
           .get(
             '/knowledge-events',
-            queryParameters: {
-              'page': 1,
-              'size': 100,
-              'content_id': ?contentId,
-            },
+            queryParameters: {'page': 1, 'size': 100, 'content_id': ?contentId},
           );
       return KnowledgeEventListResponse.fromJson(
         Map<String, dynamic>.from(response.data as Map),

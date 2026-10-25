@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+
 import '../../../models/content.dart';
 import '../../../../../theme/design_tokens.dart';
 
@@ -25,8 +26,8 @@ class TagsSection extends StatelessWidget {
           Tooltip(
             message: sourceTags.contains(tag)
                 ? userTags.contains(tag)
-                    ? '平台标签 · 自定义标签'
-                    : '平台标签'
+                      ? '同时属于平台标签和自定义标签'
+                      : '平台标签'
                 : '自定义标签',
             child: Container(
               padding: const EdgeInsets.symmetric(
@@ -39,9 +40,8 @@ class TagsSection extends StatelessWidget {
               ),
               child: Text(
                 tag.startsWith('#') ? tag : '#$tag',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
+                style: Theme.of(context).textTheme.labelMedium
+                    ?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ),
           ),

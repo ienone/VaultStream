@@ -1,29 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../../../core/media/media_asset.dart';
-import '../../../../../theme/design_tokens.dart';
+import '../../../../../core/motion/shared_transition.dart';
+import '../../../../../core/widgets/media_image_hero.dart';
 import 'full_screen_gallery.dart';
-
-/// A media overlay has its own drag dismissal; it is not a page transition.
-class _GalleryRoute extends PageRouteBuilder<void> {
-  _GalleryRoute({required WidgetBuilder builder, required bool reduceMotion})
-    : super(
-        opaque: false,
-        transitionDuration: reduceMotion
-            ? Duration.zero
-            : AppMotion.surfaceEnter,
-        reverseTransitionDuration: reduceMotion
-            ? Duration.zero
-            : AppMotion.standard,
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            builder(context),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            child,
-      );
-
-  @override
-  bool get popGestureEnabled => false;
-}
 
 Future<void> pushFullScreenGallery({
   required BuildContext context,
@@ -32,23 +12,33 @@ Future<void> pushFullScreenGallery({
   Map<String, MediaAsset> mediaAssetsByImage = const {},
   required int initialIndex,
   required int contentId,
-  Color? contentColor,
-  String? customHeroTag,
+  MediaPresentation presentation = MediaPresentation.gallery,
   void Function(int)? onPageChanged,
 }) {
-  return Navigator.of(context, rootNavigator: true).push(
-    _GalleryRoute(
-      reduceMotion: MediaQuery.disableAnimationsOf(context),
-      builder: (context) => FullScreenGallery(
-        images: images,
-        fallbackUrlsByImage: fallbackUrlsByImage,
-        mediaAssetsByImage: mediaAssetsByImage,
-        initialIndex: initialIndex,
+  assert(
+    images.isNotEmpty && initialIndex >= 0 && initialIndex < images.length,
+  );
+  final identities = [
+    for (final url in images)
+      mediaImageIdentity(
         contentId: contentId,
-        contentColor: contentColor,
-        customHeroTag: customHeroTag,
-        onPageChanged: onPageChanged,
+        url: url,
+        asset: mediaAssetsByImage[url],
+        presentation: presentation,
       ),
+  ];
+  return SharedTransition.openOverlay(
+    context: context,
+    identity: identities[initialIndex],
+    builder: (session) => FullScreenGallery(
+      images: images,
+      fallbackUrlsByImage: fallbackUrlsByImage,
+      mediaAssetsByImage: mediaAssetsByImage,
+      initialIndex: initialIndex,
+      contentId: contentId,
+      identities: identities,
+      transition: session,
+      onPageChanged: onPageChanged,
     ),
   );
 }

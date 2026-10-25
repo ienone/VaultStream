@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import '../../../core/widgets/app_filter_menu.dart';
+import '../../../core/widgets/app_choice_segments.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/widgets/discard_changes_dialog.dart';
 
 import '../../../core/network/api_client.dart';
@@ -154,25 +158,12 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.xs,
-                children: [
-                  ChoiceChip(
-                    label: const Text('创建事件'),
-                    selected: _createNew,
-                    onSelected: _submitting
-                        ? null
-                        : (_) => setState(() => _createNew = true),
-                  ),
-                  ChoiceChip(
-                    label: const Text('加入已有事件'),
-                    selected: !_createNew,
-                    onSelected: _submitting
-                        ? null
-                        : (_) => setState(() => _createNew = false),
-                  ),
-                ],
+              AppChoiceSegments<bool>(
+                options: const {true: '创建事件', false: '加入已有事件'},
+                selected: {_createNew},
+                onChanged: _submitting
+                    ? null
+                    : (value) => setState(() => _createNew = value.first),
               ),
               const SizedBox(height: AppSpacing.md),
               if (_createNew)
@@ -206,36 +197,20 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
                   ),
                   data: (data) => data.items.isEmpty
                       ? const Text('还没有可加入的进行中事件，请先创建事件。')
-                      : DropdownButtonFormField<int>(
-                          initialValue:
-                              data.items.any(
-                                (event) => event.id == _selectedEventId,
-                              )
-                              ? _selectedEventId
-                              : null,
-                          borderRadius: AppShape.cardBorder,
-                          dropdownColor: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHigh,
-                          menuMaxHeight: 400,
-                          itemHeight: null,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: '已有事件'),
-                          items: [
-                            for (final event in data.items)
-                              DropdownMenuItem(
-                                value: event.id,
-                                child: Text(
-                                  event.title,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                          onChanged: _submitting
-                              ? null
-                              : (value) =>
-                                    setState(() => _selectedEventId = value),
+                      : Semantics(
+                          label: '已有事件',
+                          child: AppFilterMenu(
+                            label: '已有事件',
+                            value: _selectedEventId?.toString() ?? '选择事件',
+                            options: {
+                              for (final event in data.items)
+                                '${event.id}': event.title,
+                            },
+                            enabled: !_submitting,
+                            onSelected: (value) => setState(
+                              () => _selectedEventId = int.parse(value),
+                            ),
+                          ),
                         ),
                 ),
               const SizedBox(height: AppSpacing.md),
@@ -287,7 +262,10 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
                 child: const Text('取消'),
               ),
               FilledButton(
-                onPressed: _submitting ? null : _submit,
+                onPressed:
+                    _submitting || (!_createNew && _selectedEventId == null)
+                    ? null
+                    : _submit,
                 child: Text(
                   _submitting
                       ? '正在保存'
@@ -318,22 +296,14 @@ class _EnumSelector extends StatelessWidget {
   final ValueChanged<String>? onChanged;
 
   @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
-    initialValue: value,
-    isExpanded: true,
-    decoration: InputDecoration(labelText: label),
-    borderRadius: AppShape.cardBorder,
-    dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-    menuMaxHeight: 400,
-    itemHeight: null,
-    items: [
-      for (final entry in options.entries)
-        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-    ],
-    onChanged: onChanged == null
-        ? null
-        : (value) {
-            if (value != null) onChanged!(value);
-          },
+  Widget build(BuildContext context) => Semantics(
+    label: label,
+    child: AppFilterMenu(
+      label: label,
+      value: value,
+      options: options,
+      enabled: onChanged != null,
+      onSelected: (value) => onChanged?.call(value),
+    ),
   );
 }

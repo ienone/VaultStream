@@ -1,9 +1,12 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
 import 'package:frontend/core/media/media_asset.dart';
 import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/theme/design_tokens.dart';
+
 import '../../models/content.dart';
+import '../detail/components/unified_stat_item.dart';
+import '../../../../core/utils/media_utils.dart';
 import '../../utils/content_parser.dart';
 
 class PayloadBlockRenderer extends StatelessWidget {
@@ -205,37 +208,6 @@ class PayloadBlockRenderer extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (voteupCount != null && voteupCount > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(AppShape.pill),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.thumb_up_alt_outlined,
-                                size: 10,
-                                color: colorScheme.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                voteupCount > 1000
-                                    ? '${(voteupCount / 1000).toStringAsFixed(1)}k'
-                                    : '$voteupCount',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: colorScheme.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                     ],
                   ),
                 ),
@@ -290,6 +262,14 @@ class PayloadBlockRenderer extends StatelessWidget {
                     ),
                 ],
               ),
+              if (voteupCount != null && voteupCount > 0) ...[
+                const SizedBox(height: 8),
+                UnifiedStatItem(
+                  icon: Icons.thumb_up_alt_outlined,
+                  label: '赞同',
+                  value: formatCount(voteupCount),
+                ),
+              ],
             ],
           ),
         ),

@@ -1,11 +1,12 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
+import '../../core/widgets/metadata_wrap.dart';
 import '../../routing/app_navigation.dart';
 import '../../theme/design_tokens.dart';
 import '../settings/providers/favorites_sync_provider.dart';
@@ -197,12 +198,12 @@ class _TaskSummary extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
         if (run.startedAt != null)
-          Text(
-            [
-              _formatTime(run.startedAt!),
+          MetadataWrap(
+            items: [
+              '开始于 ${_formatTime(run.startedAt!)}',
               if (run.finishedAt != null)
-                _formatDuration(run.finishedAt!.difference(run.startedAt!)),
-            ].join(' · '),
+                '耗时 ${_formatDuration(run.finishedAt!.difference(run.startedAt!))}',
+            ],
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.onSurfaceVariant,
             ),
@@ -362,11 +363,22 @@ class _FavoritePlatformFailure extends ConsumerWidget {
                 ),
                 const SizedBox(width: AppSpacing.xs),
                 Flexible(
-                  child: Text(
-                    '$platform · $total 个失败项',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        platform,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        '$total 个失败项',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.error,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -905,7 +917,7 @@ IconData _kindIcon(String kind) {
     'distribution' => Icons.send_rounded,
     'connectivity_test' => Icons.cable_rounded,
     'account_sync' => Icons.manage_accounts_rounded,
-    _ => Icons.task_alt_rounded,
+    _ => Icons.assignment_outlined,
   };
 }
 
@@ -932,6 +944,7 @@ String _statusLabel(String status) {
   return switch (status) {
     'success' || 'ok' => '已完成',
     'running' => '运行中',
+    'pending' => '已排队',
     'error' || 'failed' => '失败',
     _ => status,
   };

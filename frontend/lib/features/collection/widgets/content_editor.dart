@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../theme/design_tokens.dart';
 import '../../../core/widgets/browser_leave_guard.dart';
 import '../../../core/widgets/discard_changes_dialog.dart';

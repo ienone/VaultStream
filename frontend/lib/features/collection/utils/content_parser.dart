@@ -1,35 +1,53 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
 import '../../../core/utils/media_utils.dart' as media_utils;
 import '../../../core/constants/platform_constants.dart';
 import '../models/content.dart';
 import '../models/header_line.dart';
 import '../../../core/media/media_asset.dart';
+import '../../../core/utils/reading_markdown_syntax.dart';
+
+typedef MarkdownMetadata = ({List<HeaderLine> headers, List<String> imageUrls});
 
 class ContentParser {
-  /// Parse image nodes with the same Markdown grammar as the reader.
-  /// Code examples are not images; reference-style images retain their URL.
-  static List<String> extractMarkdownImageUrls(String markdown) {
-    final urls = <String>[];
+  static MarkdownMetadata parseMarkdownMetadata(String markdown) {
+    final headers = <HeaderLine>[];
+    final imageUrls = <String>[];
+    final counts = <String, int>{};
     void visit(md.Node node) {
       if (node is! md.Element) return;
+      if (RegExp(r'^h[1-6]$').hasMatch(node.tag)) {
+        final text = readingHeadingText(node);
+        final count = counts[text] ?? 0;
+        counts[text] = count + 1;
+        headers.add(
+          HeaderLine(
+            level: int.parse(node.tag.substring(1)),
+            text: text,
+            uniqueId: '${text.length}:$text:$count',
+          ),
+        );
+      }
       if (node.tag == 'img') {
         final url = node.attributes['src'];
-        if (url != null && url.isNotEmpty) urls.add(url);
+        if (url != null && url.isNotEmpty) imageUrls.add(url);
       }
       for (final child in node.children ?? const <md.Node>[]) {
         visit(child);
       }
     }
 
-    final nodes = md.Document(
+    for (final node in md.Document(
       extensionSet: md.ExtensionSet.gitHubFlavored,
-    ).parseLines(markdown.split('\n'));
-    for (final node in nodes) {
+      encodeHtml: false,
+      inlineSyntaxes: readingInlineSyntaxes(),
+      blockSyntaxes: readingBlockSyntaxes(),
+    ).parseLines(markdown.split('\n'))) {
       visit(node);
     }
-    return urls;
+    return (headers: headers, imageUrls: imageUrls);
   }
 
   static List<String> extractAllImages(
@@ -154,36 +172,6 @@ class ContentParser {
       return 'gallery';
     }
     return lt;
-  }
-
-  static List<HeaderLine> extractHeaders(String markdown) {
-    final headers = <HeaderLine>[];
-    final counts = <String, int>{};
-    void visit(md.Node node) {
-      if (node is! md.Element) return;
-      if (RegExp(r'^h[1-6]$').hasMatch(node.tag)) {
-        final text = node.textContent;
-        final count = counts[text] ?? 0;
-        counts[text] = count + 1;
-        headers.add(
-          HeaderLine(
-            level: int.parse(node.tag.substring(1)),
-            text: text,
-            uniqueId: '${text.length}:$text:$count',
-          ),
-        );
-      }
-      for (final child in node.children ?? const <md.Node>[]) {
-        visit(child);
-      }
-    }
-
-    for (final node in md.Document(
-      extensionSet: md.ExtensionSet.gitHubFlavored,
-    ).parseLines(markdown.split('\n'))) {
-      visit(node);
-    }
-    return headers;
   }
 
   static Widget getPlatformIcon(String platform, double size) {

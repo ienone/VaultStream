@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/widgets/adaptive_form_dialog.dart';
@@ -140,9 +140,7 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
         ? Scaffold(
             appBar: AppBar(
               title: Text('合并${widget.label}'),
-              toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
-                  ? 48
-                  : null,
+              toolbarHeight: WindowMetrics.of(context).toolbarHeight,
               leading: IconButton(
                 tooltip: '返回',
                 icon: const BackButtonIcon(),
@@ -186,9 +184,9 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
                                   children: [
                                     Text(
                                       '新解析版本',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
                                     ),
                                     const SizedBox(height: AppSpacing.sm),
                                     _source(context),

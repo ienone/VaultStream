@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:scroll_to_index/scroll_to_index.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:frontend/core/utils/safe_url_launcher.dart';
 
@@ -7,21 +8,26 @@ import '../../../models/content.dart';
 import '../../../utils/content_parser.dart';
 import '../../../../../core/widgets/markdown_reading.dart';
 import 'media_gallery_item.dart';
+import '../../../../../core/widgets/media_image_hero.dart';
 
 class RichContent extends StatefulWidget {
   final ContentDetail detail;
+  final List<String> inlineImageUrls;
   final Map<String, GlobalKey> headerKeys;
-  final bool useHero;
   final bool hideMedia;
-  final Color? contentColor;
+  final AutoScrollController? scrollController;
+  final Map<String, int>? headerIndexes;
+  final ValueChanged<int>? onBlockCount;
 
   const RichContent({
     super.key,
     required this.detail,
+    required this.inlineImageUrls,
     required this.headerKeys,
-    this.useHero = true,
     this.hideMedia = false,
-    this.contentColor,
+    this.scrollController,
+    this.headerIndexes,
+    this.onBlockCount,
   });
 
   @override
@@ -31,9 +37,7 @@ class RichContent extends StatefulWidget {
 class _RichContentState extends State<RichContent> {
   ContentDetail get detail => widget.detail;
   Map<String, GlobalKey> get headerKeys => widget.headerKeys;
-  bool get useHero => widget.useHero;
   bool get hideMedia => widget.hideMedia;
-  Color? get contentColor => widget.contentColor;
   late MarkdownStyleSheet _style;
 
   @override
@@ -51,17 +55,15 @@ class _RichContentState extends State<RichContent> {
       for (final asset in detail.mediaAssets)
         if (asset.sources.isNotEmpty) asset.sources.first.url: asset,
     };
-    final rawMarkdown = _getMarkdownContent(detail);
-    final markdown = _preprocessMarkdown(rawMarkdown);
+    final markdown = detail.body ?? '';
 
     final headingOccurrences = <String, int>{};
-    final Set<String> usedHeroTags = {};
     final List<Widget> children = [];
 
     if (markdown.isNotEmpty) {
       final style = _style;
       // 从 Markdown 文本中提取图片标识，只保留能匹配统一媒体资产的条目。
-      final inlineImageUrls = ContentParser.extractMarkdownImageUrls(markdown)
+      final inlineImageUrls = widget.inlineImageUrls
           .map(
             (url) =>
                 ContentParser.imageCandidatesForUrl(detail, url).firstOrNull,
@@ -70,10 +72,14 @@ class _RichContentState extends State<RichContent> {
           .toList(growable: false);
 
       children.add(
-        _ArticleMarkdownBody(
-          key: ObjectKey(detail),
+        _ContentMarkdown(
+          scrollController: widget.scrollController,
+          headerIndexes: widget.headerIndexes,
+          onBlockCount: widget.onBlockCount,
+          headerKeys: headerKeys,
+          key: ValueKey(detail.id),
           data: markdown,
-          selectable: true,
+          selectable: false,
           // 社交消息的单换行属于原始排版。
           softLineBreak: const [
             'xiaohongshu',
@@ -83,7 +89,10 @@ class _RichContentState extends State<RichContent> {
             await SafeUrlLauncher.openExternal(context, href);
           },
           styleSheet: style,
+          inlineSyntaxes: readingInlineSyntaxes(),
+          blockSyntaxes: readingBlockSyntaxes(),
           builders: {
+            ...readingMarkdownBuilders(context),
             for (final entry in <String, TextStyle?>{
               'h1': style.h1,
               'h2': style.h2,
@@ -97,7 +106,6 @@ class _RichContentState extends State<RichContent> {
                 entry.value,
                 headingOccurrences,
               ),
-            'code': CodeElementBuilder(context),
           },
           // ignore: deprecated_member_use
           imageBuilder: (uri, title, alt) => _buildMarkdownImage(
@@ -107,8 +115,6 @@ class _RichContentState extends State<RichContent> {
             alt,
             galleryImages: inlineImageUrls,
             fallbackUrlsByImage: mediaFallbacks,
-            useHero: useHero,
-            usedHeroTags: usedHeroTags,
           ),
         ),
       );
@@ -157,8 +163,6 @@ class _RichContentState extends State<RichContent> {
             fallbackUrlsByImage: mediaFallbacks,
             mediaAssetsByImage: mediaAssetsByImage,
             contentId: detail.id,
-            contentColor: contentColor,
-            heroTag: 'content-image-${detail.id}',
             fit: BoxFit.contain,
           ),
         );
@@ -175,27 +179,12 @@ class _RichContentState extends State<RichContent> {
             ),
             itemCount: mediaUrls.length,
             itemBuilder: (context, index) {
-              final String baseTag = index == 0
-                  ? 'content-image-${detail.id}'
-                  : 'image-$index-${detail.id}';
-
-              // 确保 Hero Tag 在整个 RichContent 树中唯一
-              String finalHeroTag = baseTag;
-              int suffix = 1;
-              while (usedHeroTags.contains(finalHeroTag)) {
-                finalHeroTag = '$baseTag-dup$suffix';
-                suffix++;
-              }
-              usedHeroTags.add(finalHeroTag);
-
               return MediaGalleryItem(
                 images: mediaUrls,
                 index: index,
                 fallbackUrlsByImage: mediaFallbacks,
                 mediaAssetsByImage: mediaAssetsByImage,
                 contentId: detail.id,
-                contentColor: contentColor,
-                heroTag: finalHeroTag,
               );
             },
           ),
@@ -203,64 +192,21 @@ class _RichContentState extends State<RichContent> {
       }
     }
 
+    if (widget.scrollController != null) {
+      return SliverMainAxisGroup(
+        slivers: [
+          for (final child in children)
+            if (child is _ContentMarkdown)
+              child
+            else
+              SliverToBoxAdapter(child: child),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: children,
     );
-  }
-
-  String _getMarkdownContent(ContentDetail detail) {
-    // 直接使用 body 字段（后端已经在 archive.markdown 中填充）
-    return detail.body ?? '';
-  }
-
-  static final Map<String, String> _markdownCache = {};
-
-  String _preprocessMarkdown(String markdown) {
-    if (markdown.isEmpty) return markdown;
-
-    final cacheKey = markdown.hashCode.toString();
-    if (_markdownCache.containsKey(cacheKey)) {
-      return _markdownCache[cacheKey]!;
-    }
-
-    // 1. 处理 Latex 块: 将 $$ ... $$ 转换为 ```latex ... ```
-    var processed = markdown.replaceAllMapped(
-      RegExp(r'(?:\n|^)\$\$\s*([\s\S]+?)\s*\$\$(?:\n|$)'),
-      (match) => '\n\n```latex\n${match.group(1)!.trim()}\n```\n\n',
-    );
-
-    // 2. 处理行内 LaTeX: 使用特殊占位符标记，后续在 builder 中处理
-    // 格式: ‹LATEX:base64content›
-    processed = processed.replaceAllMapped(
-      RegExp(r'(?<![`\d\w])\$([^\$\n]+?)\$(?![`\d\w])'),
-      (match) {
-        final content = match.group(1)!;
-        if (content.contains('\\') ||
-            (content.length > 2 && RegExp(r'[=+\-^_{}]').hasMatch(content))) {
-          final encoded = Uri.encodeComponent(content);
-          return '`‹LATEX:$encoded›`';
-        }
-        return '\$$content\$';
-      },
-    );
-
-    // 3. 处理 Latex 环境: 将 \begin{...} ... \end{...} 转换为 ```latex ... ```
-    processed = processed.replaceAllMapped(
-      RegExp(
-        r'(?<!```\n|```latex\n)\\begin\{([a-z*]+)\}([\s\S]+?)\\end\{\1\}',
-        caseSensitive: false,
-      ),
-      (match) =>
-          '\n\n```latex\n\\begin{${match.group(1)}}${match.group(2)}\\end{${match.group(1)}}\n```\n\n',
-    );
-
-    if (_markdownCache.length > 50) {
-      _markdownCache.clear();
-    }
-    _markdownCache[cacheKey] = processed;
-
-    return processed;
   }
 
   Widget _buildMarkdownImage(
@@ -270,8 +216,6 @@ class _RichContentState extends State<RichContent> {
     String? alt, {
     List<String>? galleryImages,
     Map<String, List<String>> fallbackUrlsByImage = const {},
-    bool useHero = true,
-    Set<String>? usedHeroTags,
   }) {
     final candidates = ContentParser.imageCandidatesForUrl(
       detail,
@@ -309,7 +253,10 @@ class _RichContentState extends State<RichContent> {
     if (galleryImages != null && galleryImages.isNotEmpty) {
       effectiveMediaUrls = galleryImages;
       effectiveIndex = galleryImages.indexOf(url);
-      if (effectiveIndex == -1) effectiveIndex = 0; // 保底：至少显示第一张
+      if (effectiveIndex == -1) {
+        effectiveMediaUrls = [url];
+        effectiveIndex = 0;
+      }
     } else {
       // 从统一媒体资产列表中查找；找不到时仅展示当前已匹配资产。
       final mediaUrls = ContentParser.extractAllMedia(detail);
@@ -329,21 +276,6 @@ class _RichContentState extends State<RichContent> {
       }
     }
 
-    // 使用 md- 前缀以避免与底部 GridView 产生 Hero 标签冲突
-    final String baseTag = effectiveIndex == 0
-        ? 'md-content-image-${detail.id}'
-        : 'md-image-$effectiveIndex-${detail.id}';
-
-    String finalHeroTag = baseTag;
-    int suffix = 1;
-    if (usedHeroTags != null) {
-      while (usedHeroTags.contains(finalHeroTag)) {
-        finalHeroTag = '$baseTag-dup$suffix';
-        suffix++;
-      }
-      usedHeroTags.add(finalHeroTag);
-    }
-
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0),
       child: Column(
@@ -358,8 +290,7 @@ class _RichContentState extends State<RichContent> {
                 if (asset.sources.isNotEmpty) asset.sources.first.url: asset,
             },
             contentId: detail.id,
-            contentColor: contentColor,
-            heroTag: finalHeroTag,
+            presentation: MediaPresentation.body,
             fit: BoxFit.fitWidth,
             borderRadius: AppShape.paneBorder,
           ),
@@ -381,9 +312,9 @@ class _RichContentState extends State<RichContent> {
   }
 }
 
-/// Isolate paragraphs and media instead of caching one article-sized layer.
-class _ArticleMarkdownBody extends MarkdownBody {
-  const _ArticleMarkdownBody({
+/// 文章段落进入主滚动视口；短消息仍可嵌入媒体说明栏。
+class _ContentMarkdown extends MarkdownBody {
+  const _ContentMarkdown({
     super.key,
     required super.data,
     super.selectable,
@@ -391,14 +322,59 @@ class _ArticleMarkdownBody extends MarkdownBody {
     super.onTapLink,
     super.styleSheet,
     super.builders,
+    super.inlineSyntaxes,
+    super.blockSyntaxes,
     super.imageBuilder,
+    required this.scrollController,
+    required this.headerIndexes,
+    this.onBlockCount,
+    required this.headerKeys,
   });
 
+  final AutoScrollController? scrollController;
+  final Map<String, int>? headerIndexes;
+  final ValueChanged<int>? onBlockCount;
+  final Map<String, GlobalKey> headerKeys;
+
   @override
-  Widget build(BuildContext context, List<Widget>? children) => super.build(
-    context,
-    children
-        ?.map((child) => RepaintBoundary(child: child))
-        .toList(growable: false),
-  );
+  Widget build(BuildContext context, List<Widget>? children) {
+    final controller = scrollController;
+    if (controller == null) return super.build(context, children);
+    final blocks = children!;
+    onBlockCount?.call(blocks.length);
+    final headingsByKey = {
+      for (final entry in headerKeys.entries) entry.value: entry.key,
+    };
+    headerIndexes!.clear();
+
+    void indexHeadings(Widget block, int index) {
+      final heading = headingsByKey[block.key];
+      if (heading != null) headerIndexes![heading] = index;
+      // Markdown nests quoted/list headings inside render-object wrappers.
+      // Use the actual top-level list index, including its spacing widgets.
+      if (block is SingleChildRenderObjectWidget) {
+        final child = block.child;
+        if (child != null) indexHeadings(child, index);
+      } else if (block is MultiChildRenderObjectWidget) {
+        for (final child in block.children) {
+          indexHeadings(child, index);
+        }
+      } else if (block is ProxyWidget) {
+        indexHeadings(block.child, index);
+      }
+    }
+
+    for (var index = 0; index < blocks.length; index++) {
+      indexHeadings(blocks[index], index);
+    }
+    return SliverList.builder(
+      itemCount: blocks.length,
+      itemBuilder: (context, index) => AutoScrollTag(
+        key: ValueKey(index),
+        controller: controller,
+        index: index,
+        child: blocks[index],
+      ),
+    );
+  }
 }

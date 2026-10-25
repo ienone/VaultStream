@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/providers/local_settings_provider.dart';
 import '../../../core/utils/toast.dart';
 import '../../../core/layout/responsive_layout.dart';
@@ -53,7 +54,9 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
     if (result['success'] == true) {
       if (result['auth_ok'] == true) {
         // 仅在鉴权成功后才持久化凭据，路由守卫依赖此状态跳转
-        await ref.read(localSettingsProvider.notifier).setConnection(url, token);
+        await ref
+            .read(localSettingsProvider.notifier)
+            .setConnection(url, token);
         if (mounted) {
           Toast.show(context, '连接成功');
           // localSettingsProvider 状态更新后路由会自动跳转
@@ -128,7 +131,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
                         controller: _urlController,
                         decoration: const InputDecoration(
                           labelText: '服务器地址',
-                          hintText: 'https://vault.example.com/api/v1',
+                          hintText: 'https://vault.example.com',
                           prefixIcon: Icon(Icons.link),
                         ),
                         keyboardType: TextInputType.url,

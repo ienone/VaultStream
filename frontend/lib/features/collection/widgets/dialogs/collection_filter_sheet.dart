@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../theme/design_tokens.dart';
@@ -31,9 +31,17 @@ Future<UnifiedSearchRequest?> editSearchFilters(
               ? MediaQuery.viewInsetsOf(context).bottom
               : 0,
         ),
-        child: FractionallySizedBox(
-          heightFactor: .92,
-          child: SafeArea(top: false, child: child),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .85,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [Flexible(child: child)],
+            ),
+          ),
         ),
       ),
     );

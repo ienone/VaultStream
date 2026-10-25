@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
+import '../../core/utils/toast.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
-import '../../core/layout/responsive_layout.dart';
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../dashboard/task_result_page.dart';
 import '../collection/content_detail_page.dart';
 import '../../core/widgets/app_filter_menu.dart';
@@ -54,26 +56,17 @@ class _NotificationCenterPageState
   @override
   Widget build(BuildContext context) {
     final inbox = ref.watch(notificationInboxProvider(_query));
+    final selected = _selected;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = ResponsiveLayout.widthClassFor(
-          constraints.maxWidth,
-        ).supportsSupportingPane;
-        final showingDetail = !wide && _selected != null;
-        final list = _buildList(inbox);
-        return PopScope(
-          canPop: !showingDetail,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) setState(() => _selected = null);
-          },
-          child: Scaffold(
+        return AppListDetailWorkspace(
+          onClose: () => setState(() => _selected = null),
+          selectedId: _selected?.id,
+          list: Scaffold(
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(
               automaticallyImplyLeading: false,
-              leading: showingDetail
-                  ? BackButton(
-                      onPressed: () => setState(() => _selected = null),
-                    )
-                  : buildRootPageLeading(context),
+              leading: buildRootPageLeading(context),
               title: const Text('消息'),
               actions: [
                 IconButton(
@@ -92,29 +85,12 @@ class _NotificationCenterPageState
                 ),
               ],
             ),
-            body: wide && _selected != null
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: 360,
-                        child: ColoredBox(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerLow,
-                          child: list,
-                        ),
-                      ),
-                      Expanded(
-                        child: _selected == null
-                            ? const SizedBox.shrink()
-                            : _buildDetail(_selected!),
-                      ),
-                    ],
-                  )
-                : showingDetail
-                ? _buildDetail(_selected!)
-                : list,
+            body: _buildList(inbox),
+          ),
+          detailBuilder: (_, focused, toggleFocus) => _buildDetail(
+            selected!,
+            focused: focused,
+            toggleFocus: toggleFocus,
           ),
         );
       },
@@ -130,13 +106,13 @@ class _NotificationCenterPageState
           final horizontal =
               constraints.maxWidth > AppPane.readableMaxWidth + 32
               ? (constraints.maxWidth - AppPane.readableMaxWidth) / 2
-              : AppSpacing.md;
+              : 12.0;
           return CustomScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverPadding(
-                padding: EdgeInsets.fromLTRB(horizontal, 8, horizontal, 24),
+                padding: EdgeInsets.fromLTRB(horizontal, 12, horizontal, 16),
                 sliver: SliverToBoxAdapter(
                   child: _InboxFilters(
                     category: _category,
@@ -218,11 +194,20 @@ class _NotificationCenterPageState
     });
   }
 
-  Widget _buildDetail(NotificationInboxItem item) {
+  Widget _buildDetail(
+    NotificationInboxItem item, {
+    bool focused = false,
+    VoidCallback? toggleFocus,
+  }) {
     final uri = Uri.tryParse(item.route ?? '');
     final segments = uri?.pathSegments ?? const <String>[];
     if (segments.length == 2 && segments.first == 'tasks') {
-      return TaskResultPane(key: ValueKey(item.id), runId: segments[1]);
+      return _detailScaffold(
+        item,
+        TaskResultPane(key: ValueKey(item.id), runId: segments[1]),
+        focused,
+        toggleFocus,
+      );
     }
     if (segments.length == 2 && segments.first == 'collection') {
       final id = int.tryParse(segments[1]);
@@ -230,36 +215,76 @@ class _NotificationCenterPageState
         return ContentDetailPage(
           key: ValueKey(item.id),
           contentId: id,
+          focused: focused,
+          onToggleFocus: toggleFocus,
           onClose: () => setState(() => _selected = null),
         );
       }
     }
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(item.title, style: Theme.of(context).textTheme.headlineSmall),
-          if (item.body?.isNotEmpty == true) ...[
-            const SizedBox(height: 16),
-            SelectableText(item.body!),
+    return _detailScaffold(
+      item,
+      SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(item.title, style: Theme.of(context).textTheme.headlineSmall),
+            if (item.body?.isNotEmpty == true) ...[
+              const SizedBox(height: 16),
+              SelectableText(item.body!),
+            ],
+            if (item.route?.isNotEmpty == true) ...[
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => openAppLocation(context, item.route!),
+                child: Text(switch (item.category) {
+                  'agent' => '打开对话',
+                  'account' => '打开账号',
+                  'digest' => '查看动态',
+                  _ => '打开详情',
+                }),
+              ),
+            ],
           ],
-          if (item.route?.isNotEmpty == true) ...[
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => openAppLocation(context, item.route!),
-              child: Text(switch (item.category) {
-                'agent' => '打开对话',
-                'account' => '打开账号',
-                'digest' => '查看动态',
-                _ => '打开详情',
-              }),
-            ),
-          ],
-        ],
+        ),
       ),
+      focused,
+      toggleFocus,
     );
   }
+
+  Widget _detailScaffold(
+    NotificationInboxItem item,
+    Widget body,
+    bool focused,
+    VoidCallback? toggleFocus,
+  ) => Scaffold(
+    appBar: AppBar(
+      leading: BackButton(onPressed: () => setState(() => _selected = null)),
+      title: const Text('消息详情'),
+      actions: [
+        if (toggleFocus != null)
+          IconButton(
+            tooltip: focused ? '退出专注' : '专注阅读',
+            onPressed: toggleFocus,
+            icon: Icon(
+              focused
+                  ? Icons.fullscreen_exit_rounded
+                  : Icons.fullscreen_rounded,
+            ),
+          ),
+      ],
+    ),
+    body: Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: AppPane.readableMaxWidth + 48,
+        ),
+        child: body,
+      ),
+    ),
+  );
 
   Future<void> _open(NotificationInboxItem item) async {
     if (item.isUnread) {
@@ -293,12 +318,10 @@ class _NotificationCenterPageState
       await action();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            formatApiErrorMessage(error, fallbackMessage: '消息状态更新失败'),
-          ),
-        ),
+      Toast.show(
+        context,
+        formatApiErrorMessage(error, fallbackMessage: '消息状态更新失败'),
+        isError: true,
       );
     }
   }
@@ -319,53 +342,37 @@ class _InboxFilters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width =
-            constraints.maxWidth >= MediaQuery.textScalerOf(context).scale(280)
-            ? (constraints.maxWidth - AppSpacing.sm) / 2
-            : constraints.maxWidth;
-        return Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
-          children: [
-            SizedBox(
-              width: width,
-              child: AppFilterMenu(
-                label: '类别',
-                value: category ?? 'all',
-                options: const {
-                  'all': '全部类别',
-                  'task': '任务',
-                  'account': '账号状态',
-                  'agent': 'Agent 消息',
-                  'capture': '保存记录',
-                  'digest': '周期摘要',
-                  'system': '系统消息',
-                },
-                onSelected: (value) =>
-                    onCategoryChanged(value == 'all' ? null : value),
-              ),
-            ),
-            SizedBox(
-              width: width,
-              child: AppFilterMenu(
-                label: '状态',
-                value: state,
-                options: const {
-                  'active': '当前消息',
-                  'unread': '未读',
-                  'read': '已读',
-                  'snoozed': '稍后提醒',
-                  'muted': '已静默',
-                  'all': '全部记录',
-                },
-                onSelected: onStateChanged,
-              ),
-            ),
-          ],
-        );
-      },
+    return AppFilterMenuRow(
+      menus: [
+        AppFilterMenu(
+          label: '类别',
+          value: category ?? 'all',
+          options: const {
+            'all': '全部类别',
+            'task': '任务',
+            'account': '账号状态',
+            'agent': 'Agent 消息',
+            'capture': '保存记录',
+            'digest': '周期摘要',
+            'system': '系统消息',
+          },
+          onSelected: (value) =>
+              onCategoryChanged(value == 'all' ? null : value),
+        ),
+        AppFilterMenu(
+          label: '状态',
+          value: state,
+          options: const {
+            'active': '当前消息',
+            'unread': '未读',
+            'read': '已读',
+            'snoozed': '稍后提醒',
+            'muted': '已静默',
+            'all': '全部记录',
+          },
+          onSelected: onStateChanged,
+        ),
+      ],
     );
   }
 }
@@ -395,8 +402,7 @@ class _InboxBody extends StatelessWidget {
     }
     return SliverList.separated(
       itemCount: inbox.items.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, indent: 16, endIndent: 16),
+      separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.xs),
       itemBuilder: (context, index) {
         final item = inbox.items[index];
         return _InboxTile(
@@ -435,7 +441,7 @@ class _InboxTile extends StatelessWidget {
           : item.isUnread
           ? scheme.primaryContainer.withValues(alpha: 0.28)
           : Colors.transparent,
-      borderRadius: BorderRadius.circular(AppRadius.md),
+      borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onOpen,
@@ -457,6 +463,8 @@ class _InboxTile extends StatelessWidget {
                   Expanded(
                     child: Text(
                       item.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: item.isUnread
                             ? FontWeight.w700

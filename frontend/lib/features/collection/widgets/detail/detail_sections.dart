@@ -1,5 +1,6 @@
 import 'parse_candidate_merge_editor.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:intl/intl.dart';
 
@@ -39,6 +40,8 @@ class ContentSourceLine extends StatelessWidget {
     final scheme = theme.colorScheme;
     final author = (detail.authorName ?? '').trim();
     final published = detail.publishedAt ?? detail.createdAt;
+    final isProfile = detail.template == ContentTemplate.profile;
+    final repeatsTitle = isProfile && author == (detail.title ?? '').trim();
     final avatarAsset = detail.mediaAssets.firstFor(
       role: MediaRole.avatar,
       type: MediaType.image,
@@ -75,13 +78,15 @@ class ContentSourceLine extends StatelessWidget {
               ),
             ),
           ),
-        if (author.isNotEmpty) Text(author, style: theme.textTheme.labelLarge),
-        Text(
-          DateFormat('yyyy-MM-dd HH:mm').format(published.toLocal()),
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
+        if (author.isNotEmpty && !repeatsTitle)
+          Text(author, style: theme.textTheme.labelLarge),
+        if (!isProfile)
+          Text(
+            '${detail.publishedAt == null ? '保存于 ' : ''}${DateFormat('yyyy-MM-dd HH:mm').format(published.toLocal())}',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
-        ),
         if (!compact && showOriginalAction && detail.hasExternalOriginal)
           TextButton.icon(
             onPressed: () => SafeUrlLauncher.openExternal(
@@ -460,9 +465,8 @@ class _CandidateFieldComparison extends StatelessWidget {
       children: [
         Text(
           title,
-          style: Theme.of(
-            context,
-          ).textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
+          style: Theme.of(context).textTheme.labelMedium
+              ?.copyWith(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: AppSpacing.sm),
         Text(

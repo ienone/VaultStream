@@ -1,13 +1,18 @@
+import 'widgets/dialogs/delete_content_dialog.dart';
+
+import 'package:scroll_to_index/scroll_to_index.dart';
+
 import '../automation/widgets/push_content_dialog.dart';
 import '../player/global_playback_controller.dart';
 import '../events/providers/knowledge_event_provider.dart';
+
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/widgets/predictive_back_dialog.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../core/media/media_asset.dart';
@@ -22,12 +27,12 @@ import 'providers/collection_provider.dart';
 import 'providers/content_actions_controller.dart';
 import 'utils/content_parser.dart';
 import 'widgets/detail/content_templates.dart';
+import 'widgets/detail/reading_outline_bar.dart';
 import 'widgets/detail/detail_sections.dart';
 import 'widgets/detail/components/unified_stats.dart';
 import 'widgets/detail/components/tags_section.dart';
 import 'widgets/detail/gallery/gallery_navigation.dart';
 import 'widgets/dialogs/content_template_picker.dart';
-import 'widgets/list/collection_card_preview.dart';
 import '../events/widgets/add_to_event_dialog.dart';
 import '../events/widgets/content_event_links.dart';
 
@@ -48,6 +53,7 @@ class ContentDetailPage extends ConsumerStatefulWidget {
     this.onClose,
     this.onToggleFocus,
     this.focused = false,
+    this.deferBody = false,
   });
 
   final int contentId;
@@ -66,19 +72,25 @@ class ContentDetailPage extends ConsumerStatefulWidget {
   final VoidCallback? onClose;
   final VoidCallback? onToggleFocus;
   final bool focused;
+  final bool deferBody;
 
   @override
   ConsumerState<ContentDetailPage> createState() => _ContentDetailPageState();
 }
 
 class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
-  final ScrollController _scrollController = ScrollController();
+  final AutoScrollController _scrollController = AutoScrollController();
+  final Map<String, int> _headerIndexes = {};
   final Map<String, GlobalKey> _headerKeys = {};
   final _readingHeaderKey = GlobalKey();
   final _activeHeader = ValueNotifier<String?>(null);
   final _headerProgress = ValueNotifier<double>(0);
+  final _readingProgress = ValueNotifier<double>(0);
+  int _readingBlockCount = 0;
+  bool _readingUpdateScheduled = false;
+  String? _parsedBody;
+  MarkdownMetadata _markdownMetadata = (headers: [], imageUrls: []);
   int _selectedImageIndex = 0;
-  DateTime _lastScrollCheck = DateTime.now();
 
   @override
   void initState() {
@@ -89,7 +101,20 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   @override
   void didUpdateWidget(covariant ContentDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.contentId != widget.contentId) _selectedImageIndex = 0;
+    if (oldWidget.contentId != widget.contentId) {
+      _selectedImageIndex = 0;
+      _headerKeys.clear();
+      _headerIndexes.clear();
+      _activeHeader.value = null;
+      _headerProgress.value = 0;
+      _readingProgress.value = 0;
+      _readingBlockCount = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scrollController.hasClients) {
+          _scrollController.jumpTo(0);
+        }
+      });
+    }
   }
 
   void _selectImage(int index) {
@@ -98,7 +123,30 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     }
   }
 
+  Future<void> _scrollToHeader(String id) async {
+    final index = _headerIndexes[id];
+    if (index == null) return;
+    final contentId = widget.contentId;
+    await _scrollController.scrollToIndex(
+      index,
+      preferPosition: AutoScrollPosition.begin,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? const Duration(milliseconds: 1)
+          : AppMotion.contentSwap,
+    );
+    if (mounted && widget.contentId == contentId) _activeHeader.value = id;
+  }
+
   void _onScroll() {
+    if (_readingUpdateScheduled) return;
+    _readingUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readingUpdateScheduled = false;
+      if (mounted) _updateReadingPosition();
+    });
+  }
+
+  void _updateReadingPosition() {
     if (!mounted) return;
 
     final header = _readingHeaderKey.currentContext?.findRenderObject();
@@ -110,25 +158,45 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         : 0.0;
     _headerProgress.value = ((offset - threshold + 48) / 48).clamp(0.0, 1.0);
 
-    final now = DateTime.now();
-    if (now.difference(_lastScrollCheck).inMilliseconds < 100) return;
-    _lastScrollCheck = now;
-
-    if (_headerKeys.isEmpty) return;
-
-    String? visible;
-    for (final entry in _headerKeys.entries) {
-      final ctx = entry.value.currentContext;
-      if (ctx == null) continue;
-      final box = ctx.findRenderObject() as RenderBox?;
-      if (box == null || !box.attached) continue;
+    double blockProgress = 0;
+    final readingLine = offset + 32;
+    int? visibleIndex;
+    for (final entry in _scrollController.tagMap.entries) {
+      final box = entry.value.context.findRenderObject();
+      if (box is! RenderBox || !box.attached || !_scrollController.hasClients) {
+        continue;
+      }
       final viewport = RenderAbstractViewport.maybeOf(box);
-      if (viewport == null || !_scrollController.hasClients) continue;
+      if (viewport == null) continue;
       final offset = viewport.getOffsetToReveal(box, 0).offset;
-      if (offset <= _scrollController.offset + 32) {
-        visible = entry.key;
-      } else {
-        break;
+      if (_readingBlockCount > 0 && box.size.height > 0) {
+        final fraction = ((readingLine - offset) / box.size.height).clamp(
+          0.0,
+          1.0,
+        );
+        if (offset <= readingLine) {
+          final progress = (entry.key + fraction) / _readingBlockCount;
+          if (progress > blockProgress) blockProgress = progress;
+        }
+      }
+      if (offset <= _scrollController.offset + 32 &&
+          (visibleIndex == null || entry.key > visibleIndex)) {
+        visibleIndex = entry.key;
+      }
+    }
+    if (_scrollController.hasClients &&
+        _readingBlockCount > 0 &&
+        _scrollController.tagMap.isNotEmpty) {
+      final position = _scrollController.position;
+      final atEnd =
+          position.extentAfter < 1 &&
+          _scrollController.tagMap.containsKey(_readingBlockCount - 1);
+      _readingProgress.value = atEnd ? 1 : blockProgress.clamp(0.0, 1.0);
+    }
+    String? visible;
+    if (visibleIndex != null) {
+      for (final entry in _headerIndexes.entries) {
+        if (entry.value <= visibleIndex) visible = entry.key;
       }
     }
 
@@ -141,6 +209,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     _scrollController.dispose();
     _activeHeader.dispose();
     _headerProgress.dispose();
+    _readingProgress.dispose();
     super.dispose();
   }
 
@@ -148,12 +217,18 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(contentDetailProvider(widget.contentId));
 
-    return ScrollConfiguration(
-      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-      child: detailAsync.when(
-        data: _buildLoaded,
-        loading: _buildLoading,
-        error: _buildError,
+    final detail = detailAsync.asData?.value;
+    final loading = detailAsync.isLoading || widget.deferBody;
+    return Scaffold(
+      appBar: _buildAppBar(loading ? null : detail),
+      body: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+        child: detailAsync.when(
+          data: (detail) =>
+              widget.deferBody ? _buildLoading() : _buildLoaded(detail),
+          loading: _buildLoading,
+          error: _buildError,
+        ),
       ),
     );
   }
@@ -171,19 +246,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
             constraints.maxHeight,
           ),
         );
-        return Scaffold(
-          appBar: _buildAppBar(
-            null,
-            title: (preview?.title ?? '').trim().isEmpty
-                ? '正在打开内容'
-                : preview!.title!.trim(),
-          ),
-          body: metrics.supportsSupportingPane
-              ? _previewUsesImmersiveMedia(preview)
-                    ? _buildLoadingImmersive(preview!)
-                    : _buildLoadingTwoPane(preview)
-              : _buildLoadingSinglePane(preview, metrics),
-        );
+        return metrics.supportsSupportingPane
+            ? (preview?.usesImmersiveMediaTransition ?? false)
+                  ? _buildLoadingImmersive(preview!)
+                  : _buildLoadingSinglePane(preview, metrics)
+            : _buildLoadingSinglePane(preview, metrics);
       },
     );
   }
@@ -195,45 +262,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         metrics.isCompact ? AppSpacing.md : AppSpacing.lg,
       ),
       children: [
-        _LoadingSharedHeader(contentId: widget.contentId, preview: preview),
+        _LoadingDetailHeader(preview: preview),
         const SizedBox(height: AppSpacing.lg),
         const _DetailBodySkeleton(),
       ],
     );
-  }
-
-  Widget _buildLoadingTwoPane(ShareCard? preview) {
-    return Row(
-      key: const ValueKey('content-detail-loading-skeleton'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(AppSpacing.xl),
-            children: [
-              _LoadingSharedHeader(
-                contentId: widget.contentId,
-                preview: preview,
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              const _DetailBodySkeleton(),
-            ],
-          ),
-        ),
-        const SizedBox(width: AppSpacing.md),
-        const SizedBox(
-          width: AppPane.supportingWidth,
-          child: Padding(
-            padding: EdgeInsets.all(AppSpacing.md),
-            child: _DetailSideSkeleton(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  bool _previewUsesImmersiveMedia(ShareCard? preview) {
-    return preview?.usesImmersiveMediaTransition ?? false;
   }
 
   Widget _buildLoadingImmersive(ShareCard preview) {
@@ -257,11 +290,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                 child: ListView(
                   padding: const EdgeInsets.all(AppSpacing.xl),
                   children: [
-                    _LoadingSharedHeader(
-                      contentId: widget.contentId,
-                      preview: preview,
-                      immersiveMedia: true,
-                    ),
+                    _LoadingDetailHeader(preview: preview),
                     const SizedBox(height: AppSpacing.xl),
                     const _DetailSideSkeleton(),
                   ],
@@ -275,20 +304,27 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildError(Object error, StackTrace _) {
-    return Scaffold(
-      appBar: _buildAppBar(null),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: ContentEmptyState(
-            icon: Icons.cloud_off_rounded,
-            message: '无法加载这条内容',
-            hint: formatApiErrorMessage(error, fallbackMessage: '请检查连接后重试'),
-            action: FilledButton.tonal(
-              onPressed: () =>
-                  ref.invalidate(contentDetailProvider(widget.contentId)),
-              child: const Text('重试'),
-            ),
+    final notFound = error is DioException && error.response?.statusCode == 404;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: ContentEmptyState(
+          icon: notFound ? Icons.article_outlined : Icons.cloud_off_rounded,
+          message: notFound ? '内容不存在' : '无法加载这条内容',
+          hint: notFound
+              ? null
+              : formatApiErrorMessage(error, fallbackMessage: '请重试'),
+          action: FilledButton.tonal(
+            onPressed: notFound
+                ? () {
+                    if (widget.onClose != null) {
+                      widget.onClose!();
+                    } else {
+                      context.go('/collection');
+                    }
+                  }
+                : () => ref.invalidate(contentDetailProvider(widget.contentId)),
+            child: Text(notFound ? '返回收藏库' : '重试'),
           ),
         ),
       ),
@@ -296,6 +332,11 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildLoaded(ContentDetail detail) {
+    final bodyText = ContentParser.getMarkdownContent(detail);
+    if (_parsedBody != bodyText) {
+      _parsedBody = bodyText;
+      _markdownMetadata = ContentParser.parseMarkdownMetadata(bodyText);
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = WindowMetrics.fromSize(
@@ -317,6 +358,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
         final templateContext = TemplateContext(
           detail: detail,
+          markdown: _markdownMetadata,
           metrics: metrics,
           headerKeys: _headerKeys,
           images: images,
@@ -352,13 +394,10 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
                   ? _buildImmersiveMediaPane(templateContext)
                   : _buildTwoPane(templateContext)
             : _buildSinglePane(templateContext);
-        return Scaffold(
-          appBar: _buildAppBar(detail),
-          // Text selection must not compete with document pinch/pan gestures.
-          body: detail.template == ContentTemplate.document
-              ? body
-              : SelectionArea(child: body),
-        );
+        // Text selection must not compete with document pinch/pan gestures.
+        return detail.template == ContentTemplate.document
+            ? body
+            : SelectionArea(child: body);
       },
     );
   }
@@ -366,21 +405,15 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   // --- 顶栏与动作层级 ---
 
   /// 顶栏只保留返回、标题和一个主动作，其余动作进入"更多"菜单。
-  PreferredSizeWidget _buildAppBar(ContentDetail? detail, {String? title}) {
+  PreferredSizeWidget _buildAppBar(ContentDetail? detail) {
     return AppBar(
       backgroundColor: Theme.of(context).colorScheme.surface,
       scrolledUnderElevation: 0,
-      toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
-          ? 48
-          : null,
+      toolbarHeight: WindowMetrics.of(context).toolbarHeight,
       leading: widget.onClose == null
           ? null
           : BackButton(onPressed: widget.onClose),
-      title: Text(
-        title ?? (widget.onClose == null ? '内容详情' : '阅读'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text('阅读', maxLines: 1, overflow: TextOverflow.ellipsis),
       actions: [
         if (detail != null &&
             ref.watch(
@@ -427,6 +460,17 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     );
   }
 
+  Widget _revealHeader(Widget child) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 160),
+    curve: Curves.easeOut,
+    child: child,
+    builder: (context, opacity, child) =>
+        Opacity(opacity: opacity, child: child),
+  );
+
   // --- 布局 ---
 
   Widget _buildSinglePane(TemplateContext ctx) => _buildReadingPane(ctx, false);
@@ -438,23 +482,17 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
     final events = ref.watch(knowledgeEventsProvider(ctx.detail.id));
     supporting =
         supporting &&
-        (article ||
-            ctx.detail.tags.isNotEmpty ||
-            ctx.detail.sourceTags.isNotEmpty ||
-            ctx.detail.manualEditFields.isNotEmpty ||
-            events.hasError ||
-            (events.value?.items.isNotEmpty ?? false));
+        (widget.onToggleFocus == null || widget.focused) &&
+        article &&
+        ctx.markdown.headers.length >= 3;
     final sidebarSections = <Widget>[
-      if (article &&
-          ContentParser.extractHeaders(
-            ContentParser.getMarkdownContent(ctx.detail),
-          ).isNotEmpty)
+      if (article && ctx.markdown.headers.isNotEmpty)
         ValueListenableBuilder<String?>(
           valueListenable: _activeHeader,
           builder: (context, active, _) => ContentOutline(
-            detail: ctx.detail,
+            headers: ctx.markdown.headers,
             activeHeader: active,
-            headerKeys: _headerKeys,
+            onSelectHeader: _scrollToHeader,
             padding: EdgeInsets.zero,
           ),
         ),
@@ -479,7 +517,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         ),
     ];
     Widget sectionDivider() => const Divider(height: 32, thickness: 1);
-    return Row(
+    final floatingOutline =
+        !supporting && article && ctx.markdown.headers.isNotEmpty;
+    final reading = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
@@ -488,61 +528,72 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
               constraints: const BoxConstraints(
                 maxWidth: AppPane.readableMaxWidth,
               ),
-              child: ListView(
+              child: CustomScrollView(
                 key: const ValueKey('content-detail-primary-scroll'),
                 controller: _scrollController,
-                padding: EdgeInsets.all(
-                  ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
-                ),
-                children: [
-                  KeyedSubtree(
-                    key: _readingHeaderKey,
-                    child: _SharedDetailHeader(
-                      detail: ctx.detail,
-                      showSourceLine: true,
-                      sharedTransition: widget.preview?.id == ctx.detail.id,
+                slivers: [
+                  SliverPadding(
+                    padding: EdgeInsets.all(
+                      ctx.metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
                     ),
-                  ),
-                  if (!supporting &&
-                      article &&
-                      ContentParser.extractHeaders(
-                        ContentParser.getMarkdownContent(ctx.detail),
-                      ).isNotEmpty)
-                    ExpansionTile(
-                      title: const Text('目录'),
-                      children: [
-                        ValueListenableBuilder<String?>(
-                          valueListenable: _activeHeader,
-                          builder: (context, active, _) => ContentOutline(
-                            detail: ctx.detail,
-                            activeHeader: active,
-                            headerKeys: _headerKeys,
-                            showTitle: false,
+                    sliver: SliverMainAxisGroup(
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              KeyedSubtree(
+                                key: _readingHeaderKey,
+                                child: _revealHeader(
+                                  _DetailHeaderSurface(
+                                    detail: ctx.detail,
+                                    showSourceLine: true,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              ParseStatusBanner(
+                                detail: ctx.detail,
+                                onReParse: () => _reParse(ctx.detail),
+                              ),
+                              if (ctx.detail.isParseFailed ||
+                                  ctx.detail.isParsePending)
+                                const SizedBox(height: AppSpacing.md),
+                            ],
+                          ),
+                        ),
+                        ContentTemplateBody(
+                          context_: ctx,
+                          scrollController: _scrollController,
+                          headerIndexes: _headerIndexes,
+                          onBlockCount: (count) {
+                            _readingBlockCount = count;
+                            _onScroll();
+                          },
+                        ),
+                        SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SizedBox(height: AppSpacing.xl),
+                              if (!supporting) ...[
+                                ContentEventLinks(contentId: ctx.detail.id),
+                                ContentSupportingSections(
+                                  showStats: false,
+                                  detail: ctx.detail,
+                                  onResolveParseCandidate:
+                                      ctx.onResolveParseCandidate,
+                                ),
+                              ],
+                              SizedBox(
+                                height: floatingOutline ? 88 : AppSpacing.xxl,
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
-                  const SizedBox(height: AppSpacing.md),
-                  ParseStatusBanner(
-                    detail: ctx.detail,
-                    onReParse: () => _reParse(ctx.detail),
                   ),
-                  if (ctx.detail.isParseFailed || ctx.detail.isParsePending)
-                    const SizedBox(height: AppSpacing.md),
-                  _ConstrainBody(
-                    template: ctx.detail.template,
-                    child: ContentTemplateBody(context_: ctx),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  if (!supporting) ...[
-                    ContentEventLinks(contentId: ctx.detail.id),
-                    ContentSupportingSections(
-                      showStats: false,
-                      detail: ctx.detail,
-                      onResolveParseCandidate: ctx.onResolveParseCandidate,
-                    ),
-                  ],
-                  const SizedBox(height: AppSpacing.xxl),
                 ],
               ),
             ),
@@ -605,25 +656,28 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
           ),
       ],
     );
+    return Stack(
+      children: [
+        Positioned.fill(child: reading),
+        if (floatingOutline)
+          Positioned.fill(
+            child: ReadingOutlineBar(
+              headers: ctx.markdown.headers,
+              activeHeader: _activeHeader,
+              progress: _readingProgress,
+              onSelect: _scrollToHeader,
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildImmersiveMediaPane(TemplateContext ctx) {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Material(
-        color: Theme.of(context).colorScheme.surfaceContainerLowest,
-        shape: RoundedRectangleBorder(borderRadius: AppShape.paneBorder),
-        clipBehavior: Clip.antiAlias,
-        child: ImmersiveMediaDetail(
-          context_: ctx,
-          sharedHeaderBuilder: (child) => ContentSharedTransition(
-            destination: true,
-            contentId: ctx.detail.id,
-            enabled: widget.preview?.id == ctx.detail.id,
-            immersiveMedia: true,
-            child: child,
-          ),
-        ),
+      child: ImmersiveMediaDetail(
+        context_: ctx,
+        sharedHeaderBuilder: _revealHeader,
       ),
     );
   }
@@ -637,25 +691,23 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         animationStyle: MediaQuery.disableAnimationsOf(context)
             ? AnimationStyle.noAnimation
             : null,
-        builder: (dialogContext) => PredictiveBackDialog(
-          child: AlertDialog(
-            title: const Text('重新解析并保留人工修改？'),
-            content: Text(
-              detail.parseCandidate == null
-                  ? '人工修改的字段不会被覆盖；有差异的新解析结果会出现在详情页供你比较。'
-                  : '人工修改的字段不会被覆盖；本次结果会替换尚未处理的解析候选。',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('继续解析'),
-              ),
-            ],
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('重新解析并保留人工修改？'),
+          content: Text(
+            detail.parseCandidate == null
+                ? '人工修改的字段不会被覆盖；有差异的新解析结果会出现在详情页供你比较。'
+                : '人工修改的字段不会被覆盖；本次结果会替换尚未处理的解析候选。',
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('继续解析'),
+            ),
+          ],
         ),
       );
       if (confirmed != true || !mounted) return;
@@ -725,30 +777,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Future<void> _confirmDelete(ContentDetail detail) async {
-    final scheme = Theme.of(context).colorScheme;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      animationStyle: MediaQuery.disableAnimationsOf(context)
-          ? AnimationStyle.noAnimation
-          : null,
-      builder: (dialogContext) => PredictiveBackDialog(
-        child: AlertDialog(
-          title: const Text('确认删除'),
-          content: const Text('将删除这条内容及其已归档的本地媒体。此操作不可撤销。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: FilledButton.styleFrom(backgroundColor: scheme.error),
-              child: const Text('删除'),
-            ),
-          ],
-        ),
-      ),
-    );
+    final confirmed = await confirmContentDeletion(context);
     if (confirmed != true || !mounted) return;
 
     final result = await ref
@@ -801,24 +830,17 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 }
 
-/// 详情加载态的共享容器目标。它占据最终详情头的真实位置，而不是把
-/// 卡片副本移动到屏幕中央；已知的标题和来源在飞行结束前保持连续。
-class _LoadingSharedHeader extends StatelessWidget {
-  const _LoadingSharedHeader({
-    required this.contentId,
-    required this.preview,
-    this.immersiveMedia = false,
-  });
+/// 详情加载时延续已有标题与来源，并保持头部占位。
+class _LoadingDetailHeader extends StatelessWidget {
+  const _LoadingDetailHeader({required this.preview});
 
-  final int contentId;
   final ShareCard? preview;
-  final bool immersiveMedia;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final surface = Material(
-      key: const ValueKey('content-detail-shared-loading-header'),
+    return Material(
+      key: const ValueKey('content-detail-loading-header'),
       color: scheme.surface,
       shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
       clipBehavior: Clip.antiAlias,
@@ -831,14 +853,6 @@ class _LoadingSharedHeader extends StatelessWidget {
               : _PreviewHeader(preview: preview!),
         ),
       ),
-    );
-
-    if (preview == null) return surface;
-    return ContentSharedTransition(
-      destination: true,
-      contentId: contentId,
-      immersiveMedia: immersiveMedia,
-      child: surface,
     );
   }
 }
@@ -922,16 +936,18 @@ class _PreviewHeader extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.sm),
-        Text(
-          title.isEmpty ? '无标题' : title,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            height: 1.25,
+        if (title.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -1136,15 +1152,6 @@ class _Header extends StatelessWidget {
             style: isShortPost ? Theme.of(context).textTheme.titleMedium : null,
           ),
         ],
-        if (showSourceLine) ...[
-          const SizedBox(height: AppSpacing.md),
-          ContentSourceLine(
-            detail: detail,
-            showPlatform: false,
-            showOriginalAction: false,
-          ),
-        ],
-        UnifiedStats(detail: detail),
         if (isQuestionAnswer && (answerCount > 0 || followerCount > 0)) ...[
           const SizedBox(height: AppSpacing.sm),
           Wrap(
@@ -1158,11 +1165,20 @@ class _Header extends StatelessWidget {
               ),
               _QuestionStat(
                 icon: Icons.people_outline_rounded,
-                label: '$followerCount 关注',
+                label: '$followerCount 人关注问题',
               ),
             ],
           ),
         ],
+        if (showSourceLine) ...[
+          const SizedBox(height: AppSpacing.md),
+          ContentSourceLine(
+            detail: detail,
+            showPlatform: false,
+            showOriginalAction: false,
+          ),
+        ],
+        UnifiedStats(detail: detail),
       ],
     );
   }
@@ -1237,41 +1253,30 @@ class _QuestionStat extends StatelessWidget {
   }
 }
 
-/// 详情页唯一的共享容器目标。它始终拥有不透明 tonal surface，避免飞行
-/// 过程中透出正文；加载态与已加载态任一时刻也只会挂载一个同 tag Hero。
-class _SharedDetailHeader extends StatelessWidget {
-  const _SharedDetailHeader({
+/// 详情标题与来源使用统一表面，文档标题支持文本选择。
+class _DetailHeaderSurface extends StatelessWidget {
+  const _DetailHeaderSurface({
     required this.detail,
     required this.showSourceLine,
-    required this.sharedTransition,
   });
 
   final ContentDetail detail;
   final bool showSourceLine;
-  final bool sharedTransition;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ContentSharedTransition(
-      destination: true,
-      contentId: detail.id,
-      enabled: sharedTransition,
-      child: Material(
-        color: scheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-          child: detail.template == ContentTemplate.document
-              ? SelectionArea(
-                  child: _Header(
-                    detail: detail,
-                    showSourceLine: showSourceLine,
-                  ),
-                )
-              : _Header(detail: detail, showSourceLine: showSourceLine),
-        ),
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        child: detail.template == ContentTemplate.document
+            ? SelectionArea(
+                child: _Header(detail: detail, showSourceLine: showSourceLine),
+              )
+            : _Header(detail: detail, showSourceLine: showSourceLine),
       ),
     );
   }
@@ -1286,29 +1291,10 @@ String _displayDetailTitle(ContentDetail detail) {
     if (questionTitle.isNotEmpty) return questionTitle;
   }
   final title = detail.title?.trim() ?? '';
-  return title.isEmpty ? '无标题' : title;
+  return title.isEmpty ? detail.template.label : title;
 }
 
 /// 文章与图文笔记限制正文宽度，超宽屏不无限拉伸。
-class _ConstrainBody extends StatelessWidget {
-  const _ConstrainBody({required this.template, required this.child});
-
-  final ContentTemplate template;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!template.constrainsBodyWidth) return child;
-    return Align(
-      alignment: Alignment.topLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: child,
-      ),
-    );
-  }
-}
-
 /// 低频动作统一进入"更多"菜单，不在顶栏并列多个同权图标。
 class _MoreMenu extends StatelessWidget {
   const _MoreMenu({
@@ -1352,58 +1338,76 @@ class _MoreMenu extends StatelessWidget {
       itemBuilder: (context) => [
         const PopupMenuItem(
           value: 'push',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.send_outlined),
-            title: Text('推送…'),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.send_outlined),
+              title: Text('推送…'),
+            ),
           ),
         ),
         const PopupMenuItem(
           value: 'edit',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.edit_outlined),
-            title: Text('编辑内容'),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.edit_outlined),
+              title: Text('编辑内容'),
+            ),
           ),
         ),
         const PopupMenuItem(
           value: 'event',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.hub_outlined),
-            title: Text('加入事件'),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.hub_outlined),
+              title: Text('加入事件'),
+            ),
           ),
         ),
         PopupMenuItem(
           value: 'template',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.dashboard_customize_outlined),
-            title: const Text('切换模板'),
-            subtitle: Text(detail.template.label),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.dashboard_customize_outlined),
+              title: const Text('切换模板'),
+              subtitle: Text(detail.template.label),
+            ),
           ),
         ),
         const PopupMenuItem(
           value: 'reparse',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.refresh_rounded),
-            title: Text('重新解析'),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.refresh_rounded),
+              title: Text('重新解析'),
+            ),
           ),
         ),
         const PopupMenuDivider(),
         PopupMenuItem(
           value: 'delete',
-          child: ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
-            title: Text('删除', style: TextStyle(color: scheme.error)),
+          child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
+              title: Text('删除', style: TextStyle(color: scheme.error)),
+            ),
           ),
         ),
       ],
