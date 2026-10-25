@@ -1,9 +1,9 @@
+import '../../core/utils/toast.dart';
 import '../collection/providers/collection_provider.dart';
-import '../collection/models/content.dart';
-import '../collection/widgets/list/collection_card_preview.dart';
+
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,12 +16,13 @@ import '../../core/media/media_source_session.dart';
 import '../../core/network/api_client.dart';
 import '../../core/widgets/browser_leave_guard.dart';
 import '../../core/widgets/adaptive_form_dialog.dart';
-import '../../core/widgets/predictive_back_dialog.dart';
 import '../../core/widgets/discard_changes_dialog.dart';
 import '../../theme/design_tokens.dart';
 import 'global_playback_controller.dart';
 import 'android_picture_in_picture.dart';
 import 'media_bookmark.dart';
+import 'player_expansion.dart';
+import 'player_page.dart';
 import 'media_bookmark_provider.dart';
 import 'playback_route_observer.dart';
 
@@ -124,8 +125,7 @@ class _GlobalPlaybackSurfaceState extends ConsumerState<GlobalPlaybackSurface> {
     final active = state.request?.identity == widget.request.identity;
     final audioPresentation =
         widget.request.audioOnly || (active && state.videoAudioOnly);
-    if (!active && state.request == null) _scheduleActivation();
-    if (!active && (state.request != null || !widget.activateOnMount)) {
+    if (!active) {
       return _InactivePlaybackChoice(
         activeRequest: state.request,
         requested: widget.request,
@@ -565,21 +565,19 @@ class PlaybackBookmarkPanel extends ConsumerWidget {
       animationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
-      builder: (dialogContext) => PredictiveBackDialog(
-        child: AlertDialog(
-          title: const Text('删除时间点书签？'),
-          content: Text('${_duration(bookmark.position)} 的书签将被永久删除。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('删除'),
-            ),
-          ],
-        ),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除时间点书签？'),
+        content: Text('${_duration(bookmark.position)} 的书签将被永久删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('删除'),
+          ),
+        ],
       ),
     );
     if (confirmed != true || !context.mounted) return;
@@ -871,10 +869,10 @@ class _BookmarkEditDialogState extends State<_BookmarkEditDialog> {
 }
 
 void _showBookmarkError(BuildContext context, Object error) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(formatApiErrorMessage(error, fallbackMessage: '时间点书签操作失败')),
-    ),
+  Toast.show(
+    context,
+    formatApiErrorMessage(error, fallbackMessage: '时间点书签操作失败'),
+    isError: true,
   );
 }
 
@@ -939,9 +937,11 @@ class _PlaybackSegmentListState extends ConsumerState<PlaybackSegmentList> {
               ),
               backgroundColor: activeColor,
               collapsedBackgroundColor: activeColor,
-              title: Text(
-                '${_duration(segment.startPosition)} · ${segment.title}',
+              leading: Text(
+                _duration(segment.startPosition),
+                style: Theme.of(context).textTheme.labelMedium,
               ),
+              title: Text(segment.title),
               subtitle: Text(
                 segment.excerpt,
                 maxLines: 2,
@@ -1158,116 +1158,92 @@ class GlobalMiniPlayer extends ConsumerWidget {
       child: SafeArea(
         top: false,
         child: Semantics(
-          hint: '打开内容详情',
+          hint: '展开播放器',
           child: InkWell(
-            onTap: () {
-              final location = '/collection/${request.contentId}';
-              final current = GoRouterState.of(context).uri;
-              final inCollection =
-                  current.path == '/collection' &&
-                  current.queryParameters['item'] == '${request.contentId}';
-              if (current.path != location && !inCollection) {
-                context.push(
-                  location,
-                  extra: ShareCard(
-                    id: request.contentId,
-                    platform: '',
-                    url: '',
-                    title: request.title,
-                    mediaAssets: [?poster],
-                  ),
-                );
-              }
-            },
-            child: ContentSharedTransition(
-              enabled:
-                  GoRouterState.of(context).uri.path !=
-                  '/collection/${request.contentId}',
-              contentId: request.contentId,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 56),
-                child: Row(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: ClipRRect(
-                        borderRadius: AppShape.cardMediaBorder,
-                        child: SizedBox(
-                          width: 64,
-                          height: 44,
-                          child: poster != null
-                              ? NetworkThumbnail(
-                                  mediaAsset: poster,
-                                  purpose: MediaPurpose.card,
-                                )
-                              : Icon(
-                                  audioPresentation
-                                      ? Icons.graphic_eq_rounded
-                                      : Icons.movie_outlined,
-                                  color: scheme.primary,
-                                ),
-                        ),
+            onTap: () => expandPlayer(context),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 56),
+              child: Row(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: ClipRRect(
+                      borderRadius: AppShape.cardMediaBorder,
+                      child: SizedBox(
+                        width: 64,
+                        height: 44,
+                        child: poster != null
+                            ? NetworkThumbnail(
+                                mediaAsset: poster,
+                                purpose: MediaPurpose.card,
+                              )
+                            : Icon(
+                                audioPresentation
+                                    ? Icons.graphic_eq_rounded
+                                    : Icons.movie_outlined,
+                                color: scheme.primary,
+                              ),
                       ),
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: AppSpacing.sm,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: AppSpacing.sm,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            request.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          if (status != null) ...[
+                            const SizedBox(height: 2),
                             Text(
-                              request.title,
+                              status,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleSmall,
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
-                            if (status != null) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                status,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
                           ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (state.loading)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else if (player != null && state.initialized)
+                    ValueListenableBuilder<VideoPlayerValue>(
+                      valueListenable: player,
+                      builder: (context, value, _) => IconButton(
+                        tooltip: value.isPlaying ? '暂停' : '播放',
+                        onPressed: actions.togglePlayback,
+                        icon: Icon(
+                          value.isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
                         ),
                       ),
                     ),
-                    if (state.loading)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    else if (player != null && state.initialized)
-                      ValueListenableBuilder<VideoPlayerValue>(
-                        valueListenable: player,
-                        builder: (context, value, _) => IconButton(
-                          tooltip: value.isPlaying ? '暂停' : '播放',
-                          onPressed: actions.togglePlayback,
-                          icon: Icon(
-                            value.isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                          ),
-                        ),
-                      ),
-                    IconButton(
-                      tooltip: '关闭播放器',
-                      onPressed: actions.close,
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                ),
+                  IconButton(
+                    tooltip: '关闭播放器',
+                    onPressed: actions.close,
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                  const SizedBox(width: 4),
+                ],
               ),
             ),
           ),
@@ -1287,29 +1263,161 @@ class _VideoSurface extends StatelessWidget {
     color: Theme.of(context).colorScheme.surfaceContainerHigh,
     borderRadius: AppShape.cardBorder,
     clipBehavior: Clip.antiAlias,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Flexible(
-          child: ColoredBox(
+    child: AspectRatio(
+      aspectRatio: controller.value.aspectRatio == 0
+          ? 16 / 9
+          : controller.value.aspectRatio,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(
             color: Colors.black,
-            child: Center(
-              heightFactor: 1,
-              child: AspectRatio(
-                aspectRatio: controller.value.aspectRatio == 0
-                    ? 16 / 9
-                    : controller.value.aspectRatio,
-                child: PictureInPictureTarget(
-                  controller: controller,
-                  child: _PlaybackVideoView(controller: controller),
+            child: PictureInPictureTarget(
+              controller: controller,
+              child: _PlaybackVideoView(controller: controller),
+            ),
+          ),
+          _VideoControls(controller: controller),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Video controls remain on the image and share the existing playback session.
+class _VideoControls extends ConsumerStatefulWidget {
+  const _VideoControls({required this.controller});
+  final VideoPlayerController controller;
+  @override
+  ConsumerState<_VideoControls> createState() => _VideoControlsState();
+}
+
+class _VideoControlsState extends ConsumerState<_VideoControls> {
+  bool _visible = true;
+  Timer? _hideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _show();
+  }
+
+  void _show() {
+    _hideTimer?.cancel();
+    setState(() => _visible = true);
+    _hideTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && widget.controller.value.isPlaying) {
+        setState(() => _visible = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onHover: (_) => _show(),
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _show,
+      child: ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: widget.controller,
+        builder: (context, value, _) => Stack(
+          children: [
+            if (value.isBuffering)
+              const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: IgnorePointer(
+                ignoring: !_visible && value.isPlaying,
+                child: AnimatedOpacity(
+                  opacity: _visible || !value.isPlaying ? 1 : 0,
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 150),
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0xCC000000)],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          VideoProgressIndicator(
+                            widget.controller,
+                            allowScrubbing: true,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            colors: const VideoProgressColors(
+                              playedColor: Colors.white,
+                              bufferedColor: Colors.white54,
+                              backgroundColor: Colors.white24,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                tooltip: value.isPlaying ? '暂停' : '播放',
+                                color: Colors.white,
+                                onPressed: () {
+                                  ref
+                                      .read(globalPlaybackProvider.notifier)
+                                      .togglePlayback();
+                                  _show();
+                                },
+                                icon: Icon(
+                                  value.isPlaying
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  '${_duration(value.position)} / ${_duration(value.duration)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              if (context
+                                      .findAncestorWidgetOfExactType<
+                                        PlayerPage
+                                      >() ==
+                                  null)
+                                IconButton(
+                                  tooltip: '展开播放器',
+                                  color: Colors.white,
+                                  onPressed: () => context.push('/player'),
+                                  icon: const Icon(Icons.open_in_full_rounded),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
-        _PlaybackControls(controller: controller),
-      ],
+      ),
     ),
   );
 }

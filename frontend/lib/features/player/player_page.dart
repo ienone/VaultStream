@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import '../../core/utils/toast.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -10,7 +12,8 @@ import 'android_picture_in_picture.dart';
 import 'global_player_widgets.dart';
 
 class PlayerPage extends ConsumerStatefulWidget {
-  const PlayerPage({super.key});
+  const PlayerPage({super.key, this.onCollapse});
+  final VoidCallback? onCollapse;
 
   @override
   ConsumerState<PlayerPage> createState() => _PlayerPageState();
@@ -27,11 +30,16 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     return Scaffold(
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        leading: const AppBackButton(fallback: '/collection'),
-        toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
-            ? 48
-            : null,
+        leading: widget.onCollapse == null
+            ? const AppBackButton(fallback: '/collection')
+            : IconButton(
+                tooltip: '收起播放器',
+                icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                onPressed: widget.onCollapse,
+              ),
+        toolbarHeight: WindowMetrics.of(context).toolbarHeight,
         title: const Text('当前播放'),
+        actionsPadding: const EdgeInsets.only(right: 8),
         actions: [
           if (ref.watch(pictureInPictureProvider).supported &&
               request?.audioOnly == false &&
@@ -45,9 +53,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
                     .read(pictureInPictureProvider.notifier)
                     .enter();
                 if (!entered && context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('无法进入画中画')));
+                  Toast.show(context, '无法进入画中画', isError: true);
                 }
               },
             ),
@@ -57,7 +63,9 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
               onPressed: () async {
                 await ref.read(globalPlaybackProvider.notifier).close();
                 if (!context.mounted) return;
-                if (context.canPop()) {
+                if (widget.onCollapse != null) {
+                  widget.onCollapse!();
+                } else if (context.canPop()) {
                   context.pop();
                 } else {
                   context.go('/collection');
