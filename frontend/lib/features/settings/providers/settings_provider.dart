@@ -10,7 +10,7 @@ part 'settings_provider.g.dart';
 class SystemSettings extends _$SystemSettings {
   @override
   FutureOr<List<SystemSetting>> build() async {
-    final response = await ref.read(apiClientProvider).get('/settings');
+    final response = await ref.watch(apiClientProvider).get('/settings');
     final List<dynamic> data = response.data;
     return data.map((json) => SystemSetting.fromJson(json)).toList();
   }

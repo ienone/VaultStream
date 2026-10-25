@@ -13,6 +13,7 @@ import '../../routing/navigation_scope.dart';
 import '../../layout/root_page_actions.dart';
 import '../../core/widgets/app_setting_group.dart';
 import 'presentation/tabs/automation_tab.dart';
+import 'providers/settings_provider.dart';
 import '../automation/widgets/processing_automation_panel.dart';
 import 'presentation/tabs/connection_tab.dart';
 import 'presentation/tabs/push_tab.dart';
@@ -101,6 +102,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the settings response while browsing this workspace, including its
+    // section list, so opening another section does not flash a loading screen.
+    if (TickerMode.valuesOf(context).enabled) {
+      ref.watch(systemSettingsProvider);
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = WindowMetrics.fromSize(
