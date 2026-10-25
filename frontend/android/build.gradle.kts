@@ -8,7 +8,7 @@ subprojects {
     afterEvaluate {
         if (project.hasProperty("android")) {
             extensions.configure<com.android.build.api.dsl.CommonExtension>("android") {
-                compileOptions {
+                compileOptions.apply {
                     sourceCompatibility = JavaVersion.VERSION_17
                     targetCompatibility = JavaVersion.VERSION_17
                 }
