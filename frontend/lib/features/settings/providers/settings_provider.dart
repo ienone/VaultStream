@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../models/system_setting.dart';
 
@@ -20,14 +21,21 @@ class SystemSettings extends _$SystemSettings {
     String? category,
     String? description,
   }) async {
-    await ref
+    await future;
+    final response = await ref
         .read(apiClientProvider)
         .put(
           '/settings/$key',
           data: {'value': value, 'description': description},
           queryParameters: category != null ? {'category': category} : null,
         );
-    ref.invalidateSelf();
+    if (!ref.mounted) return;
+    final updated = SystemSetting.fromJson(response.data);
+    state = AsyncData([
+      for (final setting in state.requireValue)
+        if (setting.key != key) setting,
+      updated,
+    ]);
   }
 
   Future<void> deleteSetting(String key) async {

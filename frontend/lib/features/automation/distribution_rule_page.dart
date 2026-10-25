@@ -1,10 +1,11 @@
 import 'package:frontend/core/network/api_client.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/utils/toast.dart';
 import 'models/distribution_rule.dart';
+import 'automation_page.dart';
 import 'models/distribution_target.dart';
 import 'providers/bot_chats_provider.dart';
 import 'providers/distribution_rules_provider.dart';
@@ -42,12 +43,12 @@ class DistributionRulePage extends ConsumerWidget {
             child: DistributionRuleEditor(
               key: editorKey,
               rule: rule,
-              onManageTargets: () => context.push('/settings?tab=targets'),
+              onManageTargets: () => DistributionPage.showTargets(context),
               availableChats: chats,
               initialSelectedChatIds: targets
                   .map((target) => target.botChatId)
                   .toList(growable: false),
-              onCancel: () => context.go('/automation/distribution'),
+              onCancel: () => context.go('/automation/distribution/rules'),
               onSave: (data, chatIds) => _save(context, ref, data, chatIds),
             ),
           ),
@@ -90,14 +91,13 @@ class DistributionRulePage extends ConsumerWidget {
       }
       ref.invalidate(botChatsProvider);
       ref.invalidate(contentQueueProvider);
-      ref.invalidate(queueStatsProvider);
       if (context.mounted) {
         Toast.show(context, '规则已保存');
         ref
             .read(ruleEditorKeyProvider(routeKey))
             .currentState
             ?.allowExitAfterSave();
-        context.go('/automation/distribution');
+        context.go('/automation/distribution/rules');
       }
     } catch (error) {
       if (context.mounted) {

@@ -1,7 +1,10 @@
+import '../../../../core/layout/app_page_body.dart';
+
 import 'package:frontend/core/network/api_client.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../widgets/setting_components.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/bot_config_actions.dart';
@@ -11,15 +14,22 @@ import '../../../automation/providers/bot_chats_provider.dart';
 import '../../../automation/models/bot_chat.dart';
 import '../../../automation/widgets/bot_chat_dialog.dart';
 import '../../../notifications/notification_provider.dart';
-import '../../../../theme/design_tokens.dart';
 import '../../../../core/widgets/app_filter_menu.dart';
 
 class PushTab extends ConsumerStatefulWidget {
-  const PushTab({super.key, this.targetsOnly = false, this.platform});
+  const PushTab({
+    super.key,
+    this.targetsOnly = false,
+    this.monitoringOnly = false,
+    this.embedded = false,
+    this.platform,
+  });
 
   final String? platform;
 
   final bool targetsOnly;
+  final bool monitoringOnly;
+  final bool embedded;
 
   @override
   ConsumerState<PushTab> createState() => _PushTabState();
@@ -31,8 +41,9 @@ class _PushTabState extends ConsumerState<PushTab> {
   bool _isSyncingChats = false;
   bool _isGeneratingDigest = false;
   bool _pushConfigExpanded = false;
-  bool _isSavingCapturePolicy = false;
   String _botPlatform = 'telegram';
+  final _updatingChats = <int>{};
+  final _chatErrors = <int, String>{};
 
   final _tgTokenController = TextEditingController();
   final _qqUrlController = TextEditingController(text: 'http://127.0.0.1:3000');
@@ -255,10 +266,18 @@ class _PushTabState extends ConsumerState<PushTab> {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => BotChatDialog(
+        platform: widget.platform,
         resolveBotConfigId: _resolveBotConfigId,
         onCreate: (chat) async {
           try {
-            await ref.read(botChatsProvider.notifier).createChat(chat);
+            await ref
+                .read(botChatsProvider.notifier)
+                .createChat(
+                  chat.copyWith(
+                    isMonitoring: widget.monitoringOnly,
+                    isPushTarget: widget.targetsOnly,
+                  ),
+                );
             ref.invalidate(botChatsProvider);
             if (mounted) {
               showToast(context, '群组或频道已添加');
@@ -321,19 +340,23 @@ class _PushTabState extends ConsumerState<PushTab> {
 
   @override
   Widget build(BuildContext context) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    final statusAsync = ref.watch(botStatusProvider);
-    settingsAsync.whenData(_initFromSettings);
+    final settingsAsync = widget.targetsOnly || widget.monitoringOnly
+        ? null
+        : ref.watch(systemSettingsProvider);
+    final statusAsync = widget.platform == null
+        ? null
+        : ref.watch(botStatusProvider);
+    settingsAsync?.whenData(_initFromSettings);
 
     final content = ListView(
-      shrinkWrap: widget.platform != null,
-      physics: widget.platform != null
+      shrinkWrap: widget.platform != null || widget.embedded,
+      physics: widget.platform != null || widget.embedded
           ? const NeverScrollableScrollPhysics()
           : null,
-      padding: widget.platform != null
+      padding: widget.platform != null || widget.embedded
           ? EdgeInsets.zero
-          : const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      children: widget.targetsOnly
+          : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      children: widget.targetsOnly || widget.monitoringOnly
           ? [
               Padding(
                 padding: const EdgeInsets.only(left: 4, bottom: 8),
@@ -350,7 +373,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.sync_rounded),
-                      label: Text(_isSyncingChats ? '同步中...' : '同步目标'),
+                      label: Text(_isSyncingChats ? '同步中…' : '同步群组与频道'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _showAddChatDialog,
@@ -366,7 +389,7 @@ class _PushTabState extends ConsumerState<PushTab> {
           : [
               if (widget.platform == null) ...[
                 const SectionHeader(title: '应用内摘要'),
-                settingsAsync.when(
+                settingsAsync!.when(
                   data: (settings) => _buildDigestSettings(settings),
                   loading: () => const LinearProgressIndicator(),
                   error: (_, _) => ListTile(
@@ -377,25 +400,6 @@ class _PushTabState extends ConsumerState<PushTab> {
                       child: const Text('重试'),
                     ),
                   ),
-                ),
-                const SizedBox(height: 28),
-                settingsAsync.when(
-                  data: _buildChatCaptureSetting,
-                  loading: () => const LinearProgressIndicator(),
-                  error: (_, _) => SettingLoadFailure(
-                    onRetry: () => ref.invalidate(systemSettingsProvider),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                ListTile(
-                  title: const Text('Telegram 账号与机器人'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.push('/accounts/telegram'),
-                ),
-                ListTile(
-                  title: const Text('QQ 机器人'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.push('/accounts/qq'),
                 ),
               ] else ...[
                 SectionHeader(
@@ -408,7 +412,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                     icon: const Icon(Icons.refresh_rounded),
                   ),
                 ),
-                statusAsync.when(
+                statusAsync!.when(
                   data: _buildBotStatus,
                   loading: () => const LinearProgressIndicator(),
                   error: (_, _) => ListTile(
@@ -431,27 +435,21 @@ class _PushTabState extends ConsumerState<PushTab> {
                   title: const Text('凭证与权限'),
                   children: [
                     if (widget.platform == null)
-                      DropdownButtonFormField<String>(
-                        borderRadius: AppShape.cardBorder,
-                        initialValue: _botPlatform,
-                        decoration: const InputDecoration(labelText: '推送平台'),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'telegram',
-                            child: Text('Telegram'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'qq',
-                            child: Text('QQ (Napcat)'),
-                          ),
-                        ],
-                        onChanged: _isSaving
-                            ? null
-                            : (value) {
-                                if (value == null) return;
-                                setState(() => _botPlatform = value);
-                                _reloadPermissionFields();
-                              },
+                      Semantics(
+                        label: '推送平台',
+                        child: AppFilterMenu(
+                          label: '推送平台',
+                          value: _botPlatform,
+                          options: const {
+                            'telegram': 'Telegram',
+                            'qq': 'QQ (Napcat)',
+                          },
+                          enabled: !_isSaving,
+                          onSelected: (value) {
+                            setState(() => _botPlatform = value);
+                            _reloadPermissionFields();
+                          },
+                        ),
                       ),
                     const SizedBox(height: 20),
                     if (_botPlatform == 'telegram')
@@ -521,64 +519,25 @@ class _PushTabState extends ConsumerState<PushTab> {
                   ],
                 ),
                 _buildGroupManagement(context, ref),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    TextButton(
+                      onPressed: () => context.go('/sources'),
+                      child: const Text('消息监听'),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          context.go('/automation/distribution/targets'),
+                      child: const Text('推送目标'),
+                    ),
+                  ],
+                ),
               ],
               const SizedBox(height: 40),
             ],
     );
-    if (widget.targetsOnly) return content;
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: content,
-      ),
-    );
-  }
-
-  Widget _buildChatCaptureSetting(List<SystemSetting> settings) {
-    final enabled =
-        settings
-            .firstWhere(
-              (setting) => setting.key == 'chat_capture_enabled',
-              orElse: () =>
-                  const SystemSetting(key: 'chat_capture_enabled', value: true),
-            )
-            .value ==
-        true;
-    return SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      title: const Text('允许机器人转存收藏'),
-      subtitle: Text(
-        _isSavingCapturePolicy ? '保存中…' : '群聊和私聊均需管理员明确要求保存；自动链接解析不入库。',
-      ),
-      value: enabled,
-      onChanged: _isSavingCapturePolicy
-          ? null
-          : (value) async {
-              setState(() => _isSavingCapturePolicy = true);
-              try {
-                await ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'chat_capture_enabled',
-                      value,
-                      category: 'bot',
-                    );
-                await ref.read(systemSettingsProvider.future);
-                if (mounted) {
-                  showToast(context, value ? '已允许管理员请求转存' : '已关闭机器人转存');
-                }
-              } catch (error) {
-                if (mounted) {
-                  showToast(
-                    context,
-                    formatApiErrorMessage(error, fallbackMessage: '设置保存失败'),
-                  );
-                }
-              } finally {
-                if (mounted) setState(() => _isSavingCapturePolicy = false);
-              }
-            },
-    );
+    return AppPageBody(child: content);
   }
 
   Widget _buildDigestSettings(List<SystemSetting> settings) {
@@ -593,38 +552,34 @@ class _PushTabState extends ConsumerState<PushTab> {
     const intervalOptions = <int>[6, 12, 24, 168];
     final selectedInterval = intervalOptions.contains(interval) ? interval : 24;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return SettingGroup(
       children: [
         SwitchListTile(
           key: const ValueKey('notification-digest-enabled'),
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 4,
+            horizontal: 20,
             vertical: 8,
           ),
-          shape: const RoundedRectangleBorder(
-            borderRadius: AppShape.cardMediaBorder,
-          ),
+          shape: const RoundedRectangleBorder(),
           title: const Text('定期生成摘要'),
-          subtitle: const Text('汇总上次检查后的新动态和事件变化'),
           value: enabled,
           onChanged: (value) =>
               _updateDigestSetting('enable_notification_digest', value),
         ),
-        const SizedBox(height: 12),
+
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
-              final inline = constraints.maxWidth >= 600 * scale;
+              final inline = constraints.maxWidth >= 400 * scale;
               return Wrap(
                 spacing: 16,
                 runSpacing: 16,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   SizedBox(
-                    width: inline ? 320 : constraints.maxWidth,
+                    width: inline ? 200 * scale : constraints.maxWidth,
                     child: AppFilterMenu(
                       label: '摘要周期',
                       value: selectedInterval.toString(),
@@ -688,7 +643,7 @@ class _PushTabState extends ConsumerState<PushTab> {
         if (chats.isEmpty) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
-            child: Text('暂无推送目标。同步已启用 Bot 的群组，或手动新增。'),
+            child: Text('暂无群组或频道'),
           );
         }
 
@@ -698,7 +653,7 @@ class _PushTabState extends ConsumerState<PushTab> {
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 12),
               child: Text(
-                '${chats.length} 个推送目标',
+                '${chats.length} 个群组或频道',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -706,7 +661,21 @@ class _PushTabState extends ConsumerState<PushTab> {
             ),
             SettingGroup(
               children: chats
-                  .map((chat) => _buildChatTile(context, ref, chat))
+                  .map(
+                    (chat) => _buildChatTile(
+                      context,
+                      ref,
+                      chat,
+                      disambiguate:
+                          chats
+                              .where(
+                                (other) =>
+                                    other.displayName == chat.displayName,
+                              )
+                              .length >
+                          1,
+                    ),
+                  )
                   .toList(),
             ),
           ],
@@ -715,7 +684,7 @@ class _PushTabState extends ConsumerState<PushTab> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (_, _) => ListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('推送目标加载失败'),
+        title: const Text('群组与频道加载失败'),
         trailing: TextButton(
           onPressed: () => ref.invalidate(botChatsProvider),
           child: const Text('重试'),
@@ -724,18 +693,58 @@ class _PushTabState extends ConsumerState<PushTab> {
     );
   }
 
-  Widget _buildChatTile(BuildContext context, WidgetRef ref, BotChat chat) {
+  Future<void> _updateChat(
+    int id, {
+    bool? enabled,
+    bool? isMonitoring,
+    bool? isPushTarget,
+  }) async {
+    setState(() {
+      _updatingChats.add(id);
+      _chatErrors.remove(id);
+    });
+    try {
+      await ref
+          .read(botChatsProvider.notifier)
+          .updateChatStatus(
+            id,
+            enabled: enabled,
+            isMonitoring: isMonitoring,
+            isPushTarget: isPushTarget,
+          );
+      await ref.read(botChatsProvider.future);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _chatErrors[id] = formatApiErrorMessage(
+            error,
+            fallbackMessage: '保存失败，请重试',
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingChats.remove(id));
+    }
+  }
+
+  Widget _buildChatTile(
+    BuildContext context,
+    WidgetRef ref,
+    BotChat chat, {
+    required bool disambiguate,
+  }) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_updatingChats.contains(chat.id)) const LinearProgressIndicator(),
+          if (_chatErrors[chat.id] case final error?)
+            Text(error, style: TextStyle(color: theme.colorScheme.error)),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            shape: const RoundedRectangleBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
+            shape: const RoundedRectangleBorder(),
             title: Text(
               chat.displayName,
               style: theme.textTheme.titleMedium?.copyWith(
@@ -743,47 +752,45 @@ class _PushTabState extends ConsumerState<PushTab> {
               ),
             ),
             subtitle: Text(
-              chat.chatTypeLabel,
+              [
+                chat.chatTypeLabel,
+                if (disambiguate)
+                  chat.username == null ? chat.chatId : '@${chat.username}',
+                if (widget.targetsOnly && chat.enabled)
+                  chat.isPushTarget ? '允许推送' : '不推送',
+                if (widget.monitoringOnly && chat.enabled)
+                  chat.isMonitoring ? '接收动态' : '不接收动态',
+                if (!chat.isAccessible) '无法访问',
+              ].join(' · '),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            value: chat.enabled,
-            onChanged: (value) => ref
-                .read(botChatsProvider.notifier)
-                .updateChatStatus(chat.id, enabled: value),
+            value: widget.targetsOnly
+                ? chat.enabled && chat.isPushTarget
+                : widget.monitoringOnly
+                ? chat.enabled && chat.isMonitoring
+                : chat.enabled,
+            onChanged:
+                _updatingChats.contains(chat.id) ||
+                    ((widget.targetsOnly || widget.monitoringOnly) &&
+                        !chat.enabled)
+                ? null
+                : (value) => _updateChat(
+                    chat.id,
+                    enabled: !widget.targetsOnly && !widget.monitoringOnly
+                        ? value
+                        : null,
+                    isMonitoring: widget.monitoringOnly ? value : null,
+                    isPushTarget: widget.targetsOnly ? value : null,
+                  ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilterChip(
-                label: const Text('巡逻监听'),
-                avatar: Icon(
-                  chat.isMonitoring ? Icons.check_rounded : Icons.add_rounded,
-                  size: 18,
-                ),
-                selected: chat.isMonitoring,
-                showCheckmark: false,
-                onSelected: (value) => ref
-                    .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.id, isMonitoring: value),
-              ),
-              FilterChip(
-                label: const Text('分发推送'),
-                avatar: Icon(
-                  chat.isPushTarget ? Icons.check_rounded : Icons.add_rounded,
-                  size: 18,
-                ),
-                selected: chat.isPushTarget,
-                showCheckmark: false,
-                onSelected: (value) => ref
-                    .read(botChatsProvider.notifier)
-                    .updateChatStatus(chat.id, isPushTarget: value),
-              ),
-            ],
-          ),
+          if ((widget.targetsOnly || widget.monitoringOnly) && !chat.enabled)
+            TextButton(
+              onPressed: () =>
+                  context.go('/accounts/${chat.isQQ ? 'qq' : 'telegram'}'),
+              child: const Text('会话已停用 · 管理连接'),
+            ),
         ],
       ),
     );

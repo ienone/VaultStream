@@ -1,6 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../../../../core/widgets/app_setting_group.dart';
 
 import '../../../../core/utils/toast.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../theme/design_tokens.dart';
 
 // SectionHeader 已迁移至 core/widgets，此处重新导出保持向后兼容。
@@ -11,14 +14,7 @@ class SettingGroup extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      for (var i = 0; i < children.length; i++) ...[
-        children[i],
-        if (i < children.length - 1) const Divider(height: 1),
-      ],
-    ],
-  );
+  Widget build(BuildContext context) => AppSettingGroup(children: children);
 }
 
 class SettingTile extends StatelessWidget {
@@ -45,63 +41,36 @@ class SettingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final stacked =
             stackTrailing && constraints.maxWidth < AppPane.formMaxWidth;
-        final copy = Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: theme.textTheme.titleMedium),
-              if (subtitle != null && subtitle!.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  subtitle!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ],
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 8,
           ),
-        );
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 48),
-                    child: Row(
-                      children: [
-                        if (icon != null) ...[
-                          Icon(icon, size: 22, color: iconColor),
-                          const SizedBox(width: 12),
-                        ],
-                        copy,
-                        if (!stacked && trailing != null) ...[
-                          const SizedBox(width: 12),
-                          trailing!,
-                        ],
-                        if (trailing == null && showArrow && onTap != null)
-                          const Icon(Icons.chevron_right_rounded),
-                      ],
-                    ),
-                  ),
-                  if (stacked && trailing != null) ...[
-                    const SizedBox(height: 8),
+          leading: icon == null ? null : Icon(icon, color: iconColor),
+          title: Text(title),
+          subtitle: stacked && trailing != null
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (subtitle?.isNotEmpty ?? false) Text(subtitle!),
+                    const SizedBox(height: 12),
                     trailing!,
                   ],
-                ],
-              ),
-            ),
-          ),
+                )
+              : (subtitle?.isNotEmpty ?? false)
+              ? Text(subtitle!)
+              : null,
+          trailing: stacked
+              ? null
+              : trailing ??
+                    (showArrow && onTap != null
+                        ? const Icon(Icons.chevron_right_rounded)
+                        : null),
+          onTap: onTap,
         );
       },
     );
@@ -115,12 +84,14 @@ class ExpandableSettingTile extends StatefulWidget {
     this.subtitle,
     this.icon,
     required this.expandedContent,
+    this.dense = false,
   });
 
   final String title;
-  final String? subtitle;
+  final Widget? subtitle;
   final IconData? icon;
   final Widget expandedContent;
+  final bool dense;
 
   @override
   State<ExpandableSettingTile> createState() => _ExpandableSettingTileState();
@@ -129,6 +100,7 @@ class ExpandableSettingTile extends StatefulWidget {
 class _ExpandableSettingTileState extends State<ExpandableSettingTile>
     with AutomaticKeepAliveClientMixin {
   bool _expanded = false;
+  bool _hasExpanded = false;
 
   @override
   bool get wantKeepAlive => _expanded;
@@ -137,28 +109,31 @@ class _ExpandableSettingTileState extends State<ExpandableSettingTile>
   Widget build(BuildContext context) {
     super.build(context);
     final theme = Theme.of(context);
-    const shape = RoundedRectangleBorder(
-      borderRadius: AppShape.cardMediaBorder,
-    );
+    final shape =
+        ListTileTheme.of(context).shape ??
+        const RoundedRectangleBorder(borderRadius: AppShape.cardMediaBorder);
     return ListTileTheme.merge(
       shape: shape,
       child: ExpansionTile(
         title: Text(widget.title, style: theme.textTheme.titleMedium),
-        subtitle: widget.subtitle == null || widget.subtitle!.isEmpty
+        subtitle: widget.subtitle == null
             ? null
-            : Text(
-                widget.subtitle!,
+            : DefaultTextStyle.merge(
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
+                child: widget.subtitle!,
               ),
         leading: widget.icon == null ? null : Icon(widget.icon, size: 22),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-        childrenPadding: const EdgeInsets.fromLTRB(4, 8, 4, 16),
+        tilePadding: EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: widget.dense ? 0 : 8,
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         shape: shape,
         collapsedShape: shape,
         clipBehavior: Clip.antiAlias,
-        maintainState: true,
+        maintainState: _hasExpanded,
         expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
             ? AnimationStyle.noAnimation
             : const AnimationStyle(
@@ -166,7 +141,10 @@ class _ExpandableSettingTileState extends State<ExpandableSettingTile>
                 curve: AppMotion.standardCurve,
               ),
         onExpansionChanged: (expanded) {
-          setState(() => _expanded = expanded);
+          setState(() {
+            _expanded = expanded;
+            _hasExpanded |= expanded;
+          });
           updateKeepAlive();
         },
         children: [
@@ -277,6 +255,81 @@ class _SettingSaveButtonState extends State<SettingSaveButton> {
             '保存失败，请重试',
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
+        ),
+    ],
+  );
+}
+
+/// An immediate setting write keeps its progress and error next to the control.
+class SettingSwitch extends StatefulWidget {
+  const SettingSwitch({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.value,
+    required this.onChanged,
+    this.contentPadding = EdgeInsets.zero,
+    this.shape,
+  });
+  final Widget title;
+  final Widget? subtitle;
+  final bool value;
+  final Future<void> Function(bool) onChanged;
+  final EdgeInsetsGeometry contentPadding;
+  final ShapeBorder? shape;
+  @override
+  State<SettingSwitch> createState() => _SettingSwitchState();
+}
+
+class _SettingSwitchState extends State<SettingSwitch> {
+  bool _saving = false;
+  String? _error;
+  bool? _requested;
+  Future<void> _save(bool value) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+      _requested = value;
+    });
+    try {
+      await widget.onChanged(value);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = formatApiErrorMessage(error, fallbackMessage: '保存失败'),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SwitchListTile(
+        title: widget.title,
+        subtitle: widget.subtitle,
+        value: _saving ? _requested! : widget.value,
+        contentPadding: widget.contentPadding,
+        shape: widget.shape,
+        onChanged: _saving ? null : _save,
+      ),
+      if (_saving) const LinearProgressIndicator(),
+      if (_error != null)
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            TextButton(
+              onPressed: () => _save(_requested!),
+              child: const Text('重试'),
+            ),
+          ],
         ),
     ],
   );

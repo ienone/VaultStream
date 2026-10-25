@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
 import '../models/queue_item.dart';
@@ -71,16 +73,13 @@ class ContentQueue extends _$ContentQueue {
 
   void _handleSseEvent(SseEvent event) {
     // 使用常量匹配事件类型
-    if (event.type == 'connected' ||
+    if (event.type == 'reconnected' ||
         event.type == _QueueConfig.eventContentPushed ||
         event.type == _QueueConfig.eventQueueUpdated) {
       // 防抖刷新：避免短时间内多次事件触发多次请求
       _debounceTimer?.cancel();
       _debounceTimer = Timer(_QueueConfig.refreshDebounce, () {
         softRefresh();
-        // 同时刷新统计数字
-        final filter = ref.read(queueFilterProvider);
-        ref.invalidate(queueStatsProvider(filter.ruleId));
       });
     }
   }
@@ -102,21 +101,30 @@ class ContentQueue extends _$ContentQueue {
     return QueueListResponse.fromJson(response.data);
   }
 
-  Future<void> moveToStatus(
-    int itemId,
-    QueueStatus newStatus, {
-    String? reason,
-  }) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.post(
-      '/distribution-queue/items/$itemId/status',
-      data: {'status': newStatus.value, 'reason': ?reason},
-    );
-    _safeInvalidate();
-
-    // Refresh stats
-    final filter = ref.read(queueFilterProvider);
-    ref.invalidate(queueStatsProvider(filter.ruleId));
+  Future<void> cancelItems(List<int> ids) async {
+    final lease = ref.keepAlive();
+    try {
+      await ref
+          .read(apiClientProvider)
+          .post('/distribution-queue/cancel', data: {'item_ids': ids});
+      if (!ref.mounted) return;
+      final current = state.value;
+      if (current != null) {
+        final canceled = ids.toSet();
+        final remaining = current.items
+            .where((item) => !canceled.contains(item.id))
+            .toList();
+        state = AsyncData(
+          current.copyWith(
+            items: remaining,
+            total: (current.total - ids.length).clamp(0, current.total),
+          ),
+        );
+      }
+      // The single queue event reconciles pagination and counts once.
+    } finally {
+      lease.close();
+    }
   }
 
   Future<void> loadMore() async {
@@ -175,8 +183,6 @@ class ContentQueue extends _$ContentQueue {
       '/distribution-queue/items/$itemId/push-now',
     );
     _safeInvalidate();
-    final filter = ref.read(queueFilterProvider);
-    ref.invalidate(queueStatsProvider(filter.ruleId));
     return QueueItem.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -196,22 +202,4 @@ class ContentQueue extends _$ContentQueue {
   void refresh() {
     _safeInvalidate();
   }
-}
-
-@riverpod
-Future<Map<String, int>> queueStats(Ref ref, int? ruleId) async {
-  final dio = ref.watch(apiClientProvider);
-  final response = await dio.get(
-    '/distribution-queue/stats',
-    queryParameters: {'rule_id': ?ruleId},
-  );
-  final data = Map<String, dynamic>.from(response.data as Map);
-
-  final mapped = <String, int>{
-    'will_push': data['will_push'] as int,
-    'filtered': data['filtered'] as int,
-    'pushed': data['pushed'] as int,
-    'total': data['total'] as int,
-  };
-  return mapped;
 }

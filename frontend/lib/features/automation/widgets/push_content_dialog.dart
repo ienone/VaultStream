@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/adaptive_form_dialog.dart';
 import '../models/queue_item.dart';
@@ -56,7 +57,6 @@ class ManualPushActions {
       }
     }
     ref.invalidate(contentQueueProvider);
-    ref.invalidate(queueStatsProvider);
     return (sent: sent, skipped: data['already_sent'] as int, errors: errors);
   }
 }
@@ -133,7 +133,9 @@ class _PushContentDialogState extends ConsumerState<_PushContentDialog> {
                     if (available.isEmpty) {
                       return TextButton.icon(
                         onPressed: () async {
-                          await widget.router.push('/settings?tab=targets');
+                          await widget.router.push(
+                            '/automation/distribution/targets',
+                          );
                           ref.invalidate(botChatsProvider);
                         },
                         icon: const Icon(Icons.add_rounded),

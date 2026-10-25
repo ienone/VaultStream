@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import '../../../core/widgets/app_setting_group.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/render_config.dart';
@@ -18,27 +20,29 @@ class RenderConfigEditor extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final presets = ref.watch(renderConfigPresetsProvider);
     return presets.when(
-      data: (items) => Column(
-        children: [
-          for (final preset in items)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                (config['format'] ?? 'summary') == preset.id
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                color: (config['format'] ?? 'summary') == preset.id
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
+      data: (items) => RadioGroup<String>(
+        groupValue: config['format'] as String? ?? 'summary',
+        onChanged: (value) {
+          final preset = items.where((item) => item.id == value).firstOrNull;
+          if (preset != null) onChanged(preset.config);
+        },
+        child: AppSettingGroup(
+          children: [
+            for (final preset in items)
+              RadioListTile<String>(
+                value: preset.id,
+                title: Text(preset.name),
+                shape: const RoundedRectangleBorder(),
+                subtitle: preset.description == null
+                    ? null
+                    : Text(preset.description!),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
-              title: Text(preset.name),
-              subtitle: preset.description == null
-                  ? null
-                  : Text(preset.description!),
-              selected: (config['format'] ?? 'summary') == preset.id,
-              onTap: () => onChanged(preset.config),
-            ),
-        ],
+          ],
+        ),
       ),
       loading: () => const LinearProgressIndicator(),
       error: (error, _) => TextButton.icon(

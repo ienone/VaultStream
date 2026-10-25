@@ -1,7 +1,13 @@
-import 'package:flutter/material.dart';
+import '../../../core/layout/app_page_body.dart';
+
+import 'package:material_ui/material_ui.dart';
+
+import '../../../core/widgets/app_setting_group.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/widgets/metadata_wrap.dart';
 import '../../../theme/design_tokens.dart';
 import '../../dashboard/models/stats.dart';
 import '../../dashboard/providers/dashboard_provider.dart' as dashboard;
@@ -26,34 +32,31 @@ class ProcessingAutomationPanel extends ConsumerWidget {
         ref.invalidate(systemSettingsProvider);
         ref.invalidate(semanticIndexStatusProvider);
       },
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-            children: [
-              ..._buildStages(
-                ref: ref,
-                queueState: queue,
-                diagnostics: diagnostics.value,
-                settingsState: settings,
-                semanticState: semantic,
+      child: AppPageBody(
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          children: [
+            ..._buildStages(
+              ref: ref,
+              queueState: queue,
+              diagnostics: diagnostics.value,
+              settingsState: settings,
+              semanticState: semantic,
+            ),
+            if (queue.hasError ||
+                diagnostics.hasError ||
+                settings.hasError ||
+                semantic.hasError)
+              _LoadWarning(
+                onRetry: () {
+                  ref.invalidate(dashboard.queueStatsProvider);
+                  ref.invalidate(dashboard.backgroundTaskDiagnosticsProvider);
+                  ref.invalidate(systemSettingsProvider);
+                  ref.invalidate(semanticIndexStatusProvider);
+                },
               ),
-              if (queue.hasError ||
-                  diagnostics.hasError ||
-                  settings.hasError ||
-                  semantic.hasError)
-                _LoadWarning(
-                  onRetry: () {
-                    ref.invalidate(dashboard.queueStatsProvider);
-                    ref.invalidate(dashboard.backgroundTaskDiagnosticsProvider);
-                    ref.invalidate(systemSettingsProvider);
-                    ref.invalidate(semanticIndexStatusProvider);
-                  },
-                ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -120,163 +123,183 @@ class ProcessingAutomationPanel extends ConsumerWidget {
 
     return [
       const _StageGroupHeading(title: '保存与归档'),
-      _ProcessingStageSection(
-        title: '解析',
-        policyEnabled: settingsReady ? parseEnabled : null,
-        onPolicyChanged: (value) => ref
-            .read(systemSettingsProvider.notifier)
-            .updateSetting(
-              'enable_parse_worker',
-              value,
-              category: 'automation',
-            ),
-        icon: Icons.account_tree_rounded,
-        tone: queueState.hasError || settingsState.hasError
-            ? _StageTone.warning
-            : !settingsReady || parse == null
-            ? _StageTone.loading
-            : !parseEnabled
-            ? _StageTone.inactive
-            : parse.parseFailed > 0
-            ? _StageTone.warning
-            : parse.processing > 0
-            ? _StageTone.running
-            : _StageTone.ok,
-        status: queueState.hasError
-            ? '解析状态读取失败'
-            : settingsState.hasError
-            ? '解析策略读取失败'
-            : !parseEnabled
-            ? '已暂停'
-            : parse == null
-            ? '正在读取解析状态'
-            : '${parse.processing} 处理中 · ${parse.unprocessed} 待处理 · ${parse.parseFailed} 失败',
-        latestRun: parseRun,
-        failures: diagnostics?.failedParseTasks ?? const [],
-      ),
-      _ProcessingStageSection(
-        title: '媒体归档',
-        icon: Icons.perm_media_rounded,
-        tone: settingsState.hasError
-            ? _StageTone.warning
-            : !settingsReady
-            ? _StageTone.loading
-            : archiveEnabled && (archiveImages || archiveVideos)
-            ? _StageTone.ok
-            : _StageTone.inactive,
-        status: settingsState.hasError
-            ? '媒体归档策略读取失败'
-            : !settingsReady
-            ? '正在读取媒体归档策略'
-            : !archiveEnabled
-            ? '已关闭'
-            : '随解析归档${archiveImages ? '图片' : ''}${archiveImages && archiveVideos ? '和' : ''}${archiveVideos ? '视频' : ''}${!archiveImages && !archiveVideos ? '（子项均关闭）' : ''}',
-        settingsPath: '/settings?tab=storage',
-        settingsLabel: '媒体归档设置',
+      AppSettingGroup(
+        children: [
+          _ProcessingStageSection(
+            title: '解析',
+            policyEnabled: settingsReady ? parseEnabled : null,
+            onPolicyChanged: (value) => ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'enable_parse_worker',
+                  value,
+                  category: 'automation',
+                ),
+            icon: Icons.account_tree_rounded,
+            tone: queueState.hasError || settingsState.hasError
+                ? _StageTone.warning
+                : !settingsReady || parse == null
+                ? _StageTone.loading
+                : !parseEnabled
+                ? _StageTone.inactive
+                : parse.parseFailed > 0
+                ? _StageTone.warning
+                : parse.processing > 0
+                ? _StageTone.running
+                : _StageTone.ok,
+            status: queueState.hasError
+                ? '解析状态读取失败'
+                : settingsState.hasError
+                ? '解析策略读取失败'
+                : !parseEnabled
+                ? '已暂停'
+                : parse == null
+                ? '正在读取解析状态'
+                : null,
+            statistics: parse == null
+                ? const []
+                : [
+                    '处理中 ${parse.processing}',
+                    '待处理 ${parse.unprocessed}',
+                    '失败 ${parse.parseFailed}',
+                  ],
+            latestRun: parseRun,
+            failures: diagnostics?.failedParseTasks ?? const [],
+          ),
+          _ProcessingStageSection(
+            title: '媒体归档',
+            icon: Icons.perm_media_rounded,
+            tone: settingsState.hasError
+                ? _StageTone.warning
+                : !settingsReady
+                ? _StageTone.loading
+                : archiveEnabled && (archiveImages || archiveVideos)
+                ? _StageTone.ok
+                : _StageTone.inactive,
+            status: settingsState.hasError
+                ? '媒体归档策略读取失败'
+                : !settingsReady
+                ? '正在读取媒体归档策略'
+                : !archiveEnabled
+                ? '已关闭'
+                : '随解析归档${archiveImages ? '图片' : ''}${archiveImages && archiveVideos ? '和' : ''}${archiveVideos ? '视频' : ''}${!archiveImages && !archiveVideos ? '（子项均关闭）' : ''}',
+            settingsPath: '/settings?tab=storage',
+            settingsLabel: '媒体归档设置',
+          ),
+        ],
       ),
       const _StageGroupHeading(title: '理解与整理', showModelSettings: true),
-      _ProcessingStageSection(
-        title: '自动摘要',
-        policyEnabled: settingsReady ? summaryEnabled : null,
-        onPolicyChanged: (value) => ref
-            .read(systemSettingsProvider.notifier)
-            .updateSetting('enable_auto_summary', value, category: 'llm'),
-        icon: Icons.summarize_rounded,
-        tone: settingsState.hasError
-            ? _StageTone.warning
-            : !settingsReady
-            ? _StageTone.loading
-            : summaryEnabled
-            ? _toneForRun(summaryRun)
-            : _StageTone.inactive,
-        status: settingsState.hasError
-            ? '摘要策略读取失败'
-            : !settingsReady
-            ? '正在读取摘要设置'
-            : summaryEnabled
-            ? '解析后自动生成摘要'
-            : '已关闭',
-        latestRun: summaryRun,
-      ),
-      _ProcessingStageSection(
-        title: '自动整理相关内容',
-        policyEnabled: settingsReady ? aggregationEnabled : null,
-        onPolicyChanged: (value) => ref
-            .read(systemSettingsProvider.notifier)
-            .updateSetting(
-              'enable_content_aggregation',
-              value,
-              category: 'automation',
-            ),
-        icon: Icons.hub_rounded,
-        tone: settingsState.hasError
-            ? _StageTone.warning
-            : !settingsReady
-            ? _StageTone.loading
-            : aggregationEnabled
-            ? _toneForRun(aggregationRun)
-            : _StageTone.inactive,
-        status: settingsState.hasError
-            ? '整理设置读取失败'
-            : !settingsReady
-            ? '正在读取整理设置'
-            : aggregationEnabled
-            ? '每小时整理一次'
-            : '已关闭',
-        latestRun: aggregationRun,
-      ),
-      _ProcessingStageSection(
-        title: '发送整理后的内容',
-        policyEnabled: settingsReady ? aggregationPushEnabled : null,
-        onPolicyChanged: (value) => ref
-            .read(systemSettingsProvider.notifier)
-            .updateSetting(
-              'enable_aggregation_push',
-              value,
-              category: 'automation',
-            ),
-        icon: Icons.outbound_rounded,
-        tone: settingsState.hasError
-            ? _StageTone.warning
-            : !settingsReady
-            ? _StageTone.loading
-            : aggregationPushEnabled
-            ? _StageTone.ok
-            : _StageTone.inactive,
-        status: settingsState.hasError
-            ? '发送设置读取失败'
-            : !settingsReady
-            ? '正在读取发送设置'
-            : aggregationPushEnabled
-            ? '按分发规则发送'
-            : '已关闭',
-      ),
-      _ProcessingStageSection(
-        title: '搜索索引',
-        policyEnabled: settingsReady ? semanticEnabled : null,
-        onPolicyChanged: (value) => ref
-            .read(systemSettingsProvider.notifier)
-            .updateSetting(
-              'enable_auto_semantic_indexing',
-              value,
-              category: 'automation',
-            ),
-        icon: Icons.manage_search_rounded,
-        tone: semanticState.hasError || settingsState.hasError
-            ? _StageTone.warning
-            : !settingsReady || semantic == null
-            ? _StageTone.loading
-            : !semanticEnabled
-            ? _StageTone.inactive
-            : _toneForRun(semanticRun),
-        status: semanticState.hasError
-            ? '语义索引状态读取失败'
-            : settingsState.hasError
-            ? '自动索引策略读取失败'
-            : semantic == null
-            ? '正在读取索引状态'
-            : '已索引 $indexed · 待索引 $pending${semanticEnabled ? '' : ' · 自动索引已关闭'}',
-        latestRun: semanticRun,
+      AppSettingGroup(
+        children: [
+          _ProcessingStageSection(
+            title: '自动摘要',
+            policyEnabled: settingsReady ? summaryEnabled : null,
+            onPolicyChanged: (value) => ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting('enable_auto_summary', value, category: 'llm'),
+            icon: Icons.summarize_rounded,
+            tone: settingsState.hasError
+                ? _StageTone.warning
+                : !settingsReady
+                ? _StageTone.loading
+                : summaryEnabled
+                ? _toneForRun(summaryRun)
+                : _StageTone.inactive,
+            status: settingsState.hasError
+                ? '摘要策略读取失败'
+                : !settingsReady
+                ? '正在读取摘要设置'
+                : summaryEnabled
+                ? '解析后自动生成摘要'
+                : '已关闭',
+            latestRun: summaryRun,
+          ),
+          _ProcessingStageSection(
+            title: '自动整理相关内容',
+            policyEnabled: settingsReady ? aggregationEnabled : null,
+            onPolicyChanged: (value) => ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'enable_content_aggregation',
+                  value,
+                  category: 'automation',
+                ),
+            icon: Icons.hub_rounded,
+            tone: settingsState.hasError
+                ? _StageTone.warning
+                : !settingsReady
+                ? _StageTone.loading
+                : aggregationEnabled
+                ? _toneForRun(aggregationRun)
+                : _StageTone.inactive,
+            status: settingsState.hasError
+                ? '整理设置读取失败'
+                : !settingsReady
+                ? '正在读取整理设置'
+                : aggregationEnabled
+                ? '每小时整理一次'
+                : '已关闭',
+            latestRun: aggregationRun,
+          ),
+          _ProcessingStageSection(
+            title: '发送整理后的内容',
+            policyEnabled: settingsReady ? aggregationPushEnabled : null,
+            onPolicyChanged: (value) => ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'enable_aggregation_push',
+                  value,
+                  category: 'automation',
+                ),
+            icon: Icons.outbound_rounded,
+            tone: settingsState.hasError
+                ? _StageTone.warning
+                : !settingsReady
+                ? _StageTone.loading
+                : aggregationPushEnabled
+                ? _StageTone.ok
+                : _StageTone.inactive,
+            status: settingsState.hasError
+                ? '发送设置读取失败'
+                : !settingsReady
+                ? '正在读取发送设置'
+                : aggregationPushEnabled
+                ? '按分发规则发送'
+                : '已关闭',
+          ),
+          _ProcessingStageSection(
+            title: '搜索索引',
+            policyEnabled: settingsReady ? semanticEnabled : null,
+            onPolicyChanged: (value) => ref
+                .read(systemSettingsProvider.notifier)
+                .updateSetting(
+                  'enable_auto_semantic_indexing',
+                  value,
+                  category: 'automation',
+                ),
+            icon: Icons.manage_search_rounded,
+            tone: semanticState.hasError || settingsState.hasError
+                ? _StageTone.warning
+                : !settingsReady || semantic == null
+                ? _StageTone.loading
+                : !semanticEnabled
+                ? _StageTone.inactive
+                : _toneForRun(semanticRun),
+            status: semanticState.hasError
+                ? '语义索引状态读取失败'
+                : settingsState.hasError
+                ? '自动索引策略读取失败'
+                : semantic == null
+                ? '正在读取索引状态'
+                : semanticEnabled
+                ? null
+                : '自动索引已关闭',
+            statistics: semantic == null
+                ? const []
+                : ['已索引 $indexed', '待索引 $pending'],
+            latestRun: semanticRun,
+          ),
+        ],
       ),
     ];
   }
@@ -301,7 +324,7 @@ class _StageGroupHeading extends StatelessWidget {
         ),
         if (showModelSettings)
           TextButton(
-            onPressed: () => context.push('/settings?tab=automation'),
+            onPressed: () => context.go('/settings?tab=automation'),
             child: const Text('模型配置'),
           ),
       ],
@@ -315,6 +338,7 @@ class _ProcessingStageSection extends StatefulWidget {
     required this.icon,
     required this.tone,
     required this.status,
+    this.statistics = const [],
     this.settingsPath,
     this.settingsLabel,
     this.policyEnabled,
@@ -326,7 +350,8 @@ class _ProcessingStageSection extends StatefulWidget {
   final String title;
   final IconData icon;
   final _StageTone tone;
-  final String status;
+  final String? status;
+  final List<String> statistics;
   final String? settingsPath;
   final String? settingsLabel;
   final bool? policyEnabled;
@@ -363,10 +388,9 @@ class _ProcessingStageSectionState extends State<_ProcessingStageSection> {
     final cs = theme.colorScheme;
     final toneColor = _toneColor(cs, widget.tone);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: EdgeInsets.zero,
       child: Material(
-        color: cs.surfaceContainerLow,
-        borderRadius: AppShape.cardBorder,
+        type: MaterialType.transparency,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Column(
@@ -399,7 +423,16 @@ class _ProcessingStageSectionState extends State<_ProcessingStageSection> {
                 ],
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text(widget.status, style: theme.textTheme.bodyMedium),
+              if (widget.status != null)
+                Text(widget.status!, style: theme.textTheme.bodyMedium),
+              if (widget.statistics.isNotEmpty) ...[
+                if (widget.status != null)
+                  const SizedBox(height: AppSpacing.xxs),
+                MetadataWrap(
+                  items: widget.statistics,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
               if (_saveError != null)
                 Text(
                   _saveError!,
@@ -482,9 +515,8 @@ class _StageBadge extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         child: Text(
           label,
-          style: Theme.of(
-            context,
-          ).textTheme.labelMedium?.copyWith(color: color),
+          style: Theme.of(context).textTheme.labelMedium
+              ?.copyWith(color: color),
         ),
       ),
     );

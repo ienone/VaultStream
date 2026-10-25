@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../theme/design_tokens.dart';
@@ -27,7 +27,7 @@ class AgentCitationTile extends StatelessWidget {
         final total = seconds.floor();
         final minutes = total ~/ 60;
         final remainder = (total % 60).toString().padLeft(2, '0');
-        return '$minutes:$remainder · 音视频片段';
+        return '从 $minutes:$remainder 开始的音视频片段';
       case AgentCitationKind.event:
         return '知识事件';
       case AgentCitationKind.content:
@@ -65,7 +65,7 @@ class AgentCitationTile extends StatelessWidget {
         titleAlignment: ListTileTitleAlignment.titleHeight,
         leading: Icon(icon, size: 20, color: theme.colorScheme.primary),
         title: Text(
-          citation.title,
+          citation.title.isEmpty ? _location : citation.title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyMedium,
@@ -73,7 +73,8 @@ class AgentCitationTile extends StatelessWidget {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_location, style: theme.textTheme.labelMedium),
+            if (citation.title.isNotEmpty)
+              Text(_location, style: theme.textTheme.labelMedium),
             if (showExcerpt && excerpt.isNotEmpty)
               Text(excerpt, maxLines: 2, overflow: TextOverflow.ellipsis),
           ],

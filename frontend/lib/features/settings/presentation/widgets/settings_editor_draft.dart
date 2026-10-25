@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Keeps an editor's draft across theme changes and lazy-list recycling.
 class SettingsEditorDraft extends StatefulWidget {

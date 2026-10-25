@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../theme/design_tokens.dart';
+import '../../../core/widgets/animated_expansion.dart';
 import '../models/agent_result.dart';
 import 'agent_citation_tile.dart';
 
@@ -20,11 +21,8 @@ class AgentToolEvent extends StatefulWidget {
   State<AgentToolEvent> createState() => _AgentToolEventState();
 }
 
-class _AgentToolEventState extends State<AgentToolEvent>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _animation;
-  late final Animation<double> _height;
-  late bool _expanded;
+class _AgentToolEventState extends State<AgentToolEvent> {
+  bool _expanded = false;
 
   bool get _failed =>
       !widget.running &&
@@ -48,45 +46,7 @@ class _AgentToolEventState extends State<AgentToolEvent>
     return true;
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _expanded = false;
-    _animation =
-        AnimationController(
-          vsync: this,
-          duration: AppMotion.stateChange,
-          value: _expanded ? 1 : 0,
-        )..addStatusListener((status) {
-          if (status == AnimationStatus.dismissed && mounted) setState(() {});
-        });
-    _height = _animation.drive(CurveTween(curve: AppMotion.standardCurve));
-  }
-
-  void _setExpanded(bool expanded) {
-    setState(() => _expanded = expanded);
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _animation.value = expanded ? 1 : 0;
-    } else if (expanded) {
-      _animation.forward();
-    } else {
-      _animation.reverse();
-    }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _animation.value = _expanded ? 1 : 0;
-    }
-  }
-
-  @override
-  void dispose() {
-    _animation.dispose();
-    super.dispose();
-  }
+  void _setExpanded(bool expanded) => setState(() => _expanded = expanded);
 
   @override
   Widget build(BuildContext context) {
@@ -131,16 +91,32 @@ class _AgentToolEventState extends State<AgentToolEvent>
                         ),
                         const SizedBox(width: AppSpacing.xs),
                         Expanded(
-                          child: Text(
-                            '${_toolLabel(widget.event['tool'])} · $statusLabel',
-                            style: theme.textTheme.labelMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
+                          child: Wrap(
+                            spacing: AppSpacing.md,
+                            runSpacing: AppSpacing.xxs,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                _toolLabel(widget.event['tool']),
+                                style: theme.textTheme.labelLarge,
+                              ),
+                              Text(
+                                statusLabel,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: _failed
+                                      ? theme.colorScheme.error
+                                      : theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         if (_hasDetails)
-                          RotationTransition(
-                            turns: _height.drive(Tween(begin: 0.0, end: 0.5)),
+                          AnimatedRotation(
+                            turns: _expanded ? .5 : 0,
+                            duration: MediaQuery.disableAnimationsOf(context)
+                                ? Duration.zero
+                                : AppMotion.stateChange,
                             child: const Icon(Icons.expand_more_rounded),
                           ),
                       ],
@@ -165,9 +141,9 @@ class _AgentToolEventState extends State<AgentToolEvent>
                   ],
                 ),
               ),
-            if (_hasDetails && (_expanded || !_animation.isDismissed))
-              SizeTransition(
-                sizeFactor: _height,
+            if (_hasDetails)
+              AnimatedExpansion(
+                expanded: _expanded,
                 alignment: Alignment.topCenter,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(

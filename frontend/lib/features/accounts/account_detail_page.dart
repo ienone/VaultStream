@@ -1,12 +1,15 @@
+import '../../core/layout/app_page_body.dart';
 import '../settings/presentation/tabs/push_tab.dart';
 import '../automation/widgets/favorites_sync_automation_panel.dart';
 import '../settings/providers/favorites_sync_provider.dart';
 import 'telegram_account_page.dart';
 import '../../routing/app_navigation.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/widgets/predictive_back_dialog.dart';
+
+import '../../core/widgets/metadata_wrap.dart';
 
 import '../../core/layout/responsive_layout.dart';
 import '../../core/network/api_client.dart';
@@ -17,28 +20,28 @@ import '../settings/providers/platform_auth_controller.dart';
 import '../settings/providers/platform_health_provider.dart';
 
 class AccountDetailPage extends ConsumerWidget {
-  const AccountDetailPage({super.key, required this.platform});
+  const AccountDetailPage({super.key, required this.platform, this.onClose});
+
+  final VoidCallback? onClose;
 
   final String platform;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (platform == 'telegram') return const TelegramAccountPage();
+    if (platform == 'telegram') return TelegramAccountPage(onClose: onClose);
     if (platform == 'qq') {
       return Scaffold(
         appBar: AppBar(
-          leading: const AppBackButton(fallback: '/accounts'),
+          leading: onClose == null
+              ? const AppBackButton(fallback: '/accounts')
+              : BackButton(onPressed: onClose),
           title: const Text('QQ'),
         ),
-        body: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: AppPane.readableMaxWidth,
-            ),
-            child: const SingleChildScrollView(
-              padding: EdgeInsets.all(20),
-              child: PushTab(platform: 'qq'),
-            ),
+        body: AppPageBody(
+          maxWidth: 720,
+          child: const SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: PushTab(platform: 'qq'),
           ),
         ),
       );
@@ -46,7 +49,9 @@ class AccountDetailPage extends ConsumerWidget {
     final health = ref.watch(platformHealthProvider);
     return Scaffold(
       appBar: AppBar(
-        leading: const AppBackButton(fallback: '/accounts'),
+        leading: onClose == null
+            ? const AppBackButton(fallback: '/accounts')
+            : BackButton(onPressed: onClose),
         title: Text(
           health.maybeWhen(
             data: (data) => _findPlatform(data, platform)?.label ?? '平台账号详情',
@@ -132,21 +137,18 @@ class _AccountDetailBody extends ConsumerWidget {
       animationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
-      builder: (dialogContext) => PredictiveBackDialog(
-        child: AlertDialog(
-          title: Text('清除 ${account.label} 登录'),
-          content: const Text('只清除 VaultStream 保存的登录信息，不会修改平台账号本身。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('清除登录'),
-            ),
-          ],
-        ),
+      builder: (dialogContext) => AlertDialog(
+        title: Text('清除 ${account.label} 登录'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('清除登录'),
+          ),
+        ],
       ),
     );
     if (confirmed != true || !context.mounted) return;
@@ -166,25 +168,23 @@ class _AccountDetailBody extends ConsumerWidget {
       final metrics = WindowMetrics.fromSize(
         Size(constraints.maxWidth, constraints.maxHeight),
       );
-      return Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-          child: ListView(
-            padding: EdgeInsets.all(
-              metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
-            ),
-            children: [
-              _AccountOverview(
-                account: account,
-                controls: _AccountControls(
-                  account: account,
-                  onLogin: () => _login(context, ref),
-                  onCheck: () => _check(context, ref),
-                  onLogout: () => _logout(context, ref),
-                ),
-              ),
-            ],
+      return AppPageBody(
+        maxWidth: 720,
+        child: ListView(
+          padding: EdgeInsets.all(
+            metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
           ),
+          children: [
+            _AccountOverview(
+              account: account,
+              controls: _AccountControls(
+                account: account,
+                onLogin: () => _login(context, ref),
+                onCheck: () => _check(context, ref),
+                onLogout: () => _logout(context, ref),
+              ),
+            ),
+          ],
         ),
       );
     },
@@ -215,20 +215,14 @@ class _AccountOverview extends ConsumerWidget {
             ),
           ],
         ),
-        const SizedBox(height: AppSpacing.sm),
-        if (account.issues.isEmpty)
-          Text(
-            status.description,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          )
-        else
+        if (account.issues.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
           for (final issue in account.issues)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: Text(issue, style: theme.textTheme.bodyMedium),
             ),
+        ],
         const SizedBox(height: AppSpacing.md),
         controls,
         if (account.issues.isNotEmpty) ...[
@@ -310,26 +304,27 @@ class _AccountControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = ref.watch(platformAuthActionsProvider);
     final busy = pending.any((key) => key.startsWith('${account.platform}:'));
-    return Row(
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         if (account.browserAuthSupported || account.platform == 'twitter')
-          Expanded(
-            child: FilledButton.tonalIcon(
-              onPressed: busy ? null : onLogin,
-              icon: Icon(
-                account.platform == 'twitter'
-                    ? Icons.key_rounded
-                    : Icons.qr_code_2_rounded,
-              ),
-              label: Text(
-                account.platform == 'twitter'
-                    ? '保存网页登录'
-                    : !account.hasCookie
-                    ? '连接账号'
-                    : account.browserAuthValid == false
-                    ? '重新登录'
-                    : '更新登录',
-              ),
+          FilledButton.tonalIcon(
+            onPressed: busy ? null : onLogin,
+            icon: Icon(
+              account.platform == 'twitter'
+                  ? Icons.key_rounded
+                  : Icons.qr_code_2_rounded,
+            ),
+            label: Text(
+              account.platform == 'twitter'
+                  ? '保存网页登录'
+                  : !account.hasCookie
+                  ? '连接账号'
+                  : account.browserAuthValid == false
+                  ? '重新登录'
+                  : '更新登录',
             ),
           ),
         if (account.hasCookie)
@@ -402,8 +397,11 @@ class _LastSyncCard extends StatelessWidget {
         borderRadius: AppShape.cardMediaBorder,
       ),
       title: const Text('最近收藏同步'),
-      subtitle: Text(
-        '${_runStatus(status)}${startedAt == null ? '' : ' · ${_formatDate(startedAt)}'}',
+      subtitle: MetadataWrap(
+        items: [
+          _runStatus(status),
+          if (startedAt != null) _formatDate(startedAt),
+        ],
       ),
       trailing: runId == null || runId.isEmpty
           ? null
@@ -463,17 +461,11 @@ class _UnknownAccount extends StatelessWidget {
   );
 }
 
-({
-  String label,
-  String description,
-  IconData icon,
-  Color Function(ColorScheme) color,
-})
+({String label, IconData icon, Color Function(ColorScheme) color})
 _accountStatus(PlatformHealthStatus account) {
   if (account.browserAuthValid == false || account.health == 'error') {
     return (
-      label: '需要处理',
-      description: account.issues.isEmpty ? '账号检查返回异常。' : account.issues.first,
+      label: account.browserAuthValid == false ? '登录失效' : '账号异常',
       icon: Icons.error_outline_rounded,
       color: (scheme) => scheme.error,
     );
@@ -481,18 +473,12 @@ _accountStatus(PlatformHealthStatus account) {
   if (!account.hasCookie) {
     return (
       label: '尚未连接',
-      description: account.browserAuthSupported
-          ? '点击“连接账号”登录。'
-          : '该平台需要通过手动配置提供登录信息。',
       icon: Icons.account_circle_outlined,
       color: (scheme) => scheme.outline,
     );
   }
   return (
-    label: '已连接',
-    description: account.browserAuthValid == true
-        ? '最近一次登录有效性检查通过。'
-        : 'VaultStream 已保存登录信息，尚无最近有效性结论。',
+    label: account.browserAuthValid == true ? '已连接' : '登录待检查',
     icon: Icons.verified_user_outlined,
     color: (scheme) => scheme.primary,
   );

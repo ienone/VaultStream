@@ -1,7 +1,13 @@
-import 'package:flutter/material.dart';
+import '../../../../core/layout/app_page_body.dart';
+
+import 'package:material_ui/material_ui.dart';
+
+import '../../../../core/widgets/metadata_wrap.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
+
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../../utils/setting_value.dart';
@@ -10,63 +16,60 @@ import '../widgets/settings_editor_draft.dart';
 import '../widgets/settings_slider.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../discovery/providers/discovery_settings_provider.dart';
-import '../../../discovery/providers/discovery_sources_provider.dart';
 import '../../../discovery/models/discovery_models.dart';
-import '../../../../theme/design_tokens.dart';
-import '../../../../core/widgets/adaptive_form_dialog.dart';
 import '../../../../core/widgets/app_filter_menu.dart';
 
-class AutomationTab extends ConsumerWidget {
-  const AutomationTab({super.key, this.sourcesOnly = false});
+enum AutomationView { models, policy }
 
-  final bool sourcesOnly;
+class AutomationTab extends ConsumerStatefulWidget {
+  const AutomationTab({super.key, this.view = AutomationView.models});
+
+  final AutomationView view;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<AutomationTab> createState() => _AutomationTabState();
+}
+
+class _AutomationTabState extends ConsumerState<AutomationTab> {
+  @override
+  Widget build(BuildContext context) {
     final settingsAsync = ref.watch(systemSettingsProvider);
-    final content = ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      children: sourcesOnly
-          ? [
-              _buildDiscoverySources(
-                context,
-                ref,
-                ref.watch(discoverySourcesProvider),
-              ),
-              const SizedBox(height: 8),
-              const SectionHeader(title: '筛选与保留'),
+    final content = widget.view == AutomationView.policy
+        ? ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            children: [
               _buildAutomationPolicySettings(context, ref, settingsAsync),
+              const SizedBox(height: 24),
               _buildPatrolSettings(
                 context,
                 ref,
                 ref.watch(discoverySettingsStateProvider),
               ),
-            ]
-          : [
+            ],
+          )
+        : ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            children: [
               _buildLlmSettings(
                 context,
                 ref,
                 settingsAsync,
                 ref.watch(semanticIndexStatusProvider),
               ),
-              _buildContentGenSettings(context, ref, settingsAsync),
               const SizedBox(height: 24),
               ExpandableSettingTile(
                 title: '能力与连通性',
-                expandedContent: _buildAiCapabilitySummary(
-                  context,
-                  ref,
-                  ref.watch(aiCapabilitiesProvider),
+                expandedContent: Consumer(
+                  builder: (context, ref, _) => _buildAiCapabilitySummary(
+                    context,
+                    ref,
+                    ref.watch(aiCapabilitiesProvider),
+                  ),
                 ),
               ),
             ],
-    );
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: content,
-      ),
-    );
+          );
+    return AppPageBody(child: content);
   }
 
   Widget _buildAutomationPolicySettings(
@@ -84,15 +87,15 @@ class AutomationTab extends ConsumerWidget {
           getSettingValue(settings, 'enable_ai_scoring', true),
           true,
         );
-        return Column(
+        return SettingGroup(
           children: [
-            SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              shape: const RoundedRectangleBorder(
-                borderRadius: AppShape.cardMediaBorder,
+            SettingSwitch(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 8,
               ),
-              title: const Text('发现巡逻'),
-              subtitle: Text(discoveryPatrolEnabled ? '自动检查新发现的内容' : '已暂停自动检查'),
+              shape: const RoundedRectangleBorder(),
+              title: const Text('自动检查新内容'),
               value: discoveryPatrolEnabled,
               onChanged: (value) => ref
                   .read(systemSettingsProvider.notifier)
@@ -102,15 +105,13 @@ class AutomationTab extends ConsumerWidget {
                     category: 'automation',
                   ),
             ),
-            SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              shape: const RoundedRectangleBorder(
-                borderRadius: AppShape.cardMediaBorder,
+            SettingSwitch(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 20,
+                vertical: 8,
               ),
+              shape: const RoundedRectangleBorder(),
               title: const Text('AI 评分'),
-              subtitle: Text(
-                aiScoringEnabled ? '按兴趣筛选内容，并补充标签和摘要' : '保留内容，不进行 AI 评分',
-              ),
               value: aiScoringEnabled,
               onChanged: (value) => ref
                   .read(systemSettingsProvider.notifier)
@@ -124,8 +125,9 @@ class AutomationTab extends ConsumerWidget {
         );
       },
       loading: () => const LoadingGroup(),
-      error: (error, _) =>
-          Text(formatApiErrorMessage(error, fallbackMessage: '自动化策略加载失败')),
+      error: (error, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(systemSettingsProvider),
+      ),
     );
   }
 
@@ -135,109 +137,79 @@ class AutomationTab extends ConsumerWidget {
     AsyncValue<DiscoverySettings> settingsAsync,
   ) {
     return settingsAsync.when(
-      data: (settings) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      data: (settings) => SettingGroup(
         children: [
           ExpandableSettingTile(
             title: '兴趣偏好',
-            subtitle: '描述你感兴趣的领域与内容',
             expandedContent: _buildInterestProfileEditor(
               context,
               ref,
               settings.interestProfile,
             ),
           ),
-          const Gap(16),
-          SettingsSlider(
-            title: 'AI 评分阈值',
-            min: 0,
-            max: 10,
-            divisions: 20,
-            formatValue: (value) => value.toStringAsFixed(1),
-            errorMessage: '评分阈值保存失败',
-            value: settings.scoreThreshold,
-            onSaved: (value) => ref
-                .read(discoverySettingsStateProvider.notifier)
-                .updateSettings(scoreThreshold: value),
+
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: SettingsSlider(
+              title: 'AI 评分阈值',
+              min: 0,
+              max: 10,
+              divisions: 20,
+              formatValue: (value) => value.toStringAsFixed(1),
+              errorMessage: '评分阈值保存失败',
+              value: settings.scoreThreshold,
+              onSaved: (value) => ref
+                  .read(discoverySettingsStateProvider.notifier)
+                  .updateSettings(scoreThreshold: value),
+            ),
           ),
-          const Gap(24),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
-              final width = constraints.maxWidth >= 600 * scale
-                  ? (constraints.maxWidth - 16) / 2
-                  : constraints.maxWidth;
-              final days = {1, 3, 7, 15, 30, settings.retentionDays}.toList()
-                ..sort();
-              return Wrap(
-                spacing: 16,
-                runSpacing: 24,
-                children: [
-                  SizedBox(
-                    width: width,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        AppFilterMenu(
-                          label: '候选保留时间',
-                          value: '${settings.retentionDays}',
-                          options: {for (final day in days) '$day': '$day 天'},
-                          onOpened: () => FocusScope.of(context).unfocus(),
-                          onSelected: (value) => ref
-                              .read(discoverySettingsStateProvider.notifier)
-                              .updateSettings(retentionDays: int.parse(value)),
-                        ),
-                        const Gap(8),
-                        Text(
-                          '到期后按所选方式处理；修改仅影响新候选。',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    width: width,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        AppFilterMenu(
-                          label: '清理方式',
-                          value: settings.cleanupMode,
-                          options: const {
-                            'hard_delete': '删除',
-                            'expire_only': '仅标记过期',
-                            'archive': '归档',
-                          },
-                          onOpened: () => FocusScope.of(context).unfocus(),
-                          onSelected: (value) => ref
-                              .read(discoverySettingsStateProvider.notifier)
-                              .updateSettings(cleanupMode: value),
-                        ),
-                        const Gap(8),
-                        Text(
-                          _cleanupModeDescription(settings.cleanupMode),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
+
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: AppFilterMenuRow(
+              menus: [
+                AppFilterMenu(
+                  label: '候选保留时间',
+                  value: '${settings.retentionDays}',
+                  options: {
+                    for (final day in ({
+                      1,
+                      3,
+                      7,
+                      15,
+                      30,
+                      settings.retentionDays,
+                    }.toList()..sort()))
+                      '$day': '$day 天',
+                  },
+                  onOpened: () => FocusScope.of(context).unfocus(),
+                  onSelected: (value) => ref
+                      .read(discoverySettingsStateProvider.notifier)
+                      .updateSettings(retentionDays: int.parse(value)),
+                ),
+                AppFilterMenu(
+                  label: '清理方式',
+                  value: settings.cleanupMode,
+                  options: const {
+                    'hard_delete': '删除',
+                    'expire_only': '仅标记过期',
+                    'archive': '归档',
+                  },
+                  onOpened: () => FocusScope.of(context).unfocus(),
+                  onSelected: (value) => ref
+                      .read(discoverySettingsStateProvider.notifier)
+                      .updateSettings(cleanupMode: value),
+                ),
+              ],
+            ),
           ),
         ],
       ),
       loading: () => const LoadingGroup(),
-      error: (error, _) => const Text('加载失败'),
+      error: (error, _) => SettingLoadFailure(
+        onRetry: () => ref.invalidate(discoverySettingsStateProvider),
+      ),
     );
-  }
-
-  String _cleanupModeDescription(String mode) {
-    return switch (mode) {
-      'expire_only' => '过期候选只标记为已过期，不自动删除。',
-      'archive' => '隐藏过期或已忽略的候选，并保留记录。',
-      _ => '过期或已忽略的候选将被永久删除。',
-    };
   }
 
   Widget _buildInterestProfileEditor(
@@ -288,210 +260,45 @@ class AutomationTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildDiscoverySources(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<List<DiscoverySource>> sourcesAsync,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                '发现来源',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () => _showAddSourceDialog(context, ref),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('添加'),
-            ),
-          ],
-        ),
-        const Gap(8),
-        sourcesAsync.when(
-          data: (sources) => sources.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('还没有发现来源'),
-                )
-              : Column(
-                  children: [
-                    for (final source in sources)
-                      _buildSourceTile(context, ref, source),
-                  ],
-                ),
-          loading: () => const LoadingGroup(),
-          error: (error, _) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                formatApiErrorMessage(
-                  error,
-                  fallbackMessage: '暂时无法读取来源列表',
-                  includeRequestId: false,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => ref.invalidate(discoverySourcesProvider),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('重新加载'),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSourceTile(
-    BuildContext context,
-    WidgetRef ref,
-    DiscoverySource source,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            shape: const RoundedRectangleBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            title: Text(source.name),
-            subtitle: Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                Text(source.kind == 'rss' ? 'RSS' : 'Telegram 频道'),
-                Text('每 ${_sourceIntervalLabel(source.syncIntervalMinutes)}同步'),
-              ],
-            ),
-            trailing: const Icon(Icons.edit_outlined, size: 20),
-            onTap: () => _showEditSourceDialog(context, ref, source),
-          ),
-          Wrap(
-            spacing: 20,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('启用'),
-                  const Gap(8),
-                  Semantics(
-                    label: '启用${source.name}',
-                    child: Switch(
-                      value: source.enabled,
-                      onChanged: (value) => ref
-                          .read(discoverySourcesProvider.notifier)
-                          .updateSource(source.id, enabled: value),
-                    ),
-                  ),
-                ],
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.sync_rounded),
-                label: const Text('立即同步'),
-                onPressed: !source.enabled
-                    ? null
-                    : () async {
-                        try {
-                          final runId = await ref
-                              .read(discoverySourcesProvider.notifier)
-                              .triggerSync(source.id);
-                          if (context.mounted) {
-                            final suffix = runId == null
-                                ? ''
-                                : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-                            showToast(context, '已手动触发同步$suffix');
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            showToast(
-                              context,
-                              formatApiErrorMessage(
-                                e,
-                                fallbackMessage: '手动同步失败',
-                              ),
-                            );
-                          }
-                        }
-                      },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildContentGenSettings(
-    BuildContext context,
-    WidgetRef ref,
-    AsyncValue<List<SystemSetting>> settingsAsync,
-  ) {
-    return settingsAsync.when(
-      data: (settings) {
-        return ExpandableSettingTile(
-          title: '摘要模型',
-          subtitle: _getSummarySubtitle(settings),
-          expandedContent: _buildModelConfigEditor(context, ref, 'summary'),
-        );
-      },
-      loading: () => const LoadingGroup(),
-      error: (error, stackTrace) => const Text('摘要配置读取失败，请刷新后重试'),
-    );
-  }
-
   Widget _buildLlmSettings(
     BuildContext context,
     WidgetRef ref,
     AsyncValue<List<SystemSetting>> settingsAsync,
     AsyncValue<Map<String, dynamic>> semanticStatusAsync,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  ) => settingsAsync.when(
+    data: (settings) => SettingGroup(
       children: [
-        settingsAsync.when(
-          data: (settings) => Column(
-            children: [
-              ExpandableSettingTile(
-                title: '通用模型（文字与图像）',
-                subtitle: _getLlmSubtitle(settings),
-                expandedContent: _buildModelConfigEditor(
-                  context,
-                  ref,
-                  'text_llm',
-                ),
-              ),
-              ExpandableSettingTile(
-                title: '向量模型',
-                subtitle: _getEmbeddingSubtitle(settings),
-                expandedContent: _buildModelConfigEditor(
-                  context,
-                  ref,
-                  'embedding',
-                  footer: _buildSemanticIndexStatus(
-                    context,
-                    ref,
-                    semanticStatusAsync,
-                  ),
-                ),
-              ),
-            ],
+        ExpandableSettingTile(
+          title: '通用模型（文字与图像）',
+          subtitle: _getLlmSubtitle(settings),
+          expandedContent: _buildModelConfigEditor(context, ref, 'text_llm'),
+        ),
+        ExpandableSettingTile(
+          title: '向量模型',
+          subtitle: _getEmbeddingSubtitle(settings),
+          expandedContent: _buildModelConfigEditor(
+            context,
+            ref,
+            'embedding',
+            footer: _buildSemanticIndexStatus(
+              context,
+              ref,
+              semanticStatusAsync,
+            ),
           ),
-          loading: () => const LoadingGroup(),
-          error: (error, _) => const Text('加载失败'),
+        ),
+        ExpandableSettingTile(
+          title: '摘要模型',
+          subtitle: _getSummarySubtitle(settings),
+          expandedContent: _buildModelConfigEditor(context, ref, 'summary'),
         ),
       ],
-    );
-  }
+    ),
+    loading: () => const LoadingGroup(),
+    error: (error, _) => SettingLoadFailure(
+      onRetry: () => ref.invalidate(systemSettingsProvider),
+    ),
+  );
 
   Widget _buildAiCapabilitySummary(
     BuildContext context,
@@ -642,7 +449,7 @@ class AutomationTab extends ConsumerWidget {
         ? Map<String, dynamic>.from(connectivity['result'] as Map)
         : <String, dynamic>{};
     final elapsed = result['elapsed_ms'];
-    final suffix = elapsed == null ? '' : ' · ${elapsed}ms';
+    final suffix = elapsed == null ? '' : '，耗时 $elapsed 毫秒';
     if (status == 'success') {
       return '最近测试成功$suffix';
     }
@@ -707,40 +514,6 @@ class AutomationTab extends ConsumerWidget {
     }
   }
 
-  void _showAddSourceDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (ctx) => _SourceEditDialog(
-        onSave: (source) =>
-            ref.read(discoverySourcesProvider.notifier).createSource(source),
-      ),
-    );
-  }
-
-  void _showEditSourceDialog(
-    BuildContext context,
-    WidgetRef ref,
-    DiscoverySource source,
-  ) {
-    showDialog(
-      context: context,
-      builder: (ctx) => _SourceEditDialog(
-        initialSource: source,
-        onSave: (updated) => ref
-            .read(discoverySourcesProvider.notifier)
-            .updateSource(
-              source.id,
-              name: updated.name,
-              enabled: updated.enabled,
-              config: updated.config,
-              syncIntervalMinutes: updated.syncIntervalMinutes,
-            ),
-        onDelete: () =>
-            ref.read(discoverySourcesProvider.notifier).deleteSource(source.id),
-      ),
-    );
-  }
-
   String _maskKey(String key) {
     if (key.isEmpty) return '未配置';
     if (key.length <= 8) return '********';
@@ -749,7 +522,7 @@ class AutomationTab extends ConsumerWidget {
 
   bool _isEnvConfigured(String value) => value.startsWith('***');
 
-  String _getLlmSubtitle(List<SystemSetting> settings) {
+  Widget _getLlmSubtitle(List<SystemSetting> settings) {
     const prefix = 'text_llm';
     final model =
         settings
@@ -770,13 +543,12 @@ class AutomationTab extends ConsumerWidget {
             as String? ??
         '';
 
-    if (model.isEmpty && apiKey.isEmpty) return '未配置';
+    if (model.isEmpty && apiKey.isEmpty) return const Text('未配置');
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
-    if (model.isEmpty) return keyLabel;
-    return '$model • $keyLabel';
+    return MetadataWrap(items: [if (model.isNotEmpty) model, keyLabel]);
   }
 
-  String _getSummarySubtitle(List<SystemSetting> settings) {
+  Widget _getSummarySubtitle(List<SystemSetting> settings) {
     final model =
         settings
                 .firstWhere(
@@ -796,13 +568,13 @@ class AutomationTab extends ConsumerWidget {
             as String? ??
         '';
 
-    if (model.isEmpty && apiKey.isEmpty) return '未配置';
+    if (model.isEmpty && apiKey.isEmpty) return const Text('未配置');
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
     final modelLabel = model.isEmpty ? '使用默认模型' : model;
-    return '$modelLabel • $keyLabel';
+    return MetadataWrap(items: [modelLabel, keyLabel]);
   }
 
-  String _getEmbeddingSubtitle(List<SystemSetting> settings) {
+  Widget _getEmbeddingSubtitle(List<SystemSetting> settings) {
     final model =
         settings
                 .firstWhere(
@@ -826,10 +598,10 @@ class AutomationTab extends ConsumerWidget {
       1536,
     );
 
-    if (model.isEmpty && apiKey.isEmpty) return '未配置';
+    if (model.isEmpty && apiKey.isEmpty) return const Text('未配置');
     final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
     final modelLabel = model.isEmpty ? 'gemini-embedding-2' : model;
-    return '$modelLabel • $dimension 维 • $keyLabel';
+    return MetadataWrap(items: [modelLabel, '$dimension 维', keyLabel]);
   }
 
   Widget _buildModelConfigEditor(
@@ -946,7 +718,9 @@ class AutomationTab extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (_, _) => const Text('加载失败'),
+          error: (_, _) => SettingLoadFailure(
+            onRetry: () => ref.invalidate(systemSettingsProvider),
+          ),
         );
   }
 
@@ -1115,231 +889,6 @@ class AutomationTab extends ConsumerWidget {
   }
 }
 
-class _SourceEditDialog extends StatefulWidget {
-  final DiscoverySource? initialSource;
-  final Future<void> Function(DiscoverySource) onSave;
-  final Future<void> Function()? onDelete;
-
-  const _SourceEditDialog({
-    this.initialSource,
-    required this.onSave,
-    this.onDelete,
-  });
-
-  @override
-  State<_SourceEditDialog> createState() => _SourceEditDialogState();
-}
-
-class _SourceEditDialogState extends State<_SourceEditDialog> {
-  late TextEditingController _nameController;
-  late TextEditingController _urlController;
-  late TextEditingController _categoryController;
-  late String _kind;
-  late int _interval;
-  String? _pendingAction;
-  String? _error;
-
-  bool get _busy => _pendingAction != null;
-
-  Future<void> _runAction(String action, Future<void> Function() submit) async {
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _pendingAction = action;
-      _error = null;
-    });
-    try {
-      await submit();
-      if (mounted) Navigator.pop(context);
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _pendingAction = null;
-        _error = formatApiErrorMessage(
-          error,
-          fallbackMessage: action == 'delete' ? '来源删除失败，请稍后重试' : '来源保存失败，请稍后重试',
-          includeRequestId: false,
-        );
-      });
-    }
-  }
-
-  // 各来源类型的 URL 输入提示
-  static const Map<String, _KindMeta> _kindMeta = {
-    'rss': _KindMeta(
-      label: 'RSS',
-      urlLabel: 'RSS 订阅地址',
-      urlHint: 'https://example.com/rss.xml',
-    ),
-    'telegram_channel': _KindMeta(
-      label: 'Telegram 频道',
-      urlLabel: 'Telegram 频道链接',
-      urlHint: 'https://t.me/channelname',
-    ),
-  };
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController(
-      text: widget.initialSource?.name ?? '',
-    );
-    _urlController = TextEditingController(
-      text: widget.initialSource?.config['url'] ?? '',
-    );
-    _categoryController = TextEditingController(
-      text: widget.initialSource?.config['category'] ?? '',
-    );
-    _kind = widget.initialSource?.kind ?? 'rss';
-    _interval = widget.initialSource?.syncIntervalMinutes ?? 60;
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _urlController.dispose();
-    _categoryController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final meta = _kindMeta[_kind]!;
-    final intervals = {15, 30, 60, 120, 360, 1440, _interval}.toList()..sort();
-    return PopScope(
-      canPop: !_busy,
-      child: AdaptiveFormDialog(
-        title: widget.initialSource == null ? '添加来源' : '编辑来源',
-        contentBuilder: (context, width, short) => AbsorbPointer(
-          absorbing: _busy,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (widget.initialSource == null)
-                AppFilterMenu(
-                  label: '来源类型',
-                  value: _kind,
-                  options: {
-                    for (final entry in _kindMeta.entries)
-                      entry.key: entry.value.label,
-                  },
-                  onOpened: () => FocusScope.of(context).unfocus(),
-                  onSelected: (value) => setState(() => _kind = value),
-                )
-              else
-                Text(
-                  '来源类型：${meta.label}',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              const Gap(16),
-              _SettingsField(
-                controller: _nameController,
-                label: '名称',
-                hint: '如：IT之家',
-              ),
-              const Gap(16),
-              _SettingsField(
-                controller: _urlController,
-                label: meta.urlLabel,
-                hint: meta.urlHint,
-                keyboardType: TextInputType.url,
-              ),
-              const Gap(16),
-              _SettingsField(
-                controller: _categoryController,
-                label: '分类标签（可选）',
-                hint: '如：科技、新闻',
-              ),
-              const Gap(16),
-              AppFilterMenu(
-                label: '同步频率',
-                value: '$_interval',
-                options: {
-                  for (final minutes in intervals)
-                    '$minutes': _sourceIntervalLabel(minutes),
-                },
-                onOpened: () => FocusScope.of(context).unfocus(),
-                onSelected: (value) =>
-                    setState(() => _interval = int.parse(value)),
-              ),
-              if (_error != null) ...[
-                const Gap(16),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _error!,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: OverflowBar(
-          alignment: MainAxisAlignment.end,
-          spacing: 12,
-          overflowSpacing: 8,
-          children: [
-            if (widget.onDelete != null)
-              TextButton(
-                onPressed: _busy
-                    ? null
-                    : () => _runAction('delete', widget.onDelete!),
-                style: TextButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.error,
-                ),
-                child: Text(_pendingAction == 'delete' ? '删除中…' : '删除'),
-              ),
-            TextButton(
-              onPressed: _busy ? null : () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: _busy
-                  ? null
-                  : () {
-                      final url = _urlController.text.trim();
-                      final category = _categoryController.text.trim();
-                      final config = <String, dynamic>{'url': url};
-                      if (category.isNotEmpty) config['category'] = category;
-
-                      final source = DiscoverySource(
-                        id: widget.initialSource?.id ?? 0,
-                        kind: _kind,
-                        name: _nameController.text.trim(),
-                        enabled: widget.initialSource?.enabled ?? true,
-                        config: config,
-                        syncIntervalMinutes: _interval,
-                        createdAt:
-                            widget.initialSource?.createdAt ?? DateTime.now(),
-                      );
-                      _runAction('save', () => widget.onSave(source));
-                    },
-              child: Text(_pendingAction == 'save' ? '保存中…' : '保存'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 来源类型的元数据，用于驱动表单字段
-class _KindMeta {
-  final String label;
-  final String urlLabel;
-  final String urlHint;
-  const _KindMeta({
-    required this.label,
-    required this.urlLabel,
-    required this.urlHint,
-  });
-}
-
 class _SettingsField extends StatelessWidget {
   const _SettingsField({
     required this.controller,
@@ -1366,9 +915,8 @@ class _SettingsField extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           description!,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
       ],
       const SizedBox(height: 8),
@@ -1386,9 +934,6 @@ class _SettingsField extends StatelessWidget {
     ],
   );
 }
-
-String _sourceIntervalLabel(int minutes) =>
-    minutes % 60 == 0 ? '${minutes ~/ 60} 小时' : '$minutes 分钟';
 
 class _ModelSaveButton extends StatefulWidget {
   const _ModelSaveButton({required this.onSave});

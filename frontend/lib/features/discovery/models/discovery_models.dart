@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+
 import '../../../core/media/media_asset.dart';
 import '../../collection/models/content.dart';
 

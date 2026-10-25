@@ -1,15 +1,21 @@
+import '../../../../core/widgets/app_setting_group.dart';
+import '../../../../core/layout/app_page_body.dart';
+
 import 'package:go_router/go_router.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
-import '../../../../core/widgets/predictive_back_dialog.dart';
+import 'package:material_ui/material_ui.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/providers/local_settings_provider.dart';
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/utils/safe_url_launcher.dart';
 import '../../../../core/widgets/adaptive_form_dialog.dart';
+import '../../../../core/widgets/metadata_wrap.dart';
 import '../../../../core/network/api_client.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/platform_auth_controller.dart';
@@ -25,8 +31,10 @@ class ConnectionTab extends ConsumerWidget {
     super.key,
     this.accountsOnly = false,
     this.onOpenPlatform,
+    this.selectedPlatform,
   });
 
+  final String? selectedPlatform;
   final bool accountsOnly;
   final ValueChanged<PlatformHealthStatus>? onOpenPlatform;
 
@@ -35,56 +43,99 @@ class ConnectionTab extends ConsumerWidget {
     if (accountsOnly) {
       final platformHealthAsync = ref.watch(platformHealthProvider);
       return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 4,
-              vertical: 12,
-            ),
-            leading: const Icon(Icons.telegram_rounded),
-            title: const Text('Telegram'),
-            subtitle: const Text('个人账号、同步、机器人与群组'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.push('/accounts/telegram'),
-          ),
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 4,
-              vertical: 12,
-            ),
-            leading: const Icon(Icons.chat_bubble_outline_rounded),
-            title: const Text('QQ'),
-            subtitle: const Text('机器人与群组'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.push('/accounts/qq'),
-          ),
-          _buildPlatformHealthSection(context, ref, platformHealthAsync),
-          ref
-              .watch(systemSettingsProvider)
-              .when(
-                data: (settings) => SwitchListTile(
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('自动检查登录状态'),
-                  subtitle: const Text('关闭后停止后续定时检查，仍可手动检测'),
-                  value: parseBoolSetting(
-                    getSettingValue(settings, 'enable_cookie_keepalive', true),
-                    true,
-                  ),
-                  onChanged: (value) => ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'enable_cookie_keepalive',
-                        value,
-                        category: 'automation',
-                      ),
+          const SectionHeader(title: '消息账号'),
+          AppSettingGroup(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
                 ),
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) => const Text('登录检查策略暂时无法读取'),
+                leading: const Icon(Icons.telegram_rounded),
+                selected: selectedPlatform == 'telegram',
+                title: const Text('Telegram'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.go('/accounts/telegram'),
               ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                leading: const Icon(Icons.chat_bubble_outline_rounded),
+                selected: selectedPlatform == 'qq',
+                title: const Text('QQ'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.go('/accounts/qq'),
+              ),
+              ref
+                  .watch(systemSettingsProvider)
+                  .when(
+                    data: (settings) => SettingSwitch(
+                      title: const Text('允许机器人转存收藏'),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      value: parseBoolSetting(
+                        getSettingValue(settings, 'chat_capture_enabled', true),
+                        true,
+                      ),
+                      onChanged: (value) => ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'chat_capture_enabled',
+                            value,
+                            category: 'bot',
+                          ),
+                    ),
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, _) => SettingLoadFailure(
+                      onRetry: () => ref.invalidate(systemSettingsProvider),
+                    ),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const SectionHeader(title: '内容平台'),
+          _buildPlatformHealthSection(context, ref, platformHealthAsync),
+          AppSettingGroup(
+            children: [
+              ref
+                  .watch(systemSettingsProvider)
+                  .when(
+                    data: (settings) => SettingSwitch(
+                      shape: const RoundedRectangleBorder(),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      title: const Text('自动检查登录状态'),
+                      value: parseBoolSetting(
+                        getSettingValue(
+                          settings,
+                          'enable_cookie_keepalive',
+                          true,
+                        ),
+                        true,
+                      ),
+                      onChanged: (value) => ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'enable_cookie_keepalive',
+                            value,
+                            category: 'automation',
+                          ),
+                    ),
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, _) => SettingLoadFailure(
+                      onRetry: () => ref.invalidate(systemSettingsProvider),
+                    ),
+                  ),
+            ],
+          ),
           const SizedBox(height: 40),
         ],
       );
@@ -93,64 +144,65 @@ class ConnectionTab extends ConsumerWidget {
     final localSettings = ref.watch(localSettingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          children: [
-            ExpandableSettingTile(
-              title: '服务器地址',
-              subtitle: localSettings.baseUrl,
-              expandedContent: _buildBaseUrlEditor(
-                context,
-                ref,
-                localSettings.baseUrl,
-              ),
-            ),
-            ExpandableSettingTile(
-              title: 'API 访问密钥',
-              subtitle: _maskToken(localSettings.apiToken),
-              expandedContent: _buildApiTokenEditor(
-                context,
-                ref,
-                localSettings.apiToken,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 24),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.tonalIcon(
-                  onPressed: () => _testConnection(
-                    context,
-                    ref,
-                    localSettings.baseUrl,
-                    localSettings.apiToken,
-                  ),
-                  icon: const Icon(Icons.cell_tower_rounded),
-                  label: const Text('测试服务器连接'),
+    return AppPageBody(
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        children: [
+          SettingGroup(
+            children: [
+              ExpandableSettingTile(
+                title: '服务器地址',
+                subtitle: Text(localSettings.baseUrl),
+                expandedContent: _buildBaseUrlEditor(
+                  context,
+                  ref,
+                  localSettings.baseUrl,
                 ),
               ),
-            ),
-            ExpandableSettingTile(
-              title: '网络代理',
-              subtitle: _getProxySubtitle(ref),
-              expandedContent: _buildProxyEditor(context, ref),
-            ),
-            const SizedBox(height: 32),
-            Align(
+              ExpandableSettingTile(
+                title: 'API 访问密钥',
+                subtitle: Text(_maskToken(localSettings.apiToken)),
+                expandedContent: _buildApiTokenEditor(
+                  context,
+                  ref,
+                  localSettings.apiToken,
+                ),
+              ),
+              ExpandableSettingTile(
+                title: '网络代理',
+                subtitle: Text(_getProxySubtitle(ref)),
+                expandedContent: _buildProxyEditor(context, ref),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 24),
+            child: Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => _confirmLogout(context, ref),
-                style: TextButton.styleFrom(foregroundColor: colorScheme.error),
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('退出登录'),
+              child: FilledButton.tonalIcon(
+                onPressed: () => _testConnection(
+                  context,
+                  ref,
+                  localSettings.baseUrl,
+                  localSettings.apiToken,
+                ),
+                icon: const Icon(Icons.cell_tower_rounded),
+                label: const Text('测试服务器连接'),
               ),
             ),
-            const SizedBox(height: 40),
-          ],
-        ),
+          ),
+          const SizedBox(height: 32),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _confirmLogout(context, ref),
+              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('退出登录'),
+            ),
+          ),
+          const SizedBox(height: 40),
+        ],
       ),
     );
   }
@@ -167,22 +219,21 @@ class ConnectionTab extends ConsumerWidget {
         }
         return Padding(
           padding: const EdgeInsets.only(bottom: 24),
-          child: Column(
+          child: AppSettingGroup(
             children: [
               for (final platform in health.platforms)
                 ListTile(
+                  selected: selectedPlatform == platform.platform,
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 12,
+                    horizontal: 20,
+                    vertical: 8,
                   ),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
+                  shape: const RoundedRectangleBorder(),
                   title: Text(
                     platform.label,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  subtitle: Text(_platformHealthSubtitle(platform)),
+                  subtitle: MetadataWrap(items: _platformHealthFacts(platform)),
                   leading: Icon(
                     _platformHealthIcon(platform),
                     color: _platformHealthColor(context, platform),
@@ -220,7 +271,7 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
-  String _platformHealthSubtitle(PlatformHealthStatus platform) {
+  List<String> _platformHealthFacts(PlatformHealthStatus platform) {
     final parts = <String>[];
     if (platform.hasCookie) {
       parts.add(platform.browserAuthValid == false ? '登录失效' : '已配置登录');
@@ -241,7 +292,7 @@ class ConnectionTab extends ConsumerWidget {
         platform.favoritesAuthenticated != false) {
       parts.add('需要处理');
     }
-    return parts.join(' · ');
+    return parts;
   }
 
   IconData _platformHealthIcon(PlatformHealthStatus platform) {
@@ -282,11 +333,15 @@ class ConnectionTab extends ConsumerWidget {
     return _ConnectionValueEditor(
       initialValue: currentValue,
       label: '服务器地址',
-      hint: 'http://example.com/api/v1',
+      hint: 'https://vault.example.com',
       buttonLabel: '保存地址',
       onSave: (value) async {
-        await ref.read(localSettingsProvider.notifier).setBaseUrl(value);
-        if (context.mounted) showToast(context, 'API 地址已保存');
+        try {
+          await ref.read(localSettingsProvider.notifier).setBaseUrl(value);
+          if (context.mounted) showToast(context, '服务器地址已保存');
+        } on FormatException catch (error) {
+          if (context.mounted) showToast(context, error.message);
+        }
       },
     );
   }
@@ -408,11 +463,6 @@ class ConnectionTab extends ConsumerWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '一般情况下无需配置，仅用于高画质或会员内容。',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
                 const Text('SESSDATA（Cookie）'),
                 const SizedBox(height: 8),
                 Semantics(
@@ -523,27 +573,25 @@ class ConnectionTab extends ConsumerWidget {
       animationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
-      builder: (ctx) => PredictiveBackDialog(
-        child: AlertDialog(
-          title: const Text('退出登录'),
-          content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(localSettingsProvider.notifier).clearAuth();
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await ref.read(localSettingsProvider.notifier).clearAuth();
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-              child: const Text('退出'),
-            ),
-          ],
-        ),
+            child: const Text('退出'),
+          ),
+        ],
       ),
     );
   }
@@ -904,10 +952,6 @@ class _XSessionCookieDialogState extends ConsumerState<XSessionCookieDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '在你已登录的 x.com 网页中取得 auth_token 和 ct0，按下方格式填写。登录保存在当前 VaultStream 服务器；可在账号页清除。',
-            ),
-            const SizedBox(height: 16),
             TextField(
               controller: _controller,
               obscureText: true,

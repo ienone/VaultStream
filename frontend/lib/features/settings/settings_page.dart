@@ -1,11 +1,18 @@
-import 'package:flutter/material.dart';
+import '../../routing/overlay_back_observer.dart';
+import '../../theme/design_tokens.dart';
+import '../../core/layout/app_page_body.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/navigation_scope.dart';
-import '../../theme/design_tokens.dart';
+import '../../layout/root_page_actions.dart';
+import '../../core/widgets/app_setting_group.dart';
 import 'presentation/tabs/automation_tab.dart';
+import '../automation/widgets/processing_automation_panel.dart';
 import 'presentation/tabs/connection_tab.dart';
 import 'presentation/tabs/push_tab.dart';
 import 'presentation/tabs/system_tab.dart';
@@ -24,6 +31,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late bool _showMobileDetail;
   final _contentKey = GlobalKey();
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _backObserver = OverlayBackObserver();
   static const _detailPageKey = ValueKey('settings-detail-page');
 
   static const List<_SettingsSection> _sections = [
@@ -35,6 +43,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: ConnectionTab(),
     ),
     _SettingsSection(
+      key: 'processing',
+      title: '内容处理',
+      subtitle: '解析、摘要、索引与自动整理',
+      icon: Icons.tune_rounded,
+      child: ProcessingAutomationPanel(),
+    ),
+    _SettingsSection(
       key: 'automation',
       title: 'AI 模型',
       subtitle: '文本、视觉、摘要与语义模型',
@@ -42,25 +57,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: AutomationTab(),
     ),
     _SettingsSection(
-      key: 'sources',
-      title: '信息来源',
-      subtitle: '发现来源、兴趣与保留策略',
-      icon: Icons.rss_feed_rounded,
-      child: AutomationTab(sourcesOnly: true),
+      key: 'discovery',
+      title: '筛选与保留',
+      subtitle: '兴趣偏好、自动筛选和内容保留',
+      icon: Icons.filter_alt_outlined,
+      child: AutomationTab(view: AutomationView.policy),
     ),
     _SettingsSection(
       key: 'push',
-      title: '推送与通知',
-      subtitle: '应用内摘要与账号入口',
+      title: '通知',
+      subtitle: '应用内摘要与消息',
       icon: Icons.outbox_rounded,
       child: PushTab(),
-    ),
-    _SettingsSection(
-      key: 'targets',
-      title: '推送目标',
-      subtitle: '群组与频道',
-      icon: Icons.groups_outlined,
-      child: PushTab(targetsOnly: true),
     ),
     _SettingsSection(
       key: 'storage',
@@ -77,6 +85,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       child: SystemTab(),
     ),
   ];
+
+  @override
+  void dispose() {
+    _backObserver.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -103,7 +117,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         final metrics = WindowMetrics.fromSize(
           Size(constraints.maxWidth, constraints.maxHeight),
         );
-        final singlePane = !metrics.supportsSupportingPane;
+        final singlePane = !AppListDetailWorkspace.supportsSplit(
+          context,
+          availableSize: constraints.biggest,
+        );
         // Remember the detail actually shown by this layout, including when
         // a browser history entry clears the selected section query.
         if (!singlePane) _showMobileDetail = true;
@@ -123,20 +140,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: AppNavigationScope(
               child: Navigator(
                 key: _navigatorKey,
+                observers: [_backObserver],
                 pages: [
                   MaterialPage<void>(
                     key: const ValueKey('settings-list-page'),
                     child: Scaffold(
                       appBar: AppBar(
-                        toolbarHeight: metrics.heightClass.isCompact
-                            ? 48
-                            : null,
+                        toolbarHeight: metrics.toolbarHeight,
                         title: const Text('设置'),
+                        automaticallyImplyLeading: false,
                         leading: _exitButton(context),
                       ),
                       body: SafeArea(
                         top: false,
-                        child: _buildSectionList(context),
+                        child: AppPageBody(
+                          maxWidth: AppPane.readableMaxWidth,
+                          child: _buildSectionList(context),
+                        ),
                       ),
                     ),
                   ),
@@ -147,9 +167,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       child: singlePane
                           ? Scaffold(
                               appBar: AppBar(
-                                toolbarHeight: metrics.heightClass.isCompact
-                                    ? 48
-                                    : null,
+                                toolbarHeight: metrics.toolbarHeight,
                                 title: Text(selected.title),
                                 leading: BackButton(
                                   onPressed: () =>
@@ -158,7 +176,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               ),
                               body: SafeArea(
                                 top: false,
-                                child: _sectionContent(),
+                                child: AppPageBody(
+                                  maxWidth: AppPane.readableMaxWidth,
+                                  child: _sectionContent(),
+                                ),
                               ),
                             )
                           : _buildDesktopBody(context),
@@ -177,15 +198,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _exitButton(BuildContext context) => BackButton(
-    onPressed: () {
-      if (GoRouter.maybeOf(context)?.canPop() ?? false) {
-        context.pop();
-      } else {
-        context.go('/home');
-      }
-    },
-  );
+  Widget? _exitButton(BuildContext context) => buildRootPageLeading(context);
 
   void _backToSections(BuildContext context) {
     setState(() => _showMobileDetail = false);
@@ -194,72 +207,54 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _buildDesktopBody(BuildContext context) {
     final selected = _sections[_selectedIndex];
-    final surface = Theme.of(context).colorScheme.surfaceContainerLow;
-    return Scaffold(
-      body: Row(
-        children: [
-          SizedBox(
-            key: const ValueKey('settings-section-pane'),
-            width: AppPane.supportingWidth,
-            child: Column(
-              children: [
-                AppBar(title: const Text('设置'), leading: _exitButton(context)),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-                    children: [
-                      for (var i = 0; i < _sections.length; i++)
-                        _SettingsSectionTile(
-                          section: _sections[i],
-                          selected: i == _selectedIndex,
-                          compact: true,
-                          onTap: () => _selectSection(context, i),
-                        ),
-                    ],
+    return AppListDetailWorkspace(
+      selectedId: selected.key,
+      list: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+        appBar: AppBar(
+          title: const Text('设置'),
+          automaticallyImplyLeading: false,
+          leading: _exitButton(context),
+        ),
+        body: Theme(
+          data: Theme.of(context).copyWith(
+            drawerTheme: const DrawerThemeData(width: double.infinity),
+            navigationDrawerTheme: Theme.of(context).navigationDrawerTheme
+                .copyWith(indicatorSize: const Size(double.infinity, 56)),
+          ),
+          child: NavigationDrawer(
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+            selectedIndex: _navigationOrder.indexOf(_selectedIndex),
+            onDestinationSelected: (index) =>
+                _selectSection(context, _navigationOrder[index]),
+            children: [
+              for (final group in _groups) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 20, 24, 8),
+                  child: Text(
+                    group.$1,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
+                for (final i in group.$2)
+                  NavigationDrawerDestination(
+                    icon: Icon(_sections[i].icon),
+                    label: Text(_sections[i].title),
+                  ),
               ],
-            ),
+            ],
           ),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(AppShape.sheet),
-              ),
-              child: Material(
-                color: surface,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AppBar(
-                      automaticallyImplyLeading: false,
-                      backgroundColor: surface,
-                      centerTitle: true,
-                      titleSpacing: 0,
-                      title: SizedBox(
-                        width: AppPane.readableMaxWidth,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Text(selected.title),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: AppPane.readableMaxWidth,
-                          ),
-                          child: _sectionContent(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
+      ),
+      detailBuilder: (_, _, _) => Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text(selected.title),
+        ),
+        body: AppPageBody(
+          maxWidth: AppPane.readableMaxWidth,
+          child: _sectionContent(),
+        ),
       ),
     );
   }
@@ -267,26 +262,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _sectionContent() =>
       KeyedSubtree(key: _contentKey, child: _sections[_selectedIndex].child);
 
-  Widget _buildSectionList(BuildContext context) {
-    return ListView(
-      key: const PageStorageKey('settings-section-list'),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-      children: [
-        for (var i = 0; i < _sections.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: _SettingsSectionTile(
-              section: _sections[i],
-              selected: false,
-              onTap: () {
-                _selectSection(context, i);
-                setState(() => _showMobileDetail = true);
-              },
-            ),
-          ),
+  static const _groups = [
+    ('应用', [6, 4]),
+    ('内容', [1, 2, 3, 5]),
+    ('连接', [0]),
+  ];
+  static final _navigationOrder = _groups.expand((group) => group.$2).toList();
+  Widget _buildSectionList(BuildContext context) => ListView(
+    key: const PageStorageKey('settings-section-list'),
+    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+    children: [
+      for (final group in _groups) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 12),
+          child: Text(group.$1, style: Theme.of(context).textTheme.titleSmall),
+        ),
+        AppSettingGroup(
+          children: [
+            for (final i in group.$2)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                leading: Icon(_sections[i].icon),
+                title: Text(_sections[i].title),
+                subtitle: Text(_sections[i].subtitle),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () {
+                  _selectSection(context, i);
+                  setState(() => _showMobileDetail = true);
+                },
+              ),
+          ],
+        ),
       ],
-    );
-  }
+    ],
+  );
 
   void _selectSection(BuildContext context, int index) {
     setState(() => _selectedIndex = index);
@@ -295,7 +307,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   int _sectionIndex(String? tab) {
     final index = _sections.indexWhere((section) => section.key == tab);
-    return index < 0 ? 0 : index;
+    return index < 0 ? 6 : index;
   }
 }
 
@@ -313,33 +325,4 @@ class _SettingsSection {
     required this.icon,
     required this.child,
   });
-}
-
-class _SettingsSectionTile extends StatelessWidget {
-  final _SettingsSection section;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-
-  const _SettingsSectionTile({
-    required this.section,
-    required this.selected,
-    required this.onTap,
-    this.compact = false,
-  });
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    titleAlignment: compact
-        ? ListTileTitleAlignment.center
-        : ListTileTitleAlignment.titleHeight,
-    leading: Icon(section.icon),
-    title: Text(section.title),
-    subtitle: compact ? null : Text(section.subtitle),
-    trailing: compact ? null : const Icon(Icons.chevron_right_rounded),
-    selected: selected,
-    selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-    shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-    onTap: onTap,
-  );
 }

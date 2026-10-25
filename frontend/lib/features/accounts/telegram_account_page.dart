@@ -1,13 +1,15 @@
+import '../../core/widgets/app_setting_group.dart';
+import '../../core/layout/app_page_body.dart';
 import '../settings/presentation/tabs/push_tab.dart';
 import 'telegram_login_dialog.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
 import '../../routing/app_navigation.dart';
-import '../../theme/design_tokens.dart';
 
 class TelegramAccountStatus {
   TelegramAccountStatus.fromJson(Map<String, dynamic> json)
@@ -28,7 +30,8 @@ final telegramAccountProvider = FutureProvider.autoDispose((ref) async {
 });
 
 class TelegramAccountPage extends ConsumerStatefulWidget {
-  const TelegramAccountPage({super.key});
+  const TelegramAccountPage({super.key, this.onClose});
+  final VoidCallback? onClose;
 
   @override
   ConsumerState<TelegramAccountPage> createState() =>
@@ -98,7 +101,9 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
     final status = ref.watch(telegramAccountProvider);
     return Scaffold(
       appBar: AppBar(
-        leading: const AppBackButton(fallback: '/accounts'),
+        leading: widget.onClose == null
+            ? const AppBackButton(fallback: '/accounts')
+            : BackButton(onPressed: widget.onClose),
         title: const Text('Telegram'),
         actions: [
           IconButton(
@@ -110,99 +115,85 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
           ),
         ],
       ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-          child: status.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => Center(
-              child: TextButton.icon(
-                onPressed: () => ref.invalidate(telegramAccountProvider),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('重新加载'),
+      body: AppPageBody(
+        maxWidth: 720,
+        child: status.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (_, _) => Center(
+            child: TextButton.icon(
+              onPressed: () => ref.invalidate(telegramAccountProvider),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('重新加载'),
+            ),
+          ),
+          data: (account) => ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text('个人账号', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Text(
+                !account.configured
+                    ? '尚未配置 Telegram 应用凭据'
+                    : account.sessionPresent
+                    ? '已保存登录会话'
+                    : '尚未连接',
               ),
-            ),
-            data: (account) => ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                Text('个人账号', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 12),
-                Text(
-                  !account.configured
-                      ? '尚未配置 Telegram 应用凭据'
-                      : account.sessionPresent
-                      ? '已保存登录会话'
-                      : '尚未连接',
-                ),
-                const SizedBox(height: 12),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final buttons = [
-                      OutlinedButton.icon(
-                        onPressed:
-                            _busy || account.running || !account.configured
-                            ? null
-                            : _login,
-                        icon: const Icon(Icons.login_rounded),
-                        label: Text(account.sessionPresent ? '重新连接' : '连接账号'),
-                      ),
-                      FilledButton.icon(
-                        onPressed:
-                            _busy ||
-                                account.running ||
-                                !account.configured ||
-                                !account.sessionPresent ||
-                                !(account.channelsEnabled ||
-                                    account.savedEnabled)
-                            ? null
-                            : _sync,
-                        icon: const Icon(Icons.sync_rounded),
-                        label: Text(account.running ? '正在同步' : '立即同步'),
-                      ),
-                    ];
-                    if (constraints.maxWidth <
-                        320 * MediaQuery.textScalerOf(context).scale(1)) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          buttons[0],
-                          const SizedBox(height: 8),
-                          buttons[1],
-                        ],
-                      );
-                    }
-                    return Row(
-                      children: [
-                        Expanded(child: buttons[0]),
-                        const SizedBox(width: 12),
-                        Expanded(child: buttons[1]),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('频道动态'),
-                  subtitle: const Text('同步已加入且开启通知的频道'),
-                  value: account.channelsEnabled,
-                  onChanged: _busy
-                      ? null
-                      : (value) => _update(account, channels: value),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('收藏夹'),
-                  subtitle: const Text('将 Saved Messages 保存到收藏库'),
-                  value: account.savedEnabled,
-                  onChanged: _busy
-                      ? null
-                      : (value) => _update(account, saved: value),
-                ),
-                const SizedBox(height: 28),
-                const PushTab(platform: 'telegram'),
-              ],
-            ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _busy || account.running || !account.configured
+                        ? null
+                        : _login,
+                    icon: const Icon(Icons.login_rounded),
+                    label: Text(account.sessionPresent ? '重新连接' : '连接账号'),
+                  ),
+                  FilledButton.icon(
+                    onPressed:
+                        _busy ||
+                            account.running ||
+                            !account.configured ||
+                            !account.sessionPresent ||
+                            !(account.channelsEnabled || account.savedEnabled)
+                        ? null
+                        : _sync,
+                    icon: const Icon(Icons.sync_rounded),
+                    label: Text(account.running ? '正在同步' : '立即同步'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              AppSettingGroup(
+                children: [
+                  SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    title: const Text('同步未静音频道'),
+                    value: account.channelsEnabled,
+                    onChanged: _busy
+                        ? null
+                        : (value) => _update(account, channels: value),
+                  ),
+                  SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 8,
+                    ),
+                    title: const Text('同步 Saved Messages'),
+                    value: account.savedEnabled,
+                    onChanged: _busy
+                        ? null
+                        : (value) => _update(account, saved: value),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              const PushTab(platform: 'telegram'),
+            ],
           ),
         ),
       ),

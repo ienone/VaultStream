@@ -1,14 +1,20 @@
-import 'package:flutter/material.dart';
+import '../../../../core/layout/app_page_body.dart';
+import '../../../../core/utils/toast.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/providers/theme_provider.dart';
-import '../../../../core/widgets/app_filter_menu.dart';
+import '../../../../core/widgets/app_choice_segments.dart';
 import '../../providers/settings_provider.dart';
 import '../../models/system_setting.dart';
 import '../widgets/setting_components.dart';
 import '../licenses_page.dart';
 import '../widgets/settings_editor_draft.dart';
 import '../widgets/settings_slider.dart';
+
 import 'package:package_info_plus/package_info_plus.dart';
+
 import '../../../../theme/design_tokens.dart';
 
 class SystemTab extends ConsumerWidget {
@@ -19,7 +25,7 @@ class SystemTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final content = ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       children: storageOnly
           ? [
               _buildStorageSettings(
@@ -29,28 +35,22 @@ class SystemTab extends ConsumerWidget {
               ),
             ]
           : [
-              AppFilterMenu(
-                label: '外观模式',
-                value: ref.watch(themeModeProvider).name,
+              const SectionHeader(title: '外观'),
+              AppChoiceSegments<ThemeMode>(
                 options: const {
-                  'system': '跟随系统',
-                  'light': '浅色模式',
-                  'dark': '深色模式',
+                  ThemeMode.system: '跟随系统',
+                  ThemeMode.light: '浅色',
+                  ThemeMode.dark: '深色',
                 },
-                onSelected: (value) => ref
-                    .read(themeModeProvider.notifier)
-                    .set(ThemeMode.values.byName(value)),
+                selected: {ref.watch(themeModeProvider)},
+                onChanged: (values) =>
+                    ref.read(themeModeProvider.notifier).set(values.first),
               ),
               const SizedBox(height: 32),
               const _AppAboutSection(),
             ],
     );
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: content,
-      ),
-    );
+    return AppPageBody(child: content);
   }
 
   Widget _buildStorageSettings(
@@ -138,20 +138,16 @@ class SystemTab extends ConsumerWidget {
               .value,
         );
 
-        final switchShape = const RoundedRectangleBorder(
-          borderRadius: AppShape.cardMediaBorder,
-        );
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        const switchShape = RoundedRectangleBorder();
+        return SettingGroup(
           children: [
             SwitchListTile(
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 4,
+                horizontal: 20,
                 vertical: 8,
               ),
               shape: switchShape,
               title: const Text('自动归档远程媒体'),
-              subtitle: Text(enableProcessing ? '按策略归档图片和视频' : '不下载网络媒体到本地'),
               value: enableProcessing,
               onChanged: (val) => ref
                   .read(systemSettingsProvider.notifier)
@@ -164,7 +160,7 @@ class SystemTab extends ConsumerWidget {
             if (enableProcessing) ...[
               SwitchListTile(
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 4,
+                  horizontal: 20,
                   vertical: 8,
                 ),
                 shape: switchShape,
@@ -180,7 +176,7 @@ class SystemTab extends ConsumerWidget {
               ),
               SwitchListTile(
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 4,
+                  horizontal: 20,
                   vertical: 8,
                 ),
                 shape: switchShape,
@@ -194,7 +190,7 @@ class SystemTab extends ConsumerWidget {
                       category: 'storage',
                     ),
               ),
-              const SizedBox(height: 16),
+
               ExpandableSettingTile(
                 title: '归档质量与限制',
                 expandedContent: _buildStorageAdvanced(
@@ -351,9 +347,7 @@ class _ArchiveLimitFieldState extends State<_ArchiveLimitField> {
         widget.bytes ? (value * 1000000).round() : value.toInt(),
       );
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已保存')));
+        Toast.show(context, '已保存');
       }
     } catch (_) {
       if (mounted) setState(() => _error = '保存失败，请重试');

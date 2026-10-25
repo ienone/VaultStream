@@ -1,5 +1,7 @@
+import '../../../core/widgets/app_filter_menu.dart';
+
 import 'package:frontend/core/network/api_client.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/adaptive_form_dialog.dart';
@@ -9,6 +11,7 @@ import '../models/bot_chat.dart';
 
 class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
+  final String? platform;
   final Future<void> Function(BotChatCreate) onCreate;
   final Future<int> Function(String chatType) resolveBotConfigId;
   final Future<void> Function(int, BotChatUpdate, String?)? onUpdate;
@@ -16,6 +19,7 @@ class BotChatDialog extends ConsumerStatefulWidget {
   const BotChatDialog({
     super.key,
     this.chat,
+    this.platform,
     required this.onCreate,
     required this.resolveBotConfigId,
     this.onUpdate,
@@ -41,7 +45,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   void initState() {
     super.initState();
     final chat = widget.chat;
-    _chatType = chat?.chatType ?? 'channel';
+    _chatType =
+        chat?.chatType ?? (widget.platform == 'qq' ? 'qq_group' : 'channel');
     _chatIdController = TextEditingController(
       text: chat == null ? '' : _displayChatId(chat.chatId, _chatType),
     );
@@ -61,40 +66,30 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   @override
   Widget build(BuildContext context) {
     return AdaptiveFormDialog(
-      title: isEditing ? '编辑推送目标' : '添加推送目标',
+      title: isEditing ? '编辑群组或频道' : '添加群组或频道',
       contentBuilder: (context, width, short) => Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isEditing) ...[
-              _fieldLabel('目标类型'),
-              const SizedBox(height: 8),
               Semantics(
                 label: '目标类型',
-                child: DropdownButtonFormField<String>(
-                  initialValue: _chatType,
-                  isExpanded: true,
-                  itemHeight: null,
-                  menuMaxHeight: 400,
-                  borderRadius: AppShape.cardBorder,
-                  dropdownColor: Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerHigh,
-                  items: const [
-                    DropdownMenuItem(value: 'channel', child: Text('TG 频道')),
-                    DropdownMenuItem(value: 'group', child: Text('TG 群组')),
-                    DropdownMenuItem(
-                      value: 'supergroup',
-                      child: Text('TG 超级群组'),
-                    ),
-                    DropdownMenuItem(value: 'qq_group', child: Text('QQ 群')),
-                    DropdownMenuItem(value: 'qq_private', child: Text('QQ 私聊')),
-                  ],
-                  onTap: () => FocusScope.of(context).unfocus(),
-                  onChanged: (value) {
-                    if (value != null) setState(() => _chatType = value);
+                child: AppFilterMenu(
+                  label: '目标类型',
+                  value: _chatType,
+                  options: {
+                    if (widget.platform != 'qq') ...{
+                      'channel': 'TG 频道',
+                      'group': 'TG 群组',
+                      'supergroup': 'TG 超级群组',
+                    },
+                    if (widget.platform != 'telegram') ...{
+                      'qq_group': 'QQ 群',
+                      'qq_private': 'QQ 私聊',
+                    },
                   },
+                  onSelected: (value) => setState(() => _chatType = value),
                 ),
               ),
               const SizedBox(height: 20),
@@ -140,7 +135,6 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
             const SizedBox(height: 8),
             ExpansionTile(
               title: const Text('敏感内容分流'),
-              subtitle: const Text('用于“分离”规则'),
               tilePadding: EdgeInsets.zero,
               childrenPadding: const EdgeInsets.only(top: 12, bottom: 8),
               shape: const RoundedRectangleBorder(

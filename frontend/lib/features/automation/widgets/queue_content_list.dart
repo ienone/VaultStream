@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:material_ui/material_ui.dart';
+
 import '../../../theme/design_tokens.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
 import '../../../core/widgets/network_thumbnail.dart';
@@ -20,10 +21,12 @@ class QueueContentList extends ConsumerStatefulWidget {
     required this.onRefresh,
     this.header = const [],
     this.onLoadMore,
-    this.animateEntries = false,
+    required this.onOpen,
+    this.activeContentId,
   });
-  final bool animateEntries;
   final List<QueueItem> items;
+  final ValueChanged<QueueItem> onOpen;
+  final int? activeContentId;
   final QueueStatus currentStatus;
   final VoidCallback onRefresh;
   final List<Widget> header;
@@ -35,7 +38,7 @@ class QueueContentList extends ConsumerStatefulWidget {
 class _QueueContentListState extends ConsumerState<QueueContentList> {
   final _scroll = ScrollController();
   final _selected = <int>{};
-  bool _selectionMode = false;
+  bool get _selectionMode => _selected.isNotEmpty;
   bool _busy = false;
   bool _loadingMore = false;
   @override
@@ -49,7 +52,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentStatus != widget.currentStatus) {
       _selected.clear();
-      _selectionMode = false;
     }
     _selected.retainAll(widget.items.where(_editable).map((item) => item.id));
   }
@@ -95,35 +97,42 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
     setState(() => _busy = true);
     var completed = 0;
     String? errorMessage;
-    for (final item in items) {
+    if (action == 'cancel') {
       try {
-        final actions = ref.read(contentQueueProvider.notifier);
-        if (action == 'send') {
-          final result = await actions.pushNow(item.id);
-          if (result.status != 'success') {
-            errorMessage = result.deliveryUnconfirmed
-                ? '未收到发送回执'
-                : (result.displayReason ?? '尚未发送');
-            continue;
-          }
-        } else if (action == 'schedule') {
-          await actions.updateSchedule(item.id, time!);
-        } else {
-          await actions.moveToStatus(
-            item.id,
-            QueueStatus.filtered,
-            reason: '已取消发送',
-          );
-        }
-        completed++;
-        _selected.remove(item.id);
+        await ref
+            .read(contentQueueProvider.notifier)
+            .cancelItems(items.map((item) => item.id).toList());
+        completed = items.length;
+        _selected.removeAll(items.map((item) => item.id));
       } catch (error) {
         errorMessage = formatApiErrorMessage(error);
+      }
+    } else {
+      for (final item in items) {
+        try {
+          final actions = ref.read(contentQueueProvider.notifier);
+          if (action == 'send') {
+            final result = await actions.pushNow(item.id);
+            if (result.status != 'success') {
+              errorMessage = result.deliveryUnconfirmed
+                  ? '未收到发送回执'
+                  : (result.displayReason ?? '尚未发送');
+              continue;
+            }
+          } else if (action == 'schedule') {
+            await actions.updateSchedule(item.id, time!);
+          }
+
+          completed++;
+          _selected.remove(item.id);
+        } catch (error) {
+          errorMessage = formatApiErrorMessage(error);
+        }
       }
     }
     if (!mounted) return;
     setState(() => _busy = false);
-    widget.onRefresh();
+    if (action != 'cancel') widget.onRefresh();
     final label = action == 'send'
         ? '已发送'
         : action == 'schedule'
@@ -171,10 +180,10 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                 final time = item.scheduledTime;
                 final selected = _selected.contains(item.id);
                 final row = Material(
-                  color: selected
+                  color: (selected || widget.activeContentId == item.contentId)
                       ? Theme.of(context).colorScheme.secondaryContainer
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
+                      : Theme.of(context).colorScheme.surfaceContainerLow,
+                  borderRadius: AppShape.cardBorder,
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
                     onTap: _selectionMode
@@ -185,24 +194,51 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                                       : _selected.add(item.id);
                                 })
                               : null
-                        : () => context.push('/collection/${item.contentId}'),
+                        : () => widget.onOpen(item),
                     onLongPress: canEdit
                         ? () => setState(() {
-                            _selectionMode = true;
                             _selected.add(item.id);
                           })
                         : null,
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (item.title?.trim().isNotEmpty ==
+                                        true) ...[
+                                      Text(
+                                        item.title!,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall,
+                                      ),
+                                      const SizedBox(height: 4),
+                                    ],
+                                    Text(
+                                      '发往 ${names[item.botChatId] ?? item.targetId ?? item.platform}',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall,
+                                    ),
+                                  ],
+                                ),
+                              ),
                               if (asset != null)
                                 Padding(
-                                  padding: const EdgeInsets.only(right: 12),
+                                  padding: const EdgeInsets.only(left: 16),
                                   child: NetworkThumbnail(
                                     imageUrl: asset.sources.first.url,
                                     mediaAsset: asset,
@@ -210,33 +246,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                                     width: 56,
                                     height: 56,
                                     fit: BoxFit.cover,
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: AppShape.cardMediaBorder,
                                   ),
                                 ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.title?.trim().isNotEmpty == true
-                                          ? item.title!
-                                          : '无标题内容',
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleSmall,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '发往 ${names[item.botChatId] ?? item.targetId ?? item.platform}',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall,
-                                    ),
-                                  ],
-                                ),
-                              ),
                               if (_selectionMode)
                                 Checkbox(
                                   value: selected,
@@ -254,7 +266,6 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                                   enabled: !_busy,
                                   onSelected: (action) => action == 'select'
                                       ? setState(() {
-                                          _selectionMode = true;
                                           _selected.add(item.id);
                                         })
                                       : _act([item], action),
@@ -292,9 +303,8 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                                 : item.status == 'success'
                                 ? (item.pushedAt == null
                                       ? '已发送'
-                                      : DateFormat(
-                                          'M月d日 HH:mm',
-                                        ).format(item.pushedAt!.toLocal()))
+                                      : DateFormat('M月d日 HH:mm')
+                                            .format(item.pushedAt!.toLocal()))
                                 : item.reasonCode == 'approval_required'
                                 ? '等待确认发送'
                                 : item.status == 'failed'
@@ -309,12 +319,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                     ),
                   ),
                 );
-                return widget.animateEntries &&
-                        !MediaQuery.disableAnimationsOf(context)
-                    ? row.animate().fadeIn(
-                        delay: AppMotion.listItemStagger * (index % 15),
-                      )
-                    : row;
+                return row;
               },
             ),
           ),
@@ -366,16 +371,22 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text('已选 ${_selected.length} 项'),
-                    TextButton(
+                    IconButton(
+                      tooltip: '退出多选',
                       onPressed: _busy
                           ? null
                           : () => setState(() {
                               _selected.clear();
-                              _selectionMode = false;
                             }),
-                      child: const Text('取消选择'),
+                      icon: const Icon(Icons.close_rounded),
                     ),
                     FilledButton.tonal(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
                       onPressed: _busy || _selected.isEmpty
                           ? null
                           : () => _act(
@@ -386,7 +397,13 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                             ),
                       child: const Text('发送'),
                     ),
-                    TextButton(
+                    FilledButton.tonal(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                      ),
                       onPressed: _busy || _selected.isEmpty
                           ? null
                           : () => _act(

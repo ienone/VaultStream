@@ -1,7 +1,14 @@
-import 'package:flutter/material.dart';
+import '../../../core/widgets/app_setting_group.dart';
+import '../../../core/layout/app_page_body.dart';
+
+import 'package:material_ui/material_ui.dart';
+
+import '../../../core/widgets/metadata_wrap.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+
 import '../../settings/utils/setting_value.dart';
 
 import '../../../core/network/api_client.dart';
@@ -43,26 +50,21 @@ class _FavoritesSyncAutomationPanelState
         _openHighlightedRunIfReady(status.recentRuns);
         return RefreshIndicator(
           onRefresh: () async => ref.invalidate(favoritesSyncStatusProvider),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppPane.readableMaxWidth,
-              ),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 40),
-                children: [
-                  _SyncOverviewCard(status: status),
-                  const SizedBox(height: 16),
-                  const _SyncCommandBar(),
-                  const SizedBox(height: 24),
-                  _PlatformStatusGrid(platforms: status.platforms),
-                  const SizedBox(height: 24),
-                  _SyncPolicyCard(status: status),
-                  const SizedBox(height: 24),
-                  _RecentRunsList(runs: status.recentRuns),
-                ],
-              ),
+          child: AppPageBody(
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+              children: [
+                _SyncOverviewCard(status: status),
+                const SizedBox(height: 16),
+                _SyncCommandBar(enabled: status.enabledPlatforms.isNotEmpty),
+                const SizedBox(height: 24),
+                _PlatformStatusGrid(platforms: status.platforms),
+                const SizedBox(height: 24),
+                _SyncPolicyCard(status: status),
+                const SizedBox(height: 24),
+                _RecentRunsList(runs: status.recentRuns),
+              ],
             ),
           ),
         );
@@ -131,13 +133,16 @@ class _SyncOverviewCard extends StatelessWidget {
       children: [
         Text(
           status.enabledPlatforms.isEmpty
-              ? '连接并启用平台，开始同步收藏'
+              ? '未启用平台'
               : '已启用 ${status.enabledPlatforms.length} 个平台',
           style: theme.textTheme.titleMedium,
         ),
         const SizedBox(height: 4),
-        Text(
-          '${status.running ? '调度服务已启动' : '调度服务未启动'} · 最近同步 ${_formatTime(status.lastSyncAt)}',
+        MetadataWrap(
+          items: [
+            status.running ? '调度服务已启动' : '调度服务未启动',
+            '最近同步 ${_formatTime(status.lastSyncAt)}',
+          ],
           style: theme.textTheme.bodySmall,
         ),
       ],
@@ -174,13 +179,14 @@ class _SyncPolicyCard extends ConsumerWidget {
         settings.when(
           loading: () => const LinearProgressIndicator(),
           error: (error, _) => const Text('策略读取失败，请刷新后重试'),
-          data: (values) => Column(
+          data: (values) => AppSettingGroup(
             children: [
               SwitchListTile(
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppShape.cardMediaBorder,
+                shape: const RoundedRectangleBorder(),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
                 ),
-                contentPadding: EdgeInsets.zero,
                 title: const Text('自动同步'),
                 value: parseBoolSetting(
                   getSettingValue(
@@ -198,12 +204,12 @@ class _SyncPolicyCard extends ConsumerWidget {
                 ),
               ),
               SwitchListTile(
-                shape: const RoundedRectangleBorder(
-                  borderRadius: AppShape.cardMediaBorder,
+                shape: const RoundedRectangleBorder(),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
                 ),
-                contentPadding: EdgeInsets.zero,
                 title: const Text('允许手动同步未启用的平台'),
-                subtitle: const Text('每次同步仍需预览并确认'),
                 value: parseBoolSetting(
                   getSettingValue(
                     values,
@@ -255,14 +261,11 @@ class _SyncPolicyCard extends ConsumerWidget {
                   value: value,
                 ),
               ),
-              _PolicyStringControlRow(
+              AppFilterMenu(
                 label: '重复内容',
-                description: _duplicateStrategyDescription(
-                  status.duplicateStrategy,
-                ),
                 value: status.duplicateStrategy,
                 options: const {'merge': '合并来源', 'skip': '跳过'},
-                onChanged: (value) => _updateFavoritesSyncSetting(
+                onSelected: (value) => _updateFavoritesSyncSetting(
                   context,
                   ref,
                   key: 'favorites_sync_duplicate_strategy',
@@ -298,45 +301,9 @@ class _SyncPolicyCard extends ConsumerWidget {
             );
           },
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text('首次从最新一页开始同步。远端取消收藏后，本地内容仍保留。'),
-          ),
-        ),
       ],
     );
   }
-}
-
-class _PolicyStringControlRow extends StatelessWidget {
-  const _PolicyStringControlRow({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-    required this.description,
-  });
-  final String description;
-  final String label;
-  final String value;
-  final Map<String, String> options;
-  final ValueChanged<String> onChanged;
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      AppFilterMenu(
-        label: label,
-        value: options.containsKey(value) ? value : options.keys.first,
-        options: options,
-        onSelected: onChanged,
-      ),
-      const SizedBox(height: 4),
-      Text(description, style: Theme.of(context).textTheme.bodySmall),
-    ],
-  );
 }
 
 class _PolicyControlRow extends StatelessWidget {
@@ -365,7 +332,8 @@ class _PolicyControlRow extends StatelessWidget {
 }
 
 class _SyncCommandBar extends ConsumerWidget {
-  const _SyncCommandBar();
+  const _SyncCommandBar({required this.enabled});
+  final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -374,12 +342,12 @@ class _SyncCommandBar extends ConsumerWidget {
       runSpacing: 10,
       children: [
         FilledButton.tonalIcon(
-          onPressed: () => _triggerWithPreview(context, ref),
+          onPressed: enabled ? () => _triggerWithPreview(context, ref) : null,
           icon: const Icon(Icons.sync_rounded),
           label: const Text('同步全部'),
         ),
         OutlinedButton.icon(
-          onPressed: () => _showPreview(context, ref),
+          onPressed: enabled ? () => _showPreview(context, ref) : null,
           icon: const Icon(Icons.manage_search_rounded),
           label: const Text('预览同步'),
         ),
@@ -399,17 +367,19 @@ class _PlatformStatusGrid extends StatelessWidget {
       return const _EmptyPanel(message: '暂无可用收藏同步平台');
     }
 
-    return Column(
+    return AppSettingGroup(
       children: [
-        for (final entry in platforms.indexed) ...[
-          if (entry.$1 > 0) const Divider(height: 32),
+        for (final platform in platforms)
           ListTile(
-            title: Text(_platformLabel(entry.$2.platform)),
-            subtitle: Text(_platformStateLabel(entry.$2)),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 4,
+            ),
+            title: Text(_platformLabel(platform.platform)),
+            subtitle: Text(_platformStateLabel(platform)),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.push('/accounts/${entry.$2.platform}'),
+            onTap: () => context.go('/accounts/${platform.platform}?from=sync'),
           ),
-        ],
       ],
     );
   }
@@ -447,13 +417,14 @@ class AccountFavoritesSyncControls extends ConsumerWidget {
                 )
               : null,
         ),
-        Text(
-          !status.capabilities.supported
-              ? '暂未接入收藏同步'
-              : !status.authenticated
-              ? '连接账号后可同步收藏'
-              : _platformStateLabel(status),
-        ),
+        if (!status.capabilities.supported || status.enabled)
+          Text(
+            !status.capabilities.supported
+                ? '暂未接入收藏同步'
+                : !status.authenticated
+                ? '连接账号后可同步收藏'
+                : _platformStateLabel(status),
+          ),
         Text(status.capabilities.scope),
         if (status.capabilities.limitation != null)
           Text(status.capabilities.limitation!),
@@ -516,10 +487,9 @@ class _RecentRunsList extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 8),
-        for (final entry in runs.take(8).indexed) ...[
-          if (entry.$1 > 0) const Divider(height: 24),
-          _RunTile(run: entry.$2),
-        ],
+        AppSettingGroup(
+          children: [for (final run in runs.take(8)) _RunTile(run: run)],
+        ),
       ],
     );
   }
@@ -538,49 +508,41 @@ class _RunTile extends ConsumerWidget {
     final error = _runString(run, 'error');
 
     final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${_runStatusLabel(status)} · ${_runString(run, 'scope') == 'all' ? '全部平台' : _platformLabel(_runString(run, 'scope') ?? '')}',
-          style: theme.textTheme.titleSmall,
-        ),
-        if (_runString(run, 'started_at') != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            _formatTime(_runString(run, 'started_at')),
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
-        if (error != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            error,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
-            ),
-          ),
-        ],
-        if (runId != null) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              TextButton(
-                onPressed: () => context.push('/tasks/$runId'),
-                child: const Text('查看记录'),
-              ),
-              if (isError)
-                OutlinedButton.icon(
-                  onPressed: () => _retryRun(context, ref, runId),
-                  icon: const Icon(Icons.replay_rounded, size: 16),
-                  label: const Text('重试'),
-                ),
+    final statusLabel =
+        status == 'success' &&
+            run['result'] is Map &&
+            (run['result'] as Map)['platform_count'] == 0
+        ? '未执行平台同步'
+        : _runStatusLabel(status);
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      title: Text(
+        _runString(run, 'scope') == 'all'
+            ? '全部平台'
+            : _platformLabel(_runString(run, 'scope') ?? ''),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MetadataWrap(
+            items: [
+              statusLabel,
+              if (_runString(run, 'started_at') != null)
+                _formatTime(_runString(run, 'started_at')),
             ],
           ),
+          if (error != null)
+            Text(error, style: TextStyle(color: theme.colorScheme.error)),
+          if (isError && runId != null)
+            TextButton.icon(
+              onPressed: () => _retryRun(context, ref, runId),
+              icon: const Icon(Icons.replay_rounded),
+              label: const Text('重试'),
+            ),
         ],
-      ],
+      ),
+      trailing: runId == null ? null : const Icon(Icons.chevron_right_rounded),
+      onTap: runId == null ? null : () => context.push('/tasks/$runId'),
     );
   }
 }
@@ -593,7 +555,7 @@ class _EmptyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: AppShape.cardBorder,
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
@@ -665,7 +627,6 @@ Future<bool> _showPreviewDialog(
   required bool confirmMode,
 }) async {
   final theme = Theme.of(context);
-  final cs = theme.colorScheme;
   final label = preview.platform == 'all'
       ? '全平台'
       : _platformLabel(preview.platform);
@@ -692,13 +653,6 @@ Future<bool> _showPreviewDialog(
               Text('已存在 ${preview.existing}'),
               Text('跳过 ${preview.skipped}'),
             ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '预览不会导入内容或改变同步进度。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: cs.onSurfaceVariant,
-            ),
           ),
           const SizedBox(height: 20),
           for (final item in preview.platforms)
@@ -765,19 +719,21 @@ class _PreviewPlatformSection extends StatelessWidget {
         ),
       );
     }
-    final summary = '预计新增 ${item.estimatedNew} · 已存在 ${item.existing}';
+    final summary = MetadataWrap(
+      items: ['预计新增 ${item.estimatedNew}', '已存在 ${item.existing}'],
+    );
     if (item.items.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [title, const SizedBox(height: 4), Text(summary)],
+          children: [title, const SizedBox(height: 4), summary],
         ),
       );
     }
     return ExpansionTile(
       title: title,
-      subtitle: Text(summary),
+      subtitle: summary,
       tilePadding: EdgeInsets.zero,
       childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
       shape: const RoundedRectangleBorder(
@@ -800,7 +756,7 @@ class _PreviewPlatformSection extends StatelessWidget {
         Align(
           alignment: Alignment.centerLeft,
           child: Text(
-            '候选样本 · ${item.items.take(5).length} 条',
+            '${item.items.take(5).length} 条候选样本',
             style: theme.textTheme.bodySmall?.copyWith(
               color: cs.onSurfaceVariant,
             ),
@@ -913,13 +869,6 @@ Future<void> _updateFavoritesSyncSetting(
       );
     }
   }
-}
-
-String _duplicateStrategyDescription(String strategy) {
-  return switch (strategy) {
-    'skip' => '已保存的内容不再导入。',
-    _ => '为已保存的内容补充收藏来源。',
-  };
 }
 
 String _formatTime(String? value) {

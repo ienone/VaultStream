@@ -1,7 +1,13 @@
+import '../../core/widgets/predictive_back_drawer.dart';
 import '../../routing/app_navigation.dart';
+import '../../layout/root_page_actions.dart';
+
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../../core/layout/app_list_detail_workspace.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
@@ -12,7 +18,6 @@ import '../../theme/design_tokens.dart';
 import 'models/agent_result.dart';
 import 'providers/agent_controller.dart';
 import 'providers/agent_draft_store.dart';
-import 'widgets/agent_citation_tile.dart';
 import 'widgets/agent_confirmation_panel.dart';
 import 'widgets/agent_tool_event.dart';
 
@@ -248,13 +253,17 @@ class _AgentPageState extends ConsumerState<AgentPage> {
   void _scrollToBottom({bool onlyIfNearBottom = false}) {
     if (onlyIfNearBottom &&
         _scrollController.hasClients &&
-        _scrollController.position.extentAfter > 100) {
+        _scrollController.position.extentBefore > 100) {
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
+      if (!mounted || !_scrollController.hasClients) return;
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+        return;
+      }
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 120,
+        _scrollController.position.minScrollExtent,
         duration: AppMotion.contentSwap,
         curve: AppMotion.standardCurve,
       );
@@ -278,117 +287,95 @@ class _AgentPageState extends ConsumerState<AgentPage> {
         final metrics = WindowMetrics.fromSize(
           Size(constraints.maxWidth, constraints.maxHeight),
         );
-        final supportsSessionPane = metrics.supportsSupportingPane;
-        final citations = <AgentCitation>[];
-        final citationKeys = <String>{};
-        for (final item in _timeline) {
-          if (item.kind != AgentTimelineKind.toolResult) continue;
-          for (final citation in citationsFromToolResult(item.event!)) {
-            if (citation.appRoute != null &&
-                citationKeys.add('${citation.kind}:${citation.appRoute}')) {
-              citations.add(citation);
-            }
-          }
-        }
-        final supportsEvidencePane =
-            supportsSessionPane &&
-            metrics.widthClass.atLeast(WindowWidthClass.large) &&
-            citations.isNotEmpty;
+        final supportsSessionPane = AppListDetailWorkspace.supportsSplit(
+          context,
+          availableSize: constraints.biggest,
+        );
+        final conversationBar = AppBar(
+          leading: buildRootPageLeading(context),
+          toolbarHeight: metrics.toolbarHeight,
+          title: const Text('对话'),
+          actions: [
+            if (!supportsSessionPane)
+              IconButton(
+                tooltip: '选择 Agent 会话',
+                onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+                icon: const Icon(Icons.forum_outlined),
+              ),
+            PopupMenuButton<String>(
+              tooltip: '会话操作',
+              onSelected: (action) {
+                switch (action) {
+                  case 'redo':
+                    _redo();
+                  case 'refresh':
+                    _bootstrap();
+                  case 'clear':
+                    _clearSession();
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'refresh',
+                  enabled: !_streaming && !_loading,
+                  child: const Text('刷新会话'),
+                ),
+                PopupMenuItem(
+                  value: 'redo',
+                  enabled: !_streaming && _timeline.isNotEmpty,
+                  child: const Text('重做上一步'),
+                ),
+                PopupMenuItem(
+                  value: 'clear',
+                  enabled: !_streaming && _timeline.isNotEmpty,
+                  child: const Text('清空当前会话'),
+                ),
+              ],
+            ),
+          ],
+        );
         return Scaffold(
           key: _scaffoldKey,
-          appBar: AppBar(
-            leading: const AppBackButton(),
-            toolbarHeight: metrics.heightClass.isCompact ? 48 : null,
-            title: const Text('Agent 工作台'),
-            actions: [
-              if (!supportsSessionPane)
-                IconButton(
-                  tooltip: '选择 Agent 会话',
-                  onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-                  icon: const Icon(Icons.forum_outlined),
-                ),
-              PopupMenuButton<String>(
-                tooltip: '会话操作',
-                onSelected: (action) {
-                  switch (action) {
-                    case 'redo':
-                      _redo();
-                    case 'refresh':
-                      _bootstrap();
-                    case 'clear':
-                      _clearSession();
-                  }
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'refresh',
-                    enabled: !_streaming,
-                    child: const Text('刷新会话'),
-                  ),
-                  PopupMenuItem(
-                    value: 'redo',
-                    enabled: !_streaming && _timeline.isNotEmpty,
-                    child: const Text('重做上一步'),
-                  ),
-                  PopupMenuItem(
-                    value: 'clear',
-                    enabled: !_streaming && _timeline.isNotEmpty,
-                    child: const Text('清空当前会话'),
-                  ),
-                ],
-              ),
-            ],
-          ),
+          appBar: supportsSessionPane ? null : conversationBar,
           endDrawer: supportsSessionPane
               ? null
-              : Drawer(
-                  width:
-                      (AppPane.supportingWidth *
-                              MediaQuery.textScalerOf(context).scale(16) /
-                              16)
-                          .clamp(0.0, constraints.maxWidth * 0.9),
-                  child: SafeArea(
-                    child: _SessionPane(state: this, closeAfterSelection: true),
+              : PredictiveBackDrawer(
+                  isOpen: () =>
+                      _scaffoldKey.currentState?.isEndDrawerOpen ?? false,
+                  close: () => _scaffoldKey.currentState!.closeEndDrawer(),
+                  alignment: Alignment.centerRight,
+                  child: Drawer(
+                    width:
+                        (AppPane.supportingWidth *
+                                MediaQuery.textScalerOf(context).scale(16) /
+                                16)
+                            .clamp(0.0, constraints.maxWidth * 0.9),
+                    child: SafeArea(
+                      child: _SessionPane(
+                        state: this,
+                        closeAfterSelection: true,
+                      ),
+                    ),
                   ),
                 ),
-          body: _loading
+          body: _loading && _sessionId == null
               ? const Center(child: CircularProgressIndicator())
               : _sessionId == null && _error != null
               ? _AgentUnavailable(message: _error!, onRetry: _bootstrap)
-              : supportsSessionPane
-              ? Row(
-                  children: [
-                    SizedBox(
-                      width: AppPane.supportingWidth,
-                      child: ColoredBox(
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerLow,
-                        child: _SessionPane(state: this),
-                      ),
+              : AppListDetailWorkspace(
+                  selectedId: 'conversation',
+                  list: Material(
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    child: _SessionPane(state: this),
+                  ),
+                  detailBuilder: (_, _, _) => Scaffold(
+                    appBar: supportsSessionPane ? conversationBar : null,
+                    body: _ConversationPane(
+                      state: this,
+                      showInlineCitations: true,
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: _ConversationPane(
-                        state: this,
-                        showInlineCitations: !supportsEvidencePane,
-                      ),
-                    ),
-                    if (supportsEvidencePane) ...[
-                      const SizedBox(width: AppSpacing.sm),
-                      SizedBox(
-                        width: AppPane.supportingWidth,
-                        child: ColoredBox(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerLow,
-                          child: _CitationPane(citations: citations),
-                        ),
-                      ),
-                    ],
-                  ],
-                )
-              : _ConversationPane(state: this),
+                  ),
+                ),
         );
       },
     );
@@ -454,28 +441,43 @@ class _ConversationPane extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (state._loading) const LinearProgressIndicator(),
         Expanded(
           child: state._timeline.isEmpty
               ? const SizedBox.expand()
               : ListView.builder(
+                  key: ValueKey(state._sessionId),
+                  reverse: true,
                   controller: state._scrollController,
                   padding: const EdgeInsets.all(AppSpacing.md),
                   itemCount: state._timeline.length,
-                  itemBuilder: (context, index) => Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: AppPane.readableMaxWidth,
+                  findChildIndexCallback: (key) {
+                    final index = (key as ValueKey<int>).value;
+                    return index < state._timeline.length
+                        ? state._timeline.length - 1 - index
+                        : null;
+                  },
+                  itemBuilder: (context, reversedIndex) {
+                    final index = state._timeline.length - 1 - reversedIndex;
+                    return Align(
+                      key: ValueKey(index),
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: AppPane.readableMaxWidth,
+                        ),
+                        child: _TimelineTile(
+                          item: state._timeline[index],
+                          showInlineCitations: showInlineCitations,
+                          onDecide: state._decideConfirmation,
+                          confirmationPending: state._decidingConfirmationIds
+                              .contains(
+                                state._timeline[index].confirmation?.id,
+                              ),
+                        ),
                       ),
-                      child: _TimelineTile(
-                        item: state._timeline[index],
-                        showInlineCitations: showInlineCitations,
-                        onDecide: state._decideConfirmation,
-                        confirmationPending: state._decidingConfirmationIds
-                            .contains(state._timeline[index].confirmation?.id),
-                      ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
         ),
         if (state._error != null)
@@ -589,33 +591,22 @@ class _SessionPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final header = Material(
-      color: closeAfterSelection
-          ? theme.drawerTheme.backgroundColor ??
-                theme.colorScheme.surfaceContainerLow
-          : theme.scaffoldBackgroundColor,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.sm),
-        child: Row(
-          children: [
-            Expanded(child: Text('会话', style: theme.textTheme.titleMedium)),
-            IconButton.filledTonal(
-              tooltip: '新建会话',
-              onPressed: state._streaming
-                  ? null
-                  : () => _createSession(context),
-              icon: const Icon(Icons.add_rounded),
-            ),
-            if (closeAfterSelection)
-              IconButton(
-                tooltip: '关闭会话列表',
-                onPressed: () =>
-                    state._scaffoldKey.currentState?.closeEndDrawer(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-          ],
+    final header = AppBar(
+      automaticallyImplyLeading: false,
+      backgroundColor: theme.colorScheme.surfaceContainerLow,
+      title: Text(closeAfterSelection ? '会话' : 'Agent'),
+      actions: [
+        PageAddButton(
+          tooltip: '新建会话',
+          onPressed: state._streaming ? null : () => _createSession(context),
         ),
-      ),
+        if (closeAfterSelection)
+          IconButton(
+            tooltip: '关闭会话列表',
+            onPressed: () => state._scaffoldKey.currentState?.closeEndDrawer(),
+            icon: const Icon(Icons.close_rounded),
+          ),
+      ],
     );
     return LayoutBuilder(
       builder: (context, constraints) => CustomScrollView(
@@ -625,12 +616,7 @@ class _SessionPane extends StatelessWidget {
           else
             SliverToBoxAdapter(child: header),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xs,
-              0,
-              AppSpacing.xs,
-              AppSpacing.sm,
-            ),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, AppSpacing.sm),
             sliver: SliverList.builder(
               itemCount: state._sessions.length,
               itemBuilder: (context, index) {
@@ -720,15 +706,16 @@ class _TimelineTile extends StatelessWidget {
                 data: item.text,
                 selectable: true,
                 styleSheet: readingMarkdownStyle(context),
-                builders: {'code': CodeElementBuilder(context)},
+                builders: readingMarkdownBuilders(context),
+                inlineSyntaxes: readingInlineSyntaxes(),
+                blockSyntaxes: readingBlockSyntaxes(),
                 onTapLink: (_, href, _) {
                   final uri = Uri.tryParse(href ?? '');
                   if (uri != null &&
                       !uri.hasScheme &&
                       !uri.hasAuthority &&
-                      RegExp(
-                        r'^/(collection|events)/\d+$',
-                      ).hasMatch(uri.path)) {
+                      RegExp(r'^/(collection|events)/\d+$')
+                          .hasMatch(uri.path)) {
                     openAppLocation(context, uri.toString());
                   } else {
                     SafeUrlLauncher.openExternal(context, href);
@@ -789,32 +776,6 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
-}
-
-class _CitationPane extends StatelessWidget {
-  const _CitationPane({required this.citations});
-
-  final List<AgentCitation> citations;
-
-  @override
-  Widget build(BuildContext context) => CustomScrollView(
-    slivers: [
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        sliver: SliverToBoxAdapter(
-          child: Text('引用', style: Theme.of(context).textTheme.titleMedium),
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-        sliver: SliverList.builder(
-          itemCount: citations.length,
-          itemBuilder: (context, index) =>
-              AgentCitationTile(citation: citations[index], showExcerpt: true),
-        ),
-      ),
-    ],
-  );
 }
 
 class _Notice extends StatelessWidget {
