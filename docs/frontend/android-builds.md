@@ -1,5 +1,7 @@
 # Android 签名与升级
 
+Android 编译使用 SDK 37、AGP 9.2.1、Gradle 9.4.1 和 Kotlin 2.4.0，与 `receive_sharing_intent` 1.9 的原生构建要求一致。最低系统版本及目标系统版本继续跟随 Flutter SDK。
+
 所有 Android 构建模式（Debug、Profile、Release）使用同一正式签名。Gradle 要求 `frontend/android/app/release.jks` 和 `ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`；缺少任一项直接失败，不再使用默认调试签名。密钥文件不得提交 Git。
 
 GitHub 手动构建 `build.yml` 与标签发布 `release.yml` 共用 `scripts/prepare_android_signing.sh`，从现有四项 Android Secrets 恢复密钥。手动构建可选 `platform=android`，不触发 Web/Linux；可选的 Debug APK 也使用正式签名。
