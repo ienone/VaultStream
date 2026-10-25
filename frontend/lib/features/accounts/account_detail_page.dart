@@ -225,29 +225,6 @@ class _AccountOverview extends ConsumerWidget {
         ],
         const SizedBox(height: AppSpacing.md),
         controls,
-        if (account.issues.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.sm),
-          ExpansionTile(
-            key: const PageStorageKey('account-repair-guide'),
-            title: const Text('如何修复'),
-            tilePadding: EdgeInsets.zero,
-            shape: const RoundedRectangleBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            collapsedShape: const RoundedRectangleBorder(
-              borderRadius: AppShape.cardMediaBorder,
-            ),
-            clipBehavior: Clip.antiAlias,
-            expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
-                ? AnimationStyle.noAnimation
-                : AnimationStyle(
-                    duration: AppMotion.surfaceEnter,
-                    reverseDuration: AppMotion.surfaceExit,
-                    curve: AppMotion.standardCurve,
-                  ),
-            children: [_RepairGuide(account: account)],
-          ),
-        ],
         const SizedBox(height: AppSpacing.lg),
         if (account.favoritesSupported)
           ref
@@ -268,10 +245,11 @@ class _AccountOverview extends ConsumerWidget {
                 },
               ),
         if (account.platform == 'bilibili')
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const Text('手动凭据'),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Text('手动凭据', style: theme.textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.md),
               const ConnectionTab().buildBiliAdvancedEditor(context, ref),
             ],
           ),
@@ -338,44 +316,6 @@ class _AccountControls extends ConsumerWidget {
               const PopupMenuItem(value: 'logout', child: Text('清除登录')),
             ],
           ),
-      ],
-    );
-  }
-}
-
-class _RepairGuide extends StatelessWidget {
-  const _RepairGuide({required this.account});
-
-  final PlatformHealthStatus account;
-
-  @override
-  Widget build(BuildContext context) {
-    final steps = _repairSteps(account);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (steps.isEmpty)
-          const ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.check_circle_outline_rounded),
-            title: Text('账号状态可用'),
-          )
-        else
-          for (var index = 0; index < steps.length; index++)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${index + 1}.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(child: Text(steps[index])),
-                ],
-              ),
-            ),
       ],
     );
   }
@@ -482,30 +422,6 @@ _accountStatus(PlatformHealthStatus account) {
     icon: Icons.verified_user_outlined,
     color: (scheme) => scheme.primary,
   );
-}
-
-List<String> _repairSteps(PlatformHealthStatus account) {
-  final steps = <String>[];
-  if (!account.hasCookie) {
-    steps.add(
-      account.platform == 'twitter'
-          ? '点击“保存网页登录”，填写你已登录 X 网页的 auth_token 和 ct0。'
-          : account.browserAuthSupported
-          ? '使用“连接账号”完成平台扫码登录。'
-          : '在下方“手动凭据”中完成配置。',
-    );
-  } else if (account.browserAuthValid == false) {
-    steps.add('使用“重新登录”更新失效的登录信息。');
-  }
-  if (account.hasCookie && account.browserAuthSupported) {
-    steps.add('点击“检测有效性”检查登录状态。');
-  }
-  if (account.favoritesSupported && !account.favoritesEnabled) {
-    steps.add('在本页开启“同步收藏”。');
-  } else if (account.favoritesAuthenticated == false) {
-    steps.add('登录恢复后再次运行收藏同步认证检查。');
-  }
-  return steps;
 }
 
 String _runStatus(String status) => switch (status) {

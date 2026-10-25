@@ -158,23 +158,8 @@ class _SyncPolicyCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(systemSettingsProvider);
-    return ExpansionTile(
-      title: const Text('同步策略'),
-      tilePadding: EdgeInsets.zero,
-      shape: const RoundedRectangleBorder(
-        borderRadius: AppShape.cardMediaBorder,
-      ),
-      collapsedShape: const RoundedRectangleBorder(
-        borderRadius: AppShape.cardMediaBorder,
-      ),
-      clipBehavior: Clip.antiAlias,
-      expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
-          ? AnimationStyle.noAnimation
-          : AnimationStyle(
-              duration: AppMotion.surfaceEnter,
-              reverseDuration: AppMotion.surfaceExit,
-              curve: AppMotion.standardCurve,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         settings.when(
           loading: () => const LinearProgressIndicator(),
@@ -228,6 +213,7 @@ class _SyncPolicyCard extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
             final columns =
@@ -658,10 +644,7 @@ Future<bool> _showPreviewDialog(
           for (final item in preview.platforms)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _PreviewPlatformSection(
-                item: item,
-                initiallyExpanded: preview.platform != 'all',
-              ),
+              child: _PreviewPlatformSection(item: item),
             ),
         ],
       ),
@@ -688,12 +671,8 @@ Future<bool> _showPreviewDialog(
 }
 
 class _PreviewPlatformSection extends StatelessWidget {
-  const _PreviewPlatformSection({
-    required this.item,
-    required this.initiallyExpanded,
-  });
+  const _PreviewPlatformSection({required this.item});
   final FavoritesSyncPlatformPreview item;
-  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -731,28 +710,13 @@ class _PreviewPlatformSection extends StatelessWidget {
         ),
       );
     }
-    return ExpansionTile(
-      title: title,
-      subtitle: summary,
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: const EdgeInsets.only(top: 8, bottom: 8),
-      shape: const RoundedRectangleBorder(
-        borderRadius: AppShape.cardMediaBorder,
-      ),
-      collapsedShape: const RoundedRectangleBorder(
-        borderRadius: AppShape.cardMediaBorder,
-      ),
-      clipBehavior: Clip.antiAlias,
-      initiallyExpanded: initiallyExpanded,
-      maintainState: true,
-      expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
-          ? AnimationStyle.noAnimation
-          : AnimationStyle(
-              duration: AppMotion.surfaceEnter,
-              reverseDuration: AppMotion.surfaceExit,
-              curve: AppMotion.standardCurve,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        title,
+        const SizedBox(height: 4),
+        summary,
+        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
           child: Text(

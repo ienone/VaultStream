@@ -263,14 +263,8 @@ class ContentEditorState extends ConsumerState<ContentEditor> {
         enabled: !_isLoading,
       ),
       const SizedBox(height: AppSpacing.md),
-      ExpansionTile(
-        title: const Text('来源信息'),
-        expansionAnimationStyle: _editAnimation(context),
-        shape: const Border(),
-        collapsedShape: const Border(),
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: const EdgeInsets.only(bottom: AppSpacing.md),
-        maintainState: true,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           TextField(
             controller: _authorController,
@@ -289,6 +283,7 @@ class ContentEditorState extends ConsumerState<ContentEditor> {
           ),
         ],
       ),
+      const SizedBox(height: AppSpacing.md),
       SwitchListTile(
         title: const Text('标记为 NSFW'),
         value: _isNsfw,

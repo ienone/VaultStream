@@ -40,7 +40,6 @@ class _PushTabState extends ConsumerState<PushTab> {
   bool _isControllingTelegram = false;
   bool _isSyncingChats = false;
   bool _isGeneratingDigest = false;
-  bool _pushConfigExpanded = false;
   String _botPlatform = 'telegram';
   final _updatingChats = <int>{};
   final _chatErrors = <int, String>{};
@@ -425,15 +424,10 @@ class _PushTabState extends ConsumerState<PushTab> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                ExpansionTile(
-                  maintainState: true,
-                  initiallyExpanded: _pushConfigExpanded,
-                  onExpansionChanged: (expanded) =>
-                      setState(() => _pushConfigExpanded = expanded),
-                  tilePadding: EdgeInsets.zero,
-                  childrenPadding: const EdgeInsets.only(bottom: 16),
-                  title: const Text('凭证与权限'),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const SectionHeader(title: '凭证与权限'),
                     if (widget.platform == null)
                       Semantics(
                         label: '推送平台',

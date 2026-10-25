@@ -51,12 +51,9 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
                 ref.watch(discoverySourcesProvider),
               ),
               const SliverToBoxAdapter(
-                child: ExpandableSettingTile(
+                child: SettingSection(
                   title: '机器人消息',
-                  expandedContent: PushTab(
-                    monitoringOnly: true,
-                    embedded: true,
-                  ),
+                  child: PushTab(monitoringOnly: true, embedded: true),
                 ),
               ),
             ],

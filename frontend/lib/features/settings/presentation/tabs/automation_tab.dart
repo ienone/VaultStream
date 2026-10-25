@@ -2,8 +2,6 @@ import '../../../../core/layout/app_page_body.dart';
 
 import 'package:material_ui/material_ui.dart';
 
-import '../../../../core/widgets/metadata_wrap.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
@@ -128,9 +126,9 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     return settingsAsync.when(
       data: (settings) => SettingGroup(
         children: [
-          ExpandableSettingTile(
-            title: '兴趣偏好',
-            expandedContent: _buildInterestProfileEditor(
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: _buildInterestProfileEditor(
               context,
               ref,
               settings.interestProfile,
@@ -217,7 +215,10 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
               controller: controllers['profile'],
               minLines: 3,
               maxLines: 6,
-              decoration: const InputDecoration(hintText: '感兴趣的主题、作者或关键词'),
+              decoration: const InputDecoration(
+                labelText: '兴趣偏好',
+                hintText: '感兴趣的主题、作者或关键词',
+              ),
             ),
           ),
           const Gap(12),
@@ -257,15 +258,13 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
   ) => settingsAsync.when(
     data: (settings) => SettingGroup(
       children: [
-        ExpandableSettingTile(
+        SettingSection(
           title: '通用模型',
-          subtitle: _getLlmSubtitle(settings),
-          expandedContent: _buildModelConfigEditor(context, ref, 'text_llm'),
+          child: _buildModelConfigEditor(context, ref, 'text_llm'),
         ),
-        ExpandableSettingTile(
+        SettingSection(
           title: '向量模型',
-          subtitle: _getEmbeddingSubtitle(settings),
-          expandedContent: _buildModelConfigEditor(
+          child: _buildModelConfigEditor(
             context,
             ref,
             'embedding',
@@ -276,10 +275,9 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
             ),
           ),
         ),
-        ExpandableSettingTile(
+        SettingSection(
           title: '摘要模型',
-          subtitle: _getSummarySubtitle(settings),
-          expandedContent: _buildModelConfigEditor(context, ref, 'summary'),
+          child: _buildModelConfigEditor(context, ref, 'summary'),
         ),
       ],
     ),
@@ -312,95 +310,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     }
   }
 
-  String _maskKey(String key) {
-    if (key.isEmpty) return '未配置';
-    if (key.length <= 8) return '********';
-    return '${key.substring(0, 4)}****${key.substring(key.length - 4)}';
-  }
-
   bool _isEnvConfigured(String value) => value.startsWith('***');
-
-  Widget _getLlmSubtitle(List<SystemSetting> settings) {
-    const prefix = 'text_llm';
-    final model =
-        settings
-                .firstWhere(
-                  (s) => s.key == '${prefix}_model',
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
-    final apiKey =
-        settings
-                .firstWhere(
-                  (s) => s.key == '${prefix}_api_key',
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
-
-    if (model.isEmpty && apiKey.isEmpty) return const Text('未配置');
-    final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
-    return MetadataWrap(items: [if (model.isNotEmpty) model, keyLabel]);
-  }
-
-  Widget _getSummarySubtitle(List<SystemSetting> settings) {
-    final model =
-        settings
-                .firstWhere(
-                  (s) => s.key == 'summary_model',
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
-    final apiKey =
-        settings
-                .firstWhere(
-                  (s) => s.key == 'summary_api_key',
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
-
-    if (model.isEmpty && apiKey.isEmpty) return const Text('未配置');
-    final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
-    final modelLabel = model.isEmpty ? '使用默认模型' : model;
-    return MetadataWrap(items: [modelLabel, keyLabel]);
-  }
-
-  Widget _getEmbeddingSubtitle(List<SystemSetting> settings) {
-    final model =
-        settings
-                .firstWhere(
-                  (s) => s.key == 'embedding_model',
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
-    final apiKey =
-        settings
-                .firstWhere(
-                  (s) => s.key == 'embedding_api_key',
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
-    final dimension = parseIntSetting(
-      getSettingValue(settings, 'embedding_output_dimensionality', 1536),
-      1536,
-    );
-
-    if (model.isEmpty && apiKey.isEmpty) return const Text('未配置');
-    final keyLabel = _isEnvConfigured(apiKey) ? '密钥已配置' : _maskKey(apiKey);
-    final modelLabel = model.isEmpty ? 'gemini-embedding-2' : model;
-    return MetadataWrap(items: [modelLabel, '$dimension 维', keyLabel]);
-  }
 
   Widget _buildModelConfigEditor(
     BuildContext context,

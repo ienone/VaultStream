@@ -77,88 +77,27 @@ class SettingTile extends StatelessWidget {
   }
 }
 
-class ExpandableSettingTile extends StatefulWidget {
-  const ExpandableSettingTile({
-    super.key,
-    required this.title,
-    this.subtitle,
-    this.icon,
-    required this.expandedContent,
-    this.dense = false,
-  });
+class SettingSection extends StatelessWidget {
+  const SettingSection({super.key, required this.title, required this.child});
 
   final String title;
-  final Widget? subtitle;
-  final IconData? icon;
-  final Widget expandedContent;
-  final bool dense;
+  final Widget child;
 
   @override
-  State<ExpandableSettingTile> createState() => _ExpandableSettingTileState();
-}
-
-class _ExpandableSettingTileState extends State<ExpandableSettingTile>
-    with AutomaticKeepAliveClientMixin {
-  bool _expanded = false;
-  bool _hasExpanded = false;
-
-  @override
-  bool get wantKeepAlive => _expanded;
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final theme = Theme.of(context);
-    final shape =
-        ListTileTheme.of(context).shape ??
-        const RoundedRectangleBorder(borderRadius: AppShape.cardMediaBorder);
-    return ListTileTheme.merge(
-      shape: shape,
-      child: ExpansionTile(
-        title: Text(widget.title, style: theme.textTheme.titleMedium),
-        subtitle: widget.subtitle == null
-            ? null
-            : DefaultTextStyle.merge(
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                child: widget.subtitle!,
-              ),
-        leading: widget.icon == null ? null : Icon(widget.icon, size: 22),
-        tilePadding: EdgeInsets.symmetric(
-          horizontal: 20,
-          vertical: widget.dense ? 0 : 4,
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
         ),
-        childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-        shape: shape,
-        collapsedShape: shape,
-        clipBehavior: Clip.antiAlias,
-        maintainState: _hasExpanded,
-        expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
-            ? AnimationStyle.noAnimation
-            : const AnimationStyle(
-                duration: AppMotion.contentSwap,
-                curve: AppMotion.standardCurve,
-              ),
-        onExpansionChanged: (expanded) {
-          setState(() {
-            _expanded = expanded;
-            _hasExpanded |= expanded;
-          });
-          updateKeepAlive();
-        },
-        children: [
-          ExcludeFocus(
-            excluding: !_expanded,
-            child: SizedBox(
-              width: double.infinity,
-              child: widget.expandedContent,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        const SizedBox(height: 16),
+        child,
+      ],
+    ),
+  );
 }
 
 void showToast(BuildContext context, String message) {

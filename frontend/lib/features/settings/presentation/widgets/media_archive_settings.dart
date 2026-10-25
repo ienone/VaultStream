@@ -153,9 +153,9 @@ class MediaArchiveSettings extends ConsumerWidget {
                     ),
               ),
 
-              ExpandableSettingTile(
+              SettingSection(
                 title: '归档质量与限制',
-                expandedContent: _buildStorageAdvanced(
+                child: _buildStorageAdvanced(
                   context,
                   ref,
                   webpQuality,

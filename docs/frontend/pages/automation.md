@@ -8,7 +8,7 @@ active
 
 推送工作区合并待发送、发送记录、规则和目标。内容处理策略位于 `/settings?tab=processing`。
 
-- `/sources/sync`：全平台同步、预览、全局同步策略与运行历史。单平台开关和操作已归入 `/accounts/:platform`。
+- `/sources/sync`：全平台同步、预览、全局同步策略与运行历史。自动同步及允许手动同步未启用平台的开关、间隔、批量与平台速率直接显示。单平台开关和操作已归入 `/accounts/:platform`。
 - `/automation/distribution`：查看和处理推送。
 - `/automation/distribution/rules`：自动规则列表，支持启停、编辑和删除，侧滑露出删除按钮，点击后确认删除。
 - `/automation/distribution/rules/new`、`/automation/distribution/rules/:ruleId`：同一分发工作区的规则配置。

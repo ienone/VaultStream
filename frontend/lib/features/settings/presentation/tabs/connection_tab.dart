@@ -150,28 +150,21 @@ class ConnectionTab extends ConsumerWidget {
         children: [
           SettingGroup(
             children: [
-              ExpandableSettingTile(
-                title: '服务器地址',
-                subtitle: Text(localSettings.baseUrl),
-                expandedContent: _buildBaseUrlEditor(
-                  context,
-                  ref,
-                  localSettings.baseUrl,
-                ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: _buildBaseUrlEditor(context, ref, localSettings.baseUrl),
               ),
-              ExpandableSettingTile(
-                title: 'API 访问密钥',
-                subtitle: Text(_maskToken(localSettings.apiToken)),
-                expandedContent: _buildApiTokenEditor(
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: _buildApiTokenEditor(
                   context,
                   ref,
                   localSettings.apiToken,
                 ),
               ),
-              ExpandableSettingTile(
-                title: '网络代理',
-                subtitle: Text(_getProxySubtitle(ref)),
-                expandedContent: _buildProxyEditor(context, ref),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: _buildProxyEditor(context, ref),
               ),
             ],
           ),
@@ -354,31 +347,6 @@ class ConnectionTab extends ConsumerWidget {
         await ref.read(localSettingsProvider.notifier).setApiToken(value);
         if (context.mounted) showToast(context, '密钥已更新');
       },
-    );
-  }
-
-  String _maskToken(String token) {
-    if (token.isEmpty) return '未配置';
-    if (token.length <= 8) return '********';
-    return '${token.substring(0, 4)}****${token.substring(token.length - 4)}';
-  }
-
-  String _getProxySubtitle(WidgetRef ref) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.maybeWhen(
-      data: (settings) {
-        final proxy =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'http_proxy',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        return proxy.isNotEmpty ? proxy : '未配置';
-      },
-      orElse: () => '加载中...',
     );
   }
 
@@ -869,7 +837,7 @@ class _ConnectionValueEditor extends StatelessWidget {
               keyboardType: obscureText
                   ? TextInputType.text
                   : TextInputType.url,
-              decoration: InputDecoration(hintText: hint),
+              decoration: InputDecoration(labelText: label, hintText: hint),
             ),
           ),
           const SizedBox(height: 12),

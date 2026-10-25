@@ -133,33 +133,10 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
               onChanged: (value) => setState(() => _enabled = value),
             ),
             const SizedBox(height: 8),
-            ExpansionTile(
-              title: const Text('敏感内容分流'),
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(top: 12, bottom: 8),
-              shape: const RoundedRectangleBorder(
-                borderRadius: AppShape.cardMediaBorder,
-              ),
-              collapsedShape: const RoundedRectangleBorder(
-                borderRadius: AppShape.cardMediaBorder,
-              ),
-              clipBehavior: Clip.antiAlias,
-              initiallyExpanded: _nsfwChatIdController.text.isNotEmpty,
-              maintainState: true,
-              expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
-                  ? AnimationStyle.noAnimation
-                  : AnimationStyle(
-                      duration: AppMotion.surfaceEnter,
-                      reverseDuration: AppMotion.surfaceExit,
-                      curve: AppMotion.standardCurve,
-                    ),
-              children: [
-                _textField(
-                  controller: _nsfwChatIdController,
-                  label: '备用目标 ID',
-                  hint: '填写目标 ID',
-                ),
-              ],
+            _textField(
+              controller: _nsfwChatIdController,
+              label: '敏感内容备用目标 ID（可选）',
+              hint: '填写目标 ID',
             ),
           ],
         ),
