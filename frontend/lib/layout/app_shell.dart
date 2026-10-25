@@ -154,11 +154,16 @@ class _AppShellState extends ConsumerState<AppShell> {
               body: Row(
                 children: [
                   if (useRail)
-                    SizedBox(
-                      width: NavigationSidebar.compactWidth,
-                      child: NavigationSidebar(
-                        selectedIndex: widget.navigationShell.currentIndex,
-                        onDestinationSelected: _onDestinationSelected,
+                    SafeArea(
+                      top: false,
+                      bottom: false,
+                      right: false,
+                      child: SizedBox(
+                        width: NavigationSidebar.compactWidth,
+                        child: NavigationSidebar(
+                          selectedIndex: widget.navigationShell.currentIndex,
+                          onDestinationSelected: _onDestinationSelected,
+                        ),
                       ),
                     ),
                   Expanded(
