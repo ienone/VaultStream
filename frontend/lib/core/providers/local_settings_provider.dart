@@ -1,9 +1,24 @@
 import 'package:dio/dio.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../main.dart';
 import '../config/env_config.dart';
 
 part 'local_settings_provider.g.dart';
+
+String normalizeServerUrl(String value) {
+  final uri = Uri.tryParse(value.trim());
+  if (uri == null ||
+      !['http', 'https'].contains(uri.scheme) ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      uri.hasQuery ||
+      uri.hasFragment) {
+    throw const FormatException('请输入完整的 http:// 或 https:// 服务器地址');
+  }
+  final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+  return uri.replace(path: path.isEmpty ? '/api/v1' : path).toString();
+}
 
 class LocalSettingsState {
   final String baseUrl;
@@ -39,6 +54,7 @@ class LocalSettings extends _$LocalSettings {
   }
 
   Future<void> setBaseUrl(String url) async {
+    url = normalizeServerUrl(url);
     if (isSharedPrefsInitialized) {
       await sharedPrefs.setString(_keyBaseUrl, url);
     }
@@ -68,6 +84,7 @@ class LocalSettings extends _$LocalSettings {
   }
 
   Future<void> setConnection(String url, String token) async {
+    url = normalizeServerUrl(url);
     if (isSecureStorageInitialized) {
       await secureStorage.write(key: apiTokenStorageKey, value: token);
     }
@@ -84,6 +101,7 @@ class LocalSettings extends _$LocalSettings {
     String apiToken,
   ) async {
     try {
+      baseUrl = normalizeServerUrl(baseUrl);
       final dio = Dio(
         BaseOptions(
           baseUrl: baseUrl,
@@ -98,14 +116,15 @@ class LocalSettings extends _$LocalSettings {
       if (response.statusCode != 204) {
         return {
           'success': false,
-          'error': '后端响应错误: ${response.statusCode}',
+          'error': response.statusCode == 200
+              ? '该地址返回了网页，请填写 VaultStream 服务器地址'
+              : '连接失败（HTTP ${response.statusCode}）',
         };
       }
 
-      return {
-        'success': true,
-        'auth_ok': true,
-      };
+      return {'success': true, 'auth_ok': true};
+    } on FormatException catch (e) {
+      return {'success': false, 'error': e.message};
     } on DioException catch (e) {
       if (e.response?.statusCode == 401) {
         return {'success': true, 'auth_ok': false};

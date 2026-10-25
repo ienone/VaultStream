@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Design tokens for spacing, radius and motion.
 /// Keep values centralized to avoid per-page drift.
@@ -32,17 +32,17 @@ final class AppRadius {
 /// 组件按语义选择形状，而不是所有容器统一 28 圆角。
 /// 卡片、pane、sheet 的圆角差异本身就是层级信号。
 final class AppShape {
-  /// 普通内容卡片：中等圆角。
-  static const double card = AppRadius.md;
+  /// 独立内容卡片。
+  static const double card = AppRadius.xl;
 
   /// 卡片内部的媒体、缩略图等次级容器。
-  static const double cardMedia = AppRadius.sm;
+  static const double cardMedia = AppRadius.md;
 
   /// 分区容器 / supporting pane。
-  static const double pane = AppRadius.lg;
+  static const double pane = AppRadius.xxl;
 
   /// bottom sheet、side sheet、dialog。
-  static const double sheet = AppRadius.xxl;
+  static const double sheet = AppRadius.xxxl;
 
   /// 按钮、chip、选择指示器。
   static const double pill = AppRadius.pill;
@@ -106,7 +106,7 @@ final class AppPane {
   static const double readableMaxWidth = 720;
 
   /// 辅助 pane 宽度。
-  static const double supportingWidth = 320;
+  static const double supportingWidth = 360;
 
   /// 表单和对话框最大宽度。
   static const double formMaxWidth = 560;

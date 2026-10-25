@@ -1,6 +1,6 @@
 import 'dart:ui' show DisplayFeatureType;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// 窗口宽度类别。这是全应用唯一的宽度断点来源。
 ///
@@ -89,6 +89,8 @@ class WindowMetrics {
       ),
     );
   }
+
+  double get toolbarHeight => heightClass.isCompact ? 56 : 64;
 
   bool get isCompact => widthClass.isCompact;
 

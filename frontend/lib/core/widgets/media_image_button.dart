@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../theme/design_tokens.dart';
 
@@ -36,6 +36,8 @@ class _MediaImageButtonState extends State<MediaImageButton> {
       type: MaterialType.transparency,
       child: InkWell(
         onTap: widget.onPressed,
+        splashFactory: NoSplash.splashFactory,
+        highlightColor: Colors.transparent,
         onFocusChange: (focused) => setState(() => _focused = focused),
         borderRadius: widget.borderRadius,
         child: DecoratedBox(

@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,6 +27,7 @@ class NetworkThumbnail extends ConsumerStatefulWidget {
     this.maxHeightDiskCache,
     this.maxWidthDiskCache,
     this.errorIcon = Icons.hide_image_outlined,
+    this.failureBuilder,
   });
 
   final String imageUrl;
@@ -41,6 +42,8 @@ class NetworkThumbnail extends ConsumerStatefulWidget {
   final int? maxHeightDiskCache;
   final int? maxWidthDiskCache;
   final IconData errorIcon;
+  final Widget Function(BuildContext context, VoidCallback? retry)?
+  failureBuilder;
 
   @override
   ConsumerState<NetworkThumbnail> createState() => _NetworkThumbnailState();
@@ -141,9 +144,8 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
   Widget _onError(ColorScheme colorScheme, Object error) {
     final source = _session.current;
     if (source == null) {
-      return _ErrorThumbnail(
-        colorScheme: colorScheme,
-        errorIcon: widget.errorIcon,
+      return _buildFailure(
+        colorScheme,
         failure: MediaFailureKind.unavailable,
         onRetry: _retry,
       );
@@ -164,25 +166,35 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     if (failure == MediaFailureKind.localMissing) {
       _reportMissing(source);
     }
-    if (_session.hasNext && !_advanceScheduled) {
-      _advanceScheduled = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _session.current?.url != source.url) return;
-        setState(() {
-          _session.moveNext();
-          _advanceScheduled = false;
-          _failure = failure;
+    if (_session.hasNext) {
+      if (!_advanceScheduled) {
+        _advanceScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _session.current?.url != source.url) return;
+          setState(() {
+            _session.moveNext();
+            _advanceScheduled = false;
+            _failure = failure;
+          });
         });
-      });
+      }
       return _LoadingThumbnail(colorScheme: colorScheme);
     }
-    return _ErrorThumbnail(
-      colorScheme: colorScheme,
-      errorIcon: widget.errorIcon,
-      failure: failure,
-      onRetry: _retry,
-    );
+    return _buildFailure(colorScheme, failure: failure, onRetry: _retry);
   }
+
+  Widget _buildFailure(
+    ColorScheme colorScheme, {
+    required MediaFailureKind failure,
+    required VoidCallback? onRetry,
+  }) =>
+      widget.failureBuilder?.call(context, onRetry) ??
+      _ErrorThumbnail(
+        colorScheme: colorScheme,
+        errorIcon: widget.errorIcon,
+        failure: failure,
+        onRetry: onRetry,
+      );
 
   void _retry() {
     setState(() {
@@ -212,9 +224,8 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     final colorScheme = Theme.of(context).colorScheme;
     final source = _session.current;
     if (source == null) {
-      return _ErrorThumbnail(
-        colorScheme: colorScheme,
-        errorIcon: widget.errorIcon,
+      return _buildFailure(
+        colorScheme,
         failure: _failure ?? MediaFailureKind.unavailable,
         onRetry: _session.assets.isNotEmpty || _session.sources.isNotEmpty
             ? _retry
@@ -233,19 +244,40 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     final imageUrl = source.url;
     final useFlutterNetworkImage = _session.assets.isNotEmpty;
     final cacheScope = ref.watch(mediaImageCacheScopeProvider);
+    final coverSize =
+        widget.fit == BoxFit.cover &&
+            widget.maxWidthDiskCache != null &&
+            widget.maxHeightDiskCache != null
+        ? Size(
+            widget.maxWidthDiskCache!.toDouble(),
+            widget.maxHeightDiskCache!.toDouble(),
+          )
+        : null;
+    final provider = AssetImageProvider(
+      imageUrl,
+      cacheKey: source.cacheKey ?? imageUrl,
+      scope: cacheScope,
+      coverSize: coverSize,
+    );
+    final sizedProvider = coverSize != null
+        ? provider
+        : widget.maxWidthDiskCache != null && widget.maxHeightDiskCache != null
+        ? ResizeImage(
+            provider,
+            width: widget.maxWidthDiskCache,
+            height: widget.maxHeightDiskCache,
+            policy: ResizeImagePolicy.fit,
+          )
+        : ResizeImage.resizeIfNeeded(
+            widget.maxWidthDiskCache,
+            widget.maxHeightDiskCache,
+            provider,
+          );
     final image = useFlutterNetworkImage
         // 资产来源需要捕获 HTTP 失败并刷新 manifest，因此使用 Flutter
         // 字节解码路径；裸 URL 只用于非资产化的普通公开图片。
         ? Image(
-            image: ResizeImage.resizeIfNeeded(
-              widget.maxWidthDiskCache,
-              widget.maxHeightDiskCache,
-              AssetImageProvider(
-                imageUrl,
-                cacheKey: source.cacheKey ?? imageUrl,
-                scope: cacheScope,
-              ),
-            ),
+            image: sizedProvider,
             key: ValueKey((imageUrl, _requestRevision)),
             width: widget.width,
             height: widget.height,

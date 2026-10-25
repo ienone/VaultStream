@@ -1,8 +1,13 @@
+import 'package:flutter/foundation.dart';
+
 class EnvConfig {
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://localhost:8000/api/v1',
-  );
+  static String get baseUrl {
+    const configured = String.fromEnvironment('API_BASE_URL');
+    if (configured.isNotEmpty) return configured;
+    return kIsWeb
+        ? '${Uri.base.origin}/api/v1'
+        : 'http://localhost:8000/api/v1';
+  }
 
   static const String apiToken = String.fromEnvironment(
     'API_TOKEN',

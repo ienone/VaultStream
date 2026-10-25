@@ -32,15 +32,14 @@ class PlatformConstants {
 
 /// 平台类型检查扩展
 extension PlatformCheck on String {
-  bool get isTwitter =>
-      toLowerCase() == 'twitter' || toLowerCase() == 'x';
+  bool get isTwitter => toLowerCase() == 'twitter' || toLowerCase() == 'x';
 
   bool get isBilibili => toLowerCase() == 'bilibili';
 
   bool get isXiaohongshu => toLowerCase() == 'xiaohongshu';
-  
+
   bool get isWeibo => toLowerCase() == 'weibo';
-  
+
   bool get isZhihu => toLowerCase() == 'zhihu';
 }
 

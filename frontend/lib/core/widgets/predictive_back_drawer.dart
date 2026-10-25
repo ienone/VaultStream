@@ -1,32 +1,39 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/design_tokens.dart';
+import '../../routing/navigation_scope.dart';
 
-/// Adds a reversible back preview to a dialog without changing its result,
-/// barrier, focus handling, or the form's PopScope contract.
-class PredictiveBackDialog extends StatefulWidget {
-  const PredictiveBackDialog({super.key, required this.child});
+/// Preview the drawer itself; Scaffold still owns its drag and local history.
+class PredictiveBackDrawer extends StatefulWidget {
+  const PredictiveBackDrawer({
+    super.key,
+    required this.child,
+    required this.isOpen,
+    required this.close,
+    this.alignment = Alignment.centerLeft,
+  });
 
   final Widget child;
+  final bool Function() isOpen;
+  final VoidCallback close;
+  final Alignment alignment;
 
   @override
-  State<PredictiveBackDialog> createState() => _PredictiveBackDialogState();
+  State<PredictiveBackDrawer> createState() => _PredictiveBackDrawerState();
 }
 
-class _PredictiveBackDialogState extends State<PredictiveBackDialog>
+class _PredictiveBackDrawerState extends State<PredictiveBackDrawer>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final _progress = AnimationController(
     vsync: this,
     duration: AppMotion.surfaceExit,
   );
   ModalRoute<dynamic>? _route;
-  NavigatorState? _gestureNavigator;
   double _fromProgress = 0;
   double _toProgress = 0;
   double _fromOffset = 0;
   double _toOffset = 0;
-  int _generation = 0;
 
   double get _preview =>
       _fromProgress + (_toProgress - _fromProgress) * _progress.value;
@@ -56,11 +63,6 @@ class _PredictiveBackDialogState extends State<PredictiveBackDialog>
     _route = ModalRoute.of(context);
   }
 
-  void _releaseGesture() {
-    _gestureNavigator?.didStopUserGesture();
-    _gestureNavigator = null;
-  }
-
   @override
   bool handleStartBackGesture(PredictiveBackEvent event) {
     final route = _route;
@@ -68,13 +70,12 @@ class _PredictiveBackDialogState extends State<PredictiveBackDialog>
         MediaQuery.disableAnimationsOf(context) ||
         route == null ||
         !route.isCurrent ||
-        !route.popGestureEnabled) {
+        !widget.isOpen() ||
+        !AppNavigationScope.isActiveOf(context) ||
+        !TickerMode.valuesOf(context).enabled) {
       return false;
     }
-    _generation++;
     _retarget(1, event.swipeEdge == SwipeEdge.left ? 16 : -16);
-    _releaseGesture();
-    _gestureNavigator = route.navigator!..didStartUserGesture();
     _progress.value = event.progress;
     return true;
   }
@@ -85,35 +86,22 @@ class _PredictiveBackDialogState extends State<PredictiveBackDialog>
   }
 
   Future<void> _restore() async {
-    final generation = ++_generation;
     _retarget(0, 0);
     await _progress.animateTo(1, curve: AppMotion.standardCurve);
-    if (mounted && generation == _generation) _releaseGesture();
   }
 
   @override
   void handleCancelBackGesture() => _restore();
 
   @override
-  void handleCommitBackGesture() async {
-    final route = _route;
-    final navigator = _gestureNavigator;
-    _generation++;
-    _releaseGesture();
-    if (route == null || !route.isCurrent || navigator == null) {
-      _restore();
-      return;
-    }
-    // A guard can change while the finger is down. Recheck it at commit.
-    await navigator.maybePop();
-    if (mounted && route.isCurrent) _restore();
+  void handleCommitBackGesture() {
+    if (_route?.isCurrent == true && widget.isOpen()) widget.close();
+    _restore();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _generation++;
-    _releaseGesture();
     _progress.dispose();
     super.dispose();
   }
@@ -124,7 +112,11 @@ class _PredictiveBackDialogState extends State<PredictiveBackDialog>
     child: widget.child,
     builder: (context, child) => Transform.translate(
       offset: Offset(_offset, 0),
-      child: Transform.scale(scale: 1 - .04 * _preview, child: child),
+      child: Transform.scale(
+        alignment: widget.alignment,
+        scale: 1 - .04 * _preview,
+        child: child,
+      ),
     ),
   );
 }

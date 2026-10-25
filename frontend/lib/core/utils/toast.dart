@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+
+import 'dart:math' as math;
 
 class Toast {
   /// Shows a unified, stylized toast notification.
@@ -22,7 +24,7 @@ class Toast {
 
     final iconColor = isError ? colorScheme.error : colorScheme.secondary;
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -49,11 +51,20 @@ class Toast {
         ),
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        width: math.min(480, MediaQuery.sizeOf(context).width - 32),
         elevation: 2,
-        duration: const Duration(seconds: 3),
-        action: action,
+        duration: Duration(seconds: action == null ? 3 : 5),
+        persist: false,
+        showCloseIcon: true,
+        closeIconColor: textColor,
+        action: action == null
+            ? null
+            : SnackBarAction(
+                label: action.label,
+                textColor: textColor,
+                onPressed: action.onPressed,
+              ),
       ),
     );
   }

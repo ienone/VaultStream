@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+
 import 'design_tokens.dart';
 import '../routing/navigation_scope.dart';
 
@@ -64,20 +65,48 @@ class AppTheme {
       ),
       textButtonTheme: const TextButtonThemeData(style: textButtonStyle),
 
+      datePickerTheme: DatePickerThemeData(
+        shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetBorder),
+        rangePickerShape: const RoundedRectangleBorder(
+          borderRadius: AppShape.sheetBorder,
+        ),
+        rangePickerBackgroundColor: scheme.surfaceContainerHigh,
+        rangePickerHeaderBackgroundColor: scheme.surfaceContainerHigh,
+        rangePickerHeaderHeadlineStyle: textTheme.titleLarge,
+      ),
+      navigationDrawerTheme: NavigationDrawerThemeData(
+        backgroundColor: scheme.surfaceContainerLow,
+        indicatorColor: scheme.secondaryContainer,
+        indicatorShape: const StadiumBorder(),
+        tileHeight: 56,
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          shape: const WidgetStatePropertyAll(StadiumBorder()),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? scheme.secondaryContainer
+                : null,
+          ),
+        ),
+      ),
+
       // Surface & Background
       scaffoldBackgroundColor: scheme.surface,
       canvasColor: scheme.surface,
 
       // Enhanced AppBar for Expressive M3
       appBarTheme: AppBarTheme(
+        toolbarHeight: 64,
+        titleSpacing: 16,
+        actionsPadding: const EdgeInsets.only(right: 8),
         systemOverlayStyle: isDark
             ? SystemUiOverlayStyle.light
             : SystemUiOverlayStyle.dark,
-        backgroundColor: Colors
-            .transparent, // Usually used with glassmorphism or scrolledUnderElevation
+        backgroundColor: scheme.surface,
         surfaceTintColor: scheme.surfaceTint,
         elevation: 0,
-        scrolledUnderElevation: 2,
+        scrolledUnderElevation: 0,
         centerTitle: false,
         titleTextStyle: textTheme.titleLarge?.copyWith(
           color: scheme.onSurface,
@@ -88,7 +117,7 @@ class AppTheme {
 
       // Expressive Navigation Rail
       navigationRailTheme: NavigationRailThemeData(
-        labelType: NavigationRailLabelType.all,
+        labelType: NavigationRailLabelType.selected,
         groupAlignment: -0.9,
         backgroundColor: scheme.surfaceContainerLow,
         indicatorColor: scheme.secondaryContainer,
@@ -163,15 +192,15 @@ class AppTheme {
         filled: true,
         fillColor: scheme.surfaceContainerHighest,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
           borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
@@ -191,7 +220,7 @@ class AppTheme {
         style: MenuStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
             ),
           ),
           elevation: WidgetStateProperty.all(8),
@@ -206,7 +235,7 @@ class AppTheme {
       ),
       popupMenuTheme: PopupMenuThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.md),
+          borderRadius: BorderRadius.circular(AppRadius.xl),
         ),
         elevation: 8,
         surfaceTintColor: scheme.surfaceTint,
@@ -219,7 +248,7 @@ class AppTheme {
         menuStyle: MenuStyle(
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderRadius: BorderRadius.circular(AppRadius.xl),
             ),
           ),
           elevation: WidgetStateProperty.all(8),
@@ -228,7 +257,7 @@ class AppTheme {
           filled: true,
           fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
             borderSide: BorderSide.none,
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
@@ -258,7 +287,9 @@ class AppTheme {
       listTileTheme: ListTileThemeData(
         selectedTileColor: scheme.secondaryContainer,
         selectedColor: scheme.onSecondaryContainer,
-        shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppShape.cardMediaBorder,
+        ),
       ),
       expansionTileTheme: const ExpansionTileThemeData(
         shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
@@ -272,18 +303,16 @@ class AppTheme {
           visualDensity: VisualDensity.comfortable,
           selectedBackgroundColor: scheme.secondaryContainer,
           selectedForegroundColor: scheme.onSecondaryContainer,
-          side: BorderSide.none,
+          side: BorderSide(color: scheme.outline),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md),
+            borderRadius: BorderRadius.circular(AppRadius.xl),
           ),
         ),
       ),
 
       // Expressive Chips
       chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.sm),
-        ),
+        shape: const StadiumBorder(),
         side: BorderSide.none,
         backgroundColor: scheme.surfaceContainerLow,
         selectedColor: scheme.primaryContainer,
@@ -318,50 +347,52 @@ class AppTheme {
         ? ThemeData.light().textTheme
         : ThemeData.dark().textTheme;
 
-    return GoogleFonts.lexendTextTheme(baseTheme).copyWith(
-      displayLarge: GoogleFonts.lexend(
-        textStyle: baseTheme.displayLarge,
-        fontWeight: FontWeight.bold,
-      ),
-      displayMedium: GoogleFonts.lexend(
-        textStyle: baseTheme.displayMedium,
-        fontWeight: FontWeight.bold,
-      ),
-      displaySmall: GoogleFonts.lexend(
-        textStyle: baseTheme.displaySmall,
-        fontWeight: FontWeight.bold,
-      ),
-      headlineLarge: GoogleFonts.lexend(
-        textStyle: baseTheme.headlineLarge,
-        fontWeight: FontWeight.bold,
-      ),
-      headlineMedium: GoogleFonts.lexend(
-        textStyle: baseTheme.headlineMedium,
-        fontWeight: FontWeight.bold,
-      ),
-      headlineSmall: GoogleFonts.lexend(
-        textStyle: baseTheme.headlineSmall,
-        fontWeight: FontWeight.bold,
-      ),
-      titleLarge: GoogleFonts.lexend(
-        textStyle: baseTheme.titleLarge,
-        fontWeight: FontWeight.w600,
-      ),
-      titleMedium: GoogleFonts.lexend(
-        textStyle: baseTheme.titleMedium,
-        fontWeight: FontWeight.w600,
-      ),
-      titleSmall: GoogleFonts.lexend(
-        textStyle: baseTheme.titleSmall,
-        fontWeight: FontWeight.w600,
-      ),
-      bodyLarge: GoogleFonts.inter(textStyle: baseTheme.bodyLarge),
-      bodyMedium: GoogleFonts.inter(textStyle: baseTheme.bodyMedium),
-      bodySmall: GoogleFonts.inter(textStyle: baseTheme.bodySmall),
-      labelLarge: GoogleFonts.inter(
-        textStyle: baseTheme.labelLarge,
-        fontWeight: FontWeight.bold,
-      ),
-    );
+    return GoogleFonts.lexendTextTheme(baseTheme)
+        .copyWith(
+          displayLarge: GoogleFonts.lexend(
+            textStyle: baseTheme.displayLarge,
+            fontWeight: FontWeight.bold,
+          ),
+          displayMedium: GoogleFonts.lexend(
+            textStyle: baseTheme.displayMedium,
+            fontWeight: FontWeight.bold,
+          ),
+          displaySmall: GoogleFonts.lexend(
+            textStyle: baseTheme.displaySmall,
+            fontWeight: FontWeight.bold,
+          ),
+          headlineLarge: GoogleFonts.lexend(
+            textStyle: baseTheme.headlineLarge,
+            fontWeight: FontWeight.bold,
+          ),
+          headlineMedium: GoogleFonts.lexend(
+            textStyle: baseTheme.headlineMedium,
+            fontWeight: FontWeight.bold,
+          ),
+          headlineSmall: GoogleFonts.lexend(
+            textStyle: baseTheme.headlineSmall,
+            fontWeight: FontWeight.bold,
+          ),
+          titleLarge: GoogleFonts.lexend(
+            textStyle: baseTheme.titleLarge,
+            fontWeight: FontWeight.w600,
+          ),
+          titleMedium: GoogleFonts.lexend(
+            textStyle: baseTheme.titleMedium,
+            fontWeight: FontWeight.w600,
+          ),
+          titleSmall: GoogleFonts.lexend(
+            textStyle: baseTheme.titleSmall,
+            fontWeight: FontWeight.w600,
+          ),
+          bodyLarge: GoogleFonts.inter(textStyle: baseTheme.bodyLarge),
+          bodyMedium: GoogleFonts.inter(textStyle: baseTheme.bodyMedium),
+          bodySmall: GoogleFonts.inter(textStyle: baseTheme.bodySmall),
+          labelLarge: GoogleFonts.inter(
+            textStyle: baseTheme.labelLarge,
+            fontWeight: FontWeight.bold,
+          ),
+        )
+        .apply(fontFamilyFallback: const ['NotoSansSC']);
   }
 }
