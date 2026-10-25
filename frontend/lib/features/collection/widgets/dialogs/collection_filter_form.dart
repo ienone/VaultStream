@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/widgets/app_choice_segments.dart';
 import '../../../../core/widgets/app_multi_select.dart';
+import '../../../../core/widgets/app_filter_menu.dart';
 import '../../providers/tag_provider.dart';
 import '../../../search/search_models.dart';
 
@@ -155,7 +156,7 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 12, 4),
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
               child: Row(
                 children: [
                   Expanded(
@@ -164,16 +165,10 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
-                  IconButton(
-                    tooltip: '关闭筛选',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
                 ],
               ),
             ),
             Flexible(
-              fit: FlexFit.tight,
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
                 child: Column(
@@ -225,32 +220,36 @@ class _CollectionFilterFormState extends ConsumerState<CollectionFilterForm> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    _heading('保存日期'),
-                    AppChoiceSegments<int>(
-                      options: const {-1: '不限', 0: '今天', 7: '7 天', 30: '30 天'},
-                      selected: _preset() == -2 ? <int>{} : {_preset()},
-                      allowEmpty: true,
-                      onChanged: (values) => setState(() {
-                        final days = values.isEmpty ? -1 : values.first;
-                        final today = DateUtils.dateOnly(DateTime.now());
-                        _range = days == -1
-                            ? null
-                            : DateTimeRange(
-                                start: today.subtract(Duration(days: days)),
-                                end: today,
-                              );
-                        _dateChanged = true;
-                      }),
-                    ),
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: _pickDates,
-                      icon: const Icon(Icons.date_range_outlined),
-                      label: Text(
-                        _range == null
-                            ? '自选日期范围'
-                            : '${DateFormat('yyyy/MM/dd').format(_range!.start)} — ${DateFormat('yyyy/MM/dd').format(_range!.end)}',
-                      ),
+                    AppFilterMenu(
+                      label: '保存日期',
+                      value: '${_preset()}',
+                      options: {
+                        '-1': '不限日期',
+                        '0': '今天',
+                        '7': '最近 7 天',
+                        '30': '最近 30 天',
+                        '-3': '自选日期范围…',
+                        if (_preset() == -2)
+                          '-2':
+                              '${DateFormat('MM/dd').format(_range!.start)} — ${DateFormat('MM/dd').format(_range!.end)}',
+                      },
+                      onSelected: (value) {
+                        final days = int.parse(value);
+                        if (days == -3) {
+                          _pickDates();
+                          return;
+                        }
+                        setState(() {
+                          final today = DateUtils.dateOnly(DateTime.now());
+                          _range = days == -1
+                              ? null
+                              : DateTimeRange(
+                                  start: today.subtract(Duration(days: days)),
+                                  end: today,
+                                );
+                          _dateChanged = true;
+                        });
+                      },
                     ),
                     if (widget.request.query.trim().isNotEmpty) ...[
                       const SizedBox(height: 24),

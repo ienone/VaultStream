@@ -13,7 +13,7 @@ Future<void> showPushContentDialog(
   List<int> contentIds,
 ) => showDialog<void>(
   context: context,
-  barrierDismissible: false,
+  barrierDismissible: true,
   builder: (_) =>
       _PushContentDialog(contentIds: contentIds, router: GoRouter.of(context)),
 );

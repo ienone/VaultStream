@@ -31,7 +31,7 @@ Future<String?> showContentTemplatePicker(
     isScrollControlled: true,
     useSafeArea: true,
     clipBehavior: Clip.antiAlias,
-    showDragHandle: true,
+    showDragHandle: false,
     sheetAnimationStyle: animation,
     builder: (_) =>
         SafeArea(top: false, child: ContentTemplatePicker(current: current)),
@@ -53,7 +53,7 @@ class ContentTemplatePicker extends StatelessWidget {
   ];
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+    padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -62,13 +62,8 @@ class ContentTemplatePicker extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    '手动选择后，重新解析会保留此模板。',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
+                Text('阅读样式', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
                 RadioGroup<String>(
                   groupValue: current ?? autoValue,
                   onChanged: (value) => Navigator.pop(
@@ -77,11 +72,10 @@ class ContentTemplatePicker extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      for (final (value, label, hint) in _options)
+                      for (final (value, label, _) in _options)
                         RadioListTile<String>(
                           value: value,
                           title: Text(label),
-                          subtitle: Text(hint),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 8,
                           ),

@@ -17,7 +17,7 @@ Future<UnifiedSearchRequest?> editSearchFilters(
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
-      showDragHandle: true,
+      showDragHandle: false,
       clipBehavior: Clip.antiAlias,
       sheetAnimationStyle: reducedMotion
           ? AnimationStyle.noAnimation
@@ -79,7 +79,6 @@ Future<UnifiedSearchRequest?> editSearchFilters(
                   width:
                       440 *
                       MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.25),
-                  height: double.infinity,
                   child: Material(
                     color: Theme.of(context).colorScheme.surfaceContainerLow,
                     shape: const RoundedRectangleBorder(

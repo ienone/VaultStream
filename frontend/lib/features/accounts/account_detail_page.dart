@@ -106,7 +106,7 @@ class _AccountDetailBody extends ConsumerWidget {
   Future<void> _login(BuildContext context, WidgetRef ref) async {
     final success = await showDialog<bool>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (_) => account.platform == 'twitter'
           ? const XSessionCookieDialog()
           : PlatformLoginDialog(

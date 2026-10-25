@@ -37,7 +37,7 @@ class AddContentDialog extends ConsumerStatefulWidget {
       return showDialog<ContentActionResult>(
         context: context,
         animationStyle: animation,
-        barrierDismissible: false,
+        barrierDismissible: true,
         builder: (context) => Dialog(
           clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
@@ -58,8 +58,8 @@ class AddContentDialog extends ConsumerStatefulWidget {
       useRootNavigator: true,
       sheetAnimationStyle: animation,
       isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
+      isDismissible: true,
+      enableDrag: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       constraints: const BoxConstraints(maxWidth: AppPane.formMaxWidth),
@@ -259,22 +259,6 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!widget.dialogSurface) ...[
-                      Center(
-                        child: Container(
-                          width: 32,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: colorScheme.onSurfaceVariant.withValues(
-                              alpha: 0.4,
-                            ),
-                            borderRadius: BorderRadius.circular(AppShape.pill),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-
                     Text(
                       '保存内容',
                       style: theme.textTheme.titleLarge?.copyWith(
@@ -410,7 +394,9 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                     const SizedBox(height: 20),
 
                     ExpansionTile(
-                      title: const Text('附加信息（可选）'),
+                      title: const Text('更多选项'),
+                      backgroundColor: Colors.transparent,
+                      collapsedBackgroundColor: Colors.transparent,
                       subtitle: _isNsfw ? const Text('已标记为敏感内容') : null,
                       tilePadding: EdgeInsets.zero,
                       initiallyExpanded:
@@ -452,7 +438,6 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                         ),
                         SwitchListTile(
                           title: const Text('标记为敏感内容'),
-                          subtitle: const Text('浏览时默认隐藏'),
                           value: _isNsfw,
                           onChanged: _isLoading
                               ? null
@@ -496,15 +481,6 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                     // 操作按钮
                     Row(
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () => Navigator.of(context).pop(),
-                            child: const Text('取消'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
                           child: FilledButton(
