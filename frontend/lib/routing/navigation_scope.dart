@@ -95,6 +95,7 @@ class _PageSurfaceTransitionState extends State<_PageSurfaceTransition>
     with WidgetsBindingObserver {
   Rect? _lastRect, _previewStart, _settleFrom;
   double _lastRadius = 0, _settleRadius = 0;
+  double _previewStartRadius = 0;
   double _gestureStart = 1, _gestureProgress = 0, _settleAt = 1;
   bool _dragging = false, _committing = false;
   SwipeEdge _edge = SwipeEdge.left;
@@ -137,6 +138,7 @@ class _PageSurfaceTransitionState extends State<_PageSurfaceTransition>
       return false;
     }
     _previewStart = _lastRect;
+    _previewStartRadius = _lastRadius;
     _gestureStart = widget.animation.value;
     _edge = event.swipeEdge;
     _dragging = true;
@@ -167,6 +169,13 @@ class _PageSurfaceTransitionState extends State<_PageSurfaceTransition>
   @override
   void handleCancelBackGesture() {
     _settle(committing: false);
+    // A zero-progress cancellation has no animation tick to clear settling.
+    if (widget.animation.isCompleted) {
+      setState(() {
+        _settleFrom = null;
+        _previewStart = null;
+      });
+    }
     widget.route.handleCancelBackGesture();
   }
 
@@ -214,7 +223,7 @@ class _PageSurfaceTransitionState extends State<_PageSurfaceTransition>
               size.height * .9,
             );
             rect = Rect.lerp(_previewStart ?? full, preview, p)!;
-            radius = 28 * p;
+            radius = _previewStartRadius + (28 - _previewStartRadius) * p;
           } else if (_settleFrom != null) {
             final fraction = _settleAt == 1 && !_committing
                 ? 1.0
