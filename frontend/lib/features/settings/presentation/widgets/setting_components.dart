@@ -48,7 +48,7 @@ class SettingTile extends StatelessWidget {
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 20,
-            vertical: 8,
+            vertical: 4,
           ),
           leading: icon == null ? null : Icon(icon, color: iconColor),
           title: Text(title),
@@ -127,7 +127,7 @@ class _ExpandableSettingTileState extends State<ExpandableSettingTile>
         leading: widget.icon == null ? null : Icon(widget.icon, size: 22),
         tilePadding: EdgeInsets.symmetric(
           horizontal: 20,
-          vertical: widget.dense ? 0 : 8,
+          vertical: widget.dense ? 0 : 4,
         ),
         childrenPadding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
         shape: shape,

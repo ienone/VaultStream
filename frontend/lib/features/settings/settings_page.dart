@@ -1,3 +1,4 @@
+import '../../routing/page_origin.dart';
 import '../../routing/overlay_back_observer.dart';
 import '../../theme/design_tokens.dart';
 import '../../core/layout/app_page_body.dart';
@@ -30,6 +31,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late int _selectedIndex;
   late bool _showMobileDetail;
   final _contentKey = GlobalKey();
+  PageOrigin? _origin;
   final _navigatorKey = GlobalKey<NavigatorState>();
   final _backObserver = OverlayBackObserver();
   static const _detailPageKey = ValueKey('settings-detail-page');
@@ -37,50 +39,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   static const List<_SettingsSection> _sections = [
     _SettingsSection(
       key: 'connection',
-      title: '连接与访问',
-      subtitle: '服务器地址、访问密钥和网络代理',
+      title: '服务器连接',
       icon: Icons.lan_rounded,
       child: ConnectionTab(),
     ),
     _SettingsSection(
       key: 'processing',
       title: '内容处理',
-      subtitle: '解析、摘要、索引与自动整理',
       icon: Icons.tune_rounded,
       child: ProcessingAutomationPanel(),
     ),
     _SettingsSection(
       key: 'automation',
       title: 'AI 模型',
-      subtitle: '文本、视觉、摘要与语义模型',
       icon: Icons.auto_awesome_rounded,
       child: AutomationTab(),
     ),
     _SettingsSection(
       key: 'discovery',
-      title: '筛选与保留',
-      subtitle: '兴趣偏好、自动筛选和内容保留',
+      title: '内容筛选',
       icon: Icons.filter_alt_outlined,
       child: AutomationTab(view: AutomationView.policy),
     ),
     _SettingsSection(
       key: 'push',
       title: '通知',
-      subtitle: '应用内摘要与消息',
-      icon: Icons.outbox_rounded,
+      icon: Icons.notifications_outlined,
       child: PushTab(),
     ),
     _SettingsSection(
-      key: 'storage',
-      title: '媒体与存储',
-      subtitle: '媒体归档、质量与存储限制',
-      icon: Icons.storage_outlined,
-      child: SystemTab(storageOnly: true),
-    ),
-    _SettingsSection(
       key: 'system',
-      title: '外观与系统',
-      subtitle: '主题与开源许可',
+      title: '外观',
       icon: Icons.tune_rounded,
       child: SystemTab(),
     ),
@@ -161,7 +150,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ),
                   if (_showMobileDetail)
-                    MaterialPage<void>(
+                    OriginMaterialPage<void>(
+                      origin: singlePane ? _origin : null,
                       key: _detailPageKey,
                       canPop: singlePane,
                       child: singlePane
@@ -263,9 +253,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       KeyedSubtree(key: _contentKey, child: _sections[_selectedIndex].child);
 
   static const _groups = [
-    ('应用', [6, 4]),
-    ('内容', [1, 2, 3, 5]),
-    ('连接', [0]),
+    ('应用', [5, 4, 0]),
+    ('内容', [1, 2, 3]),
   ];
   static final _navigationOrder = _groups.expand((group) => group.$2).toList();
   Widget _buildSectionList(BuildContext context) => ListView(
@@ -280,19 +269,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         AppSettingGroup(
           children: [
             for (final i in group.$2)
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
+              Builder(
+                builder: (rowContext) => ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 4,
+                  ),
+                  leading: Icon(_sections[i].icon),
+                  title: Text(_sections[i].title),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    _origin = PageOrigin(rowContext);
+                    _selectSection(context, i);
+                    setState(() => _showMobileDetail = true);
+                  },
                 ),
-                leading: Icon(_sections[i].icon),
-                title: Text(_sections[i].title),
-                subtitle: Text(_sections[i].subtitle),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () {
-                  _selectSection(context, i);
-                  setState(() => _showMobileDetail = true);
-                },
               ),
           ],
         ),
@@ -307,21 +298,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   int _sectionIndex(String? tab) {
     final index = _sections.indexWhere((section) => section.key == tab);
-    return index < 0 ? 6 : index;
+    return index < 0 ? 5 : index;
   }
 }
 
 class _SettingsSection {
   final String key;
   final String title;
-  final String subtitle;
   final IconData icon;
   final Widget child;
 
   const _SettingsSection({
     required this.key,
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.child,
   });
