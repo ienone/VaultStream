@@ -209,16 +209,13 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
       builder: (context, controllers) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(
-            label: '兴趣偏好',
-            child: TextField(
-              controller: controllers['profile'],
-              minLines: 3,
-              maxLines: 6,
-              decoration: const InputDecoration(
-                labelText: '兴趣偏好',
-                hintText: '感兴趣的主题、作者或关键词',
-              ),
+          TextField(
+            controller: controllers['profile'],
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              labelText: '兴趣偏好',
+              hintText: '感兴趣的主题、作者或关键词',
             ),
           ),
           const Gap(12),

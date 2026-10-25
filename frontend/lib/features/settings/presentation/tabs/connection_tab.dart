@@ -827,18 +827,13 @@ class _ConnectionValueEditor extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(
-            label: label,
-            child: TextField(
-              controller: controller,
-              obscureText: obscureText,
-              enableSuggestions: false,
-              autocorrect: false,
-              keyboardType: obscureText
-                  ? TextInputType.text
-                  : TextInputType.url,
-              decoration: InputDecoration(labelText: label, hintText: hint),
-            ),
+          TextField(
+            controller: controller,
+            obscureText: obscureText,
+            enableSuggestions: false,
+            autocorrect: false,
+            keyboardType: obscureText ? TextInputType.text : TextInputType.url,
+            decoration: InputDecoration(labelText: label, hintText: hint),
           ),
           const SizedBox(height: 12),
           Align(
