@@ -9,7 +9,6 @@ import '../dashboard/task_result_page.dart';
 import '../collection/content_detail_page.dart';
 import '../../core/widgets/app_filter_menu.dart';
 import '../../routing/app_navigation.dart';
-import '../../layout/root_page_actions.dart';
 import '../../theme/design_tokens.dart';
 import 'notification_models.dart';
 import 'notification_provider.dart';
@@ -66,7 +65,6 @@ class _NotificationCenterPageState
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(
               automaticallyImplyLeading: false,
-              leading: buildRootPageLeading(context),
               title: const Text('消息'),
               actions: [
                 IconButton(

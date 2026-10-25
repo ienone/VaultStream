@@ -2,7 +2,7 @@ import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../core/widgets/app_filter_menu.dart';
 import '../../core/layout/app_page_body.dart';
-import '../../layout/root_page_actions.dart';
+import '../../core/widgets/workspace_tabs.dart';
 import '../collection/content_detail_page.dart';
 import '../collection/models/content.dart';
 
@@ -12,7 +12,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/layout/responsive_layout.dart';
 import '../../core/layout/app_list_detail_workspace.dart';
 import '../../core/network/sse_service.dart';
 import '../../core/network/api_client.dart';
@@ -53,14 +52,7 @@ class DistributionPage extends ConsumerStatefulWidget {
             height: MediaQuery.sizeOf(context).height * .8,
             child: Column(
               children: [
-                ListTile(
-                  title: const Text('推送目标'),
-                  trailing: IconButton(
-                    tooltip: '关闭',
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
+                ListTile(title: const Text('推送目标')),
                 const Expanded(child: PushTab(targetsOnly: true)),
               ],
             ),
@@ -126,17 +118,9 @@ class _DistributionDomainTabsState extends State<_DistributionDomainTabs>
   }
 
   @override
-  Widget build(BuildContext context) => TabBar.secondary(
+  Widget build(BuildContext context) => WorkspaceTabs(
     controller: _controller,
-    isScrollable: true,
-    tabAlignment: TabAlignment.start,
-    dividerColor: Colors.transparent,
-    tabs: const [
-      Tab(text: '待发送'),
-      Tab(text: '发送记录'),
-      Tab(text: '规则'),
-      Tab(text: '目标'),
-    ],
+    labels: const ['待发送', '发送记录', '规则', '目标'],
     onTap: (index) => widget.onChanged(_DistributionDomainView.values[index]),
   );
 }
@@ -316,10 +300,12 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
       selectedId:
           editorKey ?? (contentId == null ? null : ('content', contentId)),
       list: Scaffold(
-        appBar: AppBar(
-          toolbarHeight: WindowMetrics.of(context).toolbarHeight,
-          title: const Text('推送'),
-          leading: buildRootPageLeading(context),
+        appBar: WorkspaceAppBar(
+          title: '推送',
+          tabs: _DistributionDomainTabs(
+            view: _distributionView,
+            onChanged: _showView,
+          ),
         ),
         body: _buildDistributionDomain(),
       ),
@@ -411,7 +397,6 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
 
   Widget _buildDistributionContent() {
     final header = <Widget>[
-      _DistributionDomainTabs(view: _distributionView, onChanged: _showView),
       if ((_distributionView == _DistributionDomainView.queue ||
           _distributionView == _DistributionDomainView.history))
         _buildRuleSelector(),
@@ -419,7 +404,6 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        header.first,
         Expanded(
           child: Stack(
             fit: StackFit.expand,
@@ -432,7 +416,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
                 const PushTab(targetsOnly: true),
               if (_distributionView == _DistributionDomainView.queue ||
                   _distributionView == _DistributionDomainView.history)
-                AppPageBody(child: _buildQueueList(header.skip(1).toList())),
+                AppPageBody(child: _buildQueueList(header)),
             ],
           ),
         ),

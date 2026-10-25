@@ -205,7 +205,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
     String? failure;
     await showDialog<void>(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, updateDialog) => PopScope(
           canPop: !clearing,
@@ -292,7 +292,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
           availableSize: constraints.biggest,
         );
         final conversationBar = AppBar(
-          leading: buildRootPageLeading(context),
+          automaticallyImplyLeading: false,
           toolbarHeight: metrics.toolbarHeight,
           title: const Text('对话'),
           actions: [

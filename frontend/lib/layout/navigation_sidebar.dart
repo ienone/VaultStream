@@ -6,26 +6,6 @@ import '../features/notifications/notification_provider.dart';
 import '../core/providers/theme_provider.dart';
 import '../core/widgets/app_choice_segments.dart';
 
-/// 页头只需要知道导航是否可见以及如何打开，不接管 Shell 的路由状态。
-class SidebarScope extends InheritedWidget {
-  const SidebarScope({
-    super.key,
-    required this.visible,
-    required this.openDrawer,
-    required super.child,
-  });
-
-  final bool visible;
-  final VoidCallback openDrawer;
-
-  static SidebarScope of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<SidebarScope>()!;
-
-  @override
-  bool updateShouldNotify(SidebarScope oldWidget) =>
-      visible != oldWidget.visible;
-}
-
 class NavigationSidebar extends ConsumerWidget {
   const NavigationSidebar({
     super.key,

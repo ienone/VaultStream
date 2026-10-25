@@ -337,7 +337,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           return Scaffold(
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(
-              leading: buildRootPageLeading(context),
+              automaticallyImplyLeading: false,
               toolbarHeight: metrics.toolbarHeight,
               title: const Text('动态'),
               actions: [const RootPageActions()],
@@ -780,36 +780,39 @@ class _FeedCard extends StatelessWidget {
                 runSpacing: AppSpacing.xs,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (view == DiscoveryFeedView.later)
-                    TextButton.icon(
-                      onPressed: busy ? null : onRestore,
-                      icon: const Icon(Icons.move_to_inbox_outlined, size: 19),
-                      label: const Text('移回动态'),
-                    ),
-                  FilledButton.tonalIcon(
+                  TextButton.icon(
                     onPressed: busy ? null : onPromote,
                     icon: const Icon(Icons.bookmark_add_outlined, size: 19),
                     label: const Text('收录'),
                   ),
-                  if (view == DiscoveryFeedView.recent)
-                    TextButton.icon(
-                      onPressed: busy ? null : onSnooze,
-                      icon: const Icon(Icons.schedule_rounded, size: 19),
-                      label: const Text('稍后'),
-                    ),
                   PopupMenuButton<String>(
                     tooltip: '更多操作',
                     enabled: !busy,
                     onSelected: (action) {
-                      if (action == 'push') {
-                        showPushContentDialog(context, [item.id]);
-                      } else {
-                        onIgnore();
+                      switch (action) {
+                        case 'push':
+                          showPushContentDialog(context, [item.id]);
+                        case 'later':
+                          onSnooze();
+                        case 'restore':
+                          onRestore();
+                        case 'ignore':
+                          onIgnore();
                       }
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'push', child: Text('推送')),
-                      PopupMenuItem(value: 'ignore', child: Text('忽略')),
+                    itemBuilder: (_) => [
+                      if (view == DiscoveryFeedView.recent)
+                        const PopupMenuItem(
+                          value: 'later',
+                          child: Text('稍后处理'),
+                        ),
+                      if (view == DiscoveryFeedView.later)
+                        const PopupMenuItem(
+                          value: 'restore',
+                          child: Text('移回动态'),
+                        ),
+                      const PopupMenuItem(value: 'push', child: Text('推送')),
+                      const PopupMenuItem(value: 'ignore', child: Text('忽略')),
                     ],
                   ),
                   if (busy) ...[
@@ -867,15 +870,6 @@ class _SourceLine extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(
-            _sourceIcon(item),
-            size: 17,
-            color: theme.colorScheme.primary,
-          ),
-        ),
-        const SizedBox(width: AppSpacing.xs),
         Expanded(child: sourceLabel),
         const SizedBox(width: AppSpacing.sm),
         timeLabel,
@@ -1057,15 +1051,3 @@ String _sourceKindLabel(String? kind) => switch (kind) {
   null || '' => '',
   _ => '',
 };
-
-IconData _sourceIcon(DiscoveryItem item) {
-  final kind = item.sourceKinds.isNotEmpty
-      ? item.sourceKinds.first
-      : item.sourceType;
-  return switch (kind) {
-    'rss' => Icons.rss_feed_rounded,
-    'telegram_channel' => Icons.send_rounded,
-    'favorites_sync' => Icons.sync_rounded,
-    _ => Icons.public_rounded,
-  };
-}

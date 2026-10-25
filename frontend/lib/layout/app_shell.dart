@@ -126,123 +126,119 @@ class _AppShellState extends ConsumerState<AppShell> {
               constraints.maxWidth /
                   (MediaQuery.textScalerOf(context).scale(16) / 16) >=
               ResponsiveLayout.mediumBreakpoint;
-          return SidebarScope(
-            visible: useRail,
-            openDrawer: () => _scaffoldKey.currentState!.openDrawer(),
-            child: Scaffold(
-              key: _scaffoldKey,
-              onDrawerChanged: (open) => setState(() => _drawerOpen = open),
-              backgroundColor: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerLowest,
-              drawer: useRail
-                  ? null
-                  : PredictiveBackDrawer(
-                      isOpen: () =>
-                          _scaffoldKey.currentState?.isDrawerOpen ?? false,
-                      close: () => _scaffoldKey.currentState!.closeDrawer(),
-                      child: Drawer(
-                        width: 280,
-                        child: NavigationSidebar(
-                          selectedIndex: widget.navigationShell.currentIndex,
-                          onDestinationSelected: _onDestinationSelected,
-                          closeDrawer: () =>
-                              _scaffoldKey.currentState!.closeDrawer(),
-                        ),
-                      ),
-                    ),
-              body: Row(
-                children: [
-                  if (useRail)
-                    SafeArea(
-                      top: false,
-                      bottom: false,
-                      right: false,
-                      child: SizedBox(
-                        width: NavigationSidebar.compactWidth,
-                        child: NavigationSidebar(
-                          selectedIndex: widget.navigationShell.currentIndex,
-                          onDestinationSelected: _onDestinationSelected,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    key: const ValueKey('root-content'),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(useRail ? 28 : 0),
-                        bottomLeft: Radius.circular(useRail ? 28 : 0),
-                      ),
-                      child: SafeArea(
-                        top: false,
-                        bottom: useRail,
-                        left: !useRail,
-                        child: Column(
-                          children: [
-                            Expanded(
-                              // Route barriers belong to the content pane. Without
-                              // this boundary they also hide the preceding rail
-                              // from the accessibility tree.
-                              child: Semantics(
-                                container: true,
-                                child: AppNavigationScope(
-                                  active: !_drawerOpen,
-                                  child: widget.navigationShell,
-                                ),
-                              ),
-                            ),
-                            Offstage(
-                              offstage:
-                                  MediaQuery.viewInsetsOf(context).bottom > 0,
-                              child: const GlobalMiniPlayer(),
-                            ),
-                          ],
-                        ),
+          return Scaffold(
+            key: _scaffoldKey,
+            onDrawerChanged: (open) => setState(() => _drawerOpen = open),
+            backgroundColor: Theme.of(context)
+                .colorScheme
+                .surfaceContainerLowest,
+            drawer: useRail
+                ? null
+                : PredictiveBackDrawer(
+                    isOpen: () =>
+                        _scaffoldKey.currentState?.isDrawerOpen ?? false,
+                    close: () => _scaffoldKey.currentState!.closeDrawer(),
+                    child: Drawer(
+                      width: 280,
+                      child: NavigationSidebar(
+                        selectedIndex: widget.navigationShell.currentIndex,
+                        onDestinationSelected: _onDestinationSelected,
+                        closeDrawer: () =>
+                            _scaffoldKey.currentState!.closeDrawer(),
                       ),
                     ),
                   ),
-                ],
-              ),
-              bottomNavigationBar:
-                  useRail || MediaQuery.viewInsetsOf(context).bottom > 0
-                  ? null
-                  : NavigationBar(
-                      selectedIndex: widget.navigationShell.currentIndex.clamp(
-                        0,
-                        4,
+            body: Row(
+              children: [
+                if (useRail)
+                  SafeArea(
+                    top: false,
+                    bottom: false,
+                    right: false,
+                    child: SizedBox(
+                      width: NavigationSidebar.compactWidth,
+                      child: NavigationSidebar(
+                        selectedIndex: widget.navigationShell.currentIndex,
+                        onDestinationSelected: _onDestinationSelected,
                       ),
-                      labelBehavior:
-                          NavigationDestinationLabelBehavior.onlyShowSelected,
-                      onDestinationSelected: (index) => index == 4
-                          ? _scaffoldKey.currentState!.openDrawer()
-                          : _onDestinationSelected(index),
-                      destinations: const [
-                        NavigationDestination(
-                          icon: Icon(Icons.dynamic_feed_outlined),
-                          selectedIcon: Icon(Icons.dynamic_feed_rounded),
-                          label: '动态',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(Icons.perm_media_outlined),
-                          selectedIcon: Icon(Icons.perm_media_rounded),
-                          label: '收藏库',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(Icons.rss_feed_rounded),
-                          label: '来源',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(Icons.outbox_outlined),
-                          selectedIcon: Icon(Icons.outbox_rounded),
-                          label: '推送',
-                        ),
-                        NavigationDestination(
-                          icon: Icon(Icons.menu_rounded),
-                          label: '更多',
-                        ),
-                      ],
                     ),
+                  ),
+                Expanded(
+                  key: const ValueKey('root-content'),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(useRail ? 28 : 0),
+                      bottomLeft: Radius.circular(useRail ? 28 : 0),
+                    ),
+                    child: SafeArea(
+                      top: false,
+                      bottom: useRail,
+                      left: !useRail,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            // Route barriers belong to the content pane. Without
+                            // this boundary they also hide the preceding rail
+                            // from the accessibility tree.
+                            child: Semantics(
+                              container: true,
+                              child: AppNavigationScope(
+                                active: !_drawerOpen,
+                                child: widget.navigationShell,
+                              ),
+                            ),
+                          ),
+                          Offstage(
+                            offstage:
+                                MediaQuery.viewInsetsOf(context).bottom > 0,
+                            child: const GlobalMiniPlayer(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+            bottomNavigationBar:
+                useRail || MediaQuery.viewInsetsOf(context).bottom > 0
+                ? null
+                : NavigationBar(
+                    selectedIndex: widget.navigationShell.currentIndex.clamp(
+                      0,
+                      4,
+                    ),
+                    labelBehavior:
+                        NavigationDestinationLabelBehavior.onlyShowSelected,
+                    onDestinationSelected: (index) => index == 4
+                        ? _scaffoldKey.currentState!.openDrawer()
+                        : _onDestinationSelected(index),
+                    destinations: const [
+                      NavigationDestination(
+                        icon: Icon(Icons.dynamic_feed_outlined),
+                        selectedIcon: Icon(Icons.dynamic_feed_rounded),
+                        label: '动态',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.perm_media_outlined),
+                        selectedIcon: Icon(Icons.perm_media_rounded),
+                        label: '收藏库',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.rss_feed_rounded),
+                        label: '来源',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.outbox_outlined),
+                        selectedIcon: Icon(Icons.outbox_rounded),
+                        label: '推送',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.menu_rounded),
+                        label: '更多',
+                      ),
+                    ],
+                  ),
           );
         },
       ),

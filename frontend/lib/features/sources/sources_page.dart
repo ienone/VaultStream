@@ -8,7 +8,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../layout/root_page_actions.dart';
+import '../../core/widgets/workspace_tabs.dart';
 import '../automation/widgets/favorites_sync_automation_panel.dart';
 import 'subscriptions_view.dart';
 import '../settings/presentation/tabs/connection_tab.dart';
@@ -131,9 +131,8 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
   }
 
   Widget _buildOverview(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('来源'),
-      leading: buildRootPageLeading(context),
+    appBar: WorkspaceAppBar(
+      title: '来源',
       actions: [
         if (widget.tab == 1)
           IconButton(
@@ -142,16 +141,9 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
             icon: const Icon(Icons.refresh_rounded),
           ),
       ],
-      bottom: TabBar.secondary(
-        isScrollable: true,
-        tabAlignment: TabAlignment.start,
-        dividerColor: Colors.transparent,
+      tabs: WorkspaceTabs(
         controller: _tabs,
-        tabs: const [
-          Tab(text: '订阅动态'),
-          Tab(text: '连接账号'),
-          Tab(text: '收藏同步'),
-        ],
+        labels: const ['订阅动态', '连接账号', '收藏同步'],
         onTap: (index) =>
             context.go(const ['/sources', '/accounts', '/sources/sync'][index]),
       ),

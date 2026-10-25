@@ -10,7 +10,6 @@ import 'package:go_router/go_router.dart';
 import '../../core/layout/responsive_layout.dart';
 import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/navigation_scope.dart';
-import '../../layout/root_page_actions.dart';
 import '../../core/widgets/app_setting_group.dart';
 import 'presentation/tabs/automation_tab.dart';
 import 'providers/settings_provider.dart';
@@ -144,7 +143,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         toolbarHeight: metrics.toolbarHeight,
                         title: const Text('设置'),
                         automaticallyImplyLeading: false,
-                        leading: _exitButton(context),
                       ),
                       body: SafeArea(
                         top: false,
@@ -194,8 +192,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget? _exitButton(BuildContext context) => buildRootPageLeading(context);
-
   void _backToSections(BuildContext context) {
     setState(() => _showMobileDetail = false);
     context.replace('/settings');
@@ -210,7 +206,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         appBar: AppBar(
           title: const Text('设置'),
           automaticallyImplyLeading: false,
-          leading: _exitButton(context),
         ),
         body: Theme(
           data: Theme.of(context).copyWith(
