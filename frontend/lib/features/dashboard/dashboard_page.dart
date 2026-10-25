@@ -338,6 +338,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(
               automaticallyImplyLeading: false,
+              leading: buildRootPageLeading(context),
               toolbarHeight: metrics.toolbarHeight,
               title: const Text('动态'),
               actions: [const RootPageActions()],

@@ -374,6 +374,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   PreferredSizeWidget _buildAppBar(CollectionFilterState filter) {
     return AppBar(
       automaticallyImplyLeading: false,
+      leading: buildRootPageLeading(context),
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       scrolledUnderElevation: 0,
       toolbarHeight: WindowMetrics.of(context).toolbarHeight,

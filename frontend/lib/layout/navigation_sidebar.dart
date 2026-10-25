@@ -6,6 +6,26 @@ import '../features/notifications/notification_provider.dart';
 import '../core/providers/theme_provider.dart';
 import '../core/widgets/app_choice_segments.dart';
 
+/// 页头只需要知道导航是否可见以及如何打开，不接管 Shell 的路由状态。
+class SidebarScope extends InheritedWidget {
+  const SidebarScope({
+    super.key,
+    required this.visible,
+    required this.openDrawer,
+    required super.child,
+  });
+
+  final bool visible;
+  final VoidCallback openDrawer;
+
+  static SidebarScope of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SidebarScope>()!;
+
+  @override
+  bool updateShouldNotify(SidebarScope oldWidget) =>
+      visible != oldWidget.visible;
+}
+
 class NavigationSidebar extends ConsumerWidget {
   const NavigationSidebar({
     super.key,
@@ -38,7 +58,12 @@ class NavigationSidebar extends ConsumerWidget {
     }
 
     if (closeDrawer != null) {
-      const indexes = [5, 4, 6];
+      final indexes = [
+        if (selectedIndex >= 4) ...[0, 1, 2, 3],
+        5,
+        4,
+        6,
+      ];
       return NavigationDrawer(
         selectedIndex: indexes.contains(selectedIndex)
             ? indexes.indexOf(selectedIndex)
@@ -46,6 +71,15 @@ class NavigationSidebar extends ConsumerWidget {
         onDestinationSelected: (index) => select(indexes[index]),
         children: [
           const SizedBox(height: 16),
+          if (selectedIndex >= 4) ...[
+            for (final item in _destinations)
+              NavigationDrawerDestination(
+                icon: Icon(item.$3),
+                selectedIcon: Icon(item.$4),
+                label: Text(item.$2),
+              ),
+            const Divider(indent: 28, endIndent: 28),
+          ],
           NavigationDrawerDestination(
             icon: const Icon(Icons.auto_awesome_outlined),
             selectedIcon: const Icon(Icons.auto_awesome_rounded),

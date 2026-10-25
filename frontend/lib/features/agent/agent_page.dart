@@ -293,6 +293,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
         );
         final conversationBar = AppBar(
           automaticallyImplyLeading: false,
+          leading: buildRootPageLeading(context),
           toolbarHeight: metrics.toolbarHeight,
           title: const Text('对话'),
           actions: [

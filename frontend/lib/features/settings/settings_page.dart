@@ -1,3 +1,4 @@
+import '../../layout/root_page_actions.dart';
 import '../../routing/page_origin.dart';
 import '../../routing/overlay_back_observer.dart';
 import '../../theme/design_tokens.dart';
@@ -142,6 +143,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       appBar: AppBar(
                         toolbarHeight: metrics.toolbarHeight,
                         title: const Text('设置'),
+                        leading: buildRootPageLeading(context),
                         automaticallyImplyLeading: false,
                       ),
                       body: SafeArea(
@@ -205,6 +207,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
         appBar: AppBar(
           title: const Text('设置'),
+          leading: buildRootPageLeading(context),
           automaticallyImplyLeading: false,
         ),
         body: Theme(

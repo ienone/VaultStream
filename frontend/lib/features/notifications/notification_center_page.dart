@@ -1,3 +1,4 @@
+import '../../layout/root_page_actions.dart';
 import '../../core/utils/toast.dart';
 
 import 'package:material_ui/material_ui.dart';
@@ -65,6 +66,7 @@ class _NotificationCenterPageState
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(
               automaticallyImplyLeading: false,
+              leading: buildRootPageLeading(context),
               title: const Text('消息'),
               actions: [
                 IconButton(

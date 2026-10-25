@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../layout/root_page_actions.dart';
+
 /// Workspace tabs replace the redundant title row on compact screens.
 class WorkspaceAppBar extends StatelessWidget implements PreferredSizeWidget {
   const WorkspaceAppBar({
@@ -16,8 +18,9 @@ class WorkspaceAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) => AppBar(
     automaticallyImplyLeading: false,
+    leading: buildRootPageLeading(context),
     toolbarHeight: 64,
-    titleSpacing: 16,
+    titleSpacing: 8,
     title: LayoutBuilder(
       builder: (context, box) => Row(
         children: [
