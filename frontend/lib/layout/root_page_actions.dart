@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/collection/widgets/dialogs/add_content_dialog.dart';
@@ -12,9 +12,8 @@ Widget? buildRootPageLeading(BuildContext context) {
   return Consumer(
     builder: (context, ref, _) {
       final unread = ref.watch(
-        notificationInboxProvider(
-          defaultNotificationQuery,
-        ).select((value) => value.value?.unreadCount ?? 0),
+        notificationInboxProvider(defaultNotificationQuery)
+            .select((value) => value.value?.unreadCount ?? 0),
       );
       return IconButton(
         tooltip: unread > 0 ? '打开导航，$unread 条未读消息' : '打开导航',
@@ -59,7 +58,7 @@ class PageAddButton extends StatelessWidget {
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
         minimumSize: const Size(44, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: const StadiumBorder(),
       ),
       icon: const Icon(Icons.add_rounded),
     ),

@@ -1,12 +1,17 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Carries the visibility of a shell route into its child Navigators.
 /// A nested route can be locally current while a root dialog covers its shell.
 class AppNavigationScope extends StatelessWidget {
-  const AppNavigationScope({super.key, required this.child});
+  const AppNavigationScope({
+    super.key,
+    required this.child,
+    this.active = true,
+  });
   final Widget child;
+  final bool active;
 
-  static bool _isActive(BuildContext context) =>
+  static bool isActiveOf(BuildContext context) =>
       context
           .dependOnInheritedWidgetOfExactType<_NavigationVisibility>()
           ?.active ??
@@ -14,7 +19,10 @@ class AppNavigationScope extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _NavigationVisibility(
-    active: _isActive(context) && (ModalRoute.isCurrentOf(context) ?? true),
+    active:
+        active &&
+        isActiveOf(context) &&
+        (ModalRoute.isCurrentOf(context) ?? true),
     child: child,
   );
 }
@@ -42,7 +50,7 @@ class AppPredictiveBackTransitionsBuilder
     Widget child,
   ) {
     final active =
-        AppNavigationScope._isActive(context) &&
+        AppNavigationScope.isActiveOf(context) &&
         TickerMode.valuesOf(context).enabled;
     return NotificationListener<NavigationNotification>(
       // A hidden route still guards its own stack, but its notification must

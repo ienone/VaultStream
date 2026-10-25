@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
@@ -39,7 +39,11 @@ void openAppLocation(BuildContext context, String location) {
   if (path == '/notifications' ||
       path == '/home' ||
       path == '/collection' ||
-      path == '/automation' ||
+      path == '/sources' ||
+      path.startsWith('/sources/') ||
+      path.startsWith('/accounts') ||
+      path == '/agent' ||
+      path == '/settings' ||
       path.startsWith('/automation/')) {
     context.go(location);
   } else {

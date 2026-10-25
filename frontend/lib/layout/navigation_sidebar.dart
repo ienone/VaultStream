@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../features/notifications/notification_provider.dart';
-import '../theme/design_tokens.dart';
+import '../core/providers/theme_provider.dart';
+import '../core/widgets/app_choice_segments.dart';
 
 /// 页头只需要知道导航是否可见以及如何打开，不接管 Shell 的路由状态。
 class SidebarScope extends InheritedWidget {
@@ -32,222 +33,135 @@ class NavigationSidebar extends ConsumerWidget {
     required this.onDestinationSelected,
     this.closeDrawer,
   });
-
   static const compactWidth = 88.0;
-
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final VoidCallback? closeDrawer;
-
+  static const _destinations = [
+    (0, '动态', Icons.dynamic_feed_outlined, Icons.dynamic_feed_rounded),
+    (1, '收藏库', Icons.perm_media_outlined, Icons.perm_media_rounded),
+    (2, '来源', Icons.rss_feed_rounded, Icons.rss_feed_rounded),
+    (3, '推送', Icons.outbox_outlined, Icons.outbox_rounded),
+  ];
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final unread = ref.watch(
-      notificationInboxProvider(
-        defaultNotificationQuery,
-      ).select((value) => value.value?.unreadCount ?? 0),
-    );
-
-    Widget destination(
-      String label,
-      IconData icon,
-      VoidCallback onTap, {
-      bool selected = false,
-      bool badge = false,
-      String? tooltip,
-    }) => AppNavigationDestination(
-      label: label,
-      icon: icon,
-      selected: selected,
-      badge: badge,
-      tooltip: tooltip,
-      onTap: () {
-        closeDrawer?.call();
-        onTap();
-      },
-    );
-
-    final primary = [
-      destination(
-        '动态',
-        Icons.dynamic_feed_outlined,
-        () => onDestinationSelected(0),
-        selected: selectedIndex == 0,
-      ),
-      destination(
-        '收藏库',
-        Icons.perm_media_outlined,
-        () => onDestinationSelected(1),
-        selected: selectedIndex == 1,
-      ),
-      destination(
-        '自动化',
-        Icons.account_tree_outlined,
-        () => onDestinationSelected(2),
-        selected: selectedIndex == 2,
-      ),
-    ];
-    final tools = [
-      destination(
-        'Agent',
-        Icons.auto_awesome_outlined,
-        () => context.push('/agent'),
-      ),
-      destination(
-        '消息',
-        Icons.notifications_none_rounded,
-        () => onDestinationSelected(3),
-        selected: selectedIndex == 3,
-        badge: unread > 0,
-        tooltip: unread > 0 ? '消息 · $unread 未读' : '消息',
-      ),
-      destination(
-        '账号',
-        Icons.manage_accounts_outlined,
-        () => context.push('/accounts'),
-      ),
-    ];
-
-    return Material(
-      color: theme.colorScheme.surfaceContainerLowest,
-      child: SafeArea(
-        child: Column(
-          children: [
-            if (closeDrawer != null)
-              SizedBox(
-                height: kToolbarHeight,
-                child: IconButton(
-                  tooltip: '关闭导航',
-                  onPressed: closeDrawer,
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-              child: SizedBox(
-                width: 56,
-                height: 56,
-                child: IconButton.filledTonal(
-                  tooltip: '全局搜索',
-                  style: IconButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  onPressed: () {
-                    closeDrawer?.call();
-                    context.push('/search');
-                  },
-                  icon: const Icon(Icons.search_rounded),
-                ),
-              ),
-            ),
-            Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  SliverList.list(children: primary),
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 24),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: tools,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: destination(
-                '设置',
-                Icons.settings_outlined,
-                () => context.push('/settings'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Rail and bottom navigation share the same icon indicator and short label.
-class AppNavigationDestination extends StatelessWidget {
-  const AppNavigationDestination({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.onTap,
-    this.selected = false,
-    this.badge = false,
-    this.tooltip,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool selected;
-  final bool badge;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final foreground = selected
-        ? colors.onSecondaryContainer
-        : colors.onSurfaceVariant;
-    final indicator = AnimatedContainer(
-      duration: MediaQuery.disableAnimationsOf(context)
-          ? Duration.zero
-          : AppMotion.fast,
-      curve: AppMotion.standardCurve,
-      width: 56,
-      height: 32,
-      decoration: BoxDecoration(
-        color: selected ? colors.secondaryContainer : Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Center(
-        child: Badge(
-          isLabelVisible: badge,
-          child: Icon(icon, size: 24, color: foreground),
-        ),
-      ),
+    final unread = ref.watch(
+      notificationInboxProvider(defaultNotificationQuery)
+          .select((value) => value.value?.unreadCount ?? 0),
     );
-    final text = Text(
-      label,
-      textAlign: TextAlign.center,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: foreground,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-      ),
-    );
-    return Tooltip(
-      message: tooltip ?? label,
-      child: Semantics(
-        selected: selected,
-        button: true,
-        label: tooltip ?? label,
-        excludeSemantics: true,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [indicator, const SizedBox(height: 4), text],
-                ),
-              ),
+    Widget icon(int index, IconData data) =>
+        Badge(isLabelVisible: index == 4 && unread > 0, child: Icon(data));
+    void select(int index) {
+      closeDrawer?.call();
+      onDestinationSelected(index);
+    }
+
+    if (closeDrawer != null) {
+      const indexes = [5, 4, 6];
+      return NavigationDrawer(
+        selectedIndex: indexes.contains(selectedIndex)
+            ? indexes.indexOf(selectedIndex)
+            : null,
+        onDestinationSelected: (index) => select(indexes[index]),
+        children: [
+          const SizedBox(height: 16),
+          NavigationDrawerDestination(
+            icon: const Icon(Icons.auto_awesome_outlined),
+            selectedIcon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text('Agent'),
+          ),
+          NavigationDrawerDestination(
+            icon: icon(4, Icons.notifications_none_rounded),
+            selectedIcon: icon(4, Icons.notifications_rounded),
+            label: const Text('消息'),
+          ),
+          const NavigationDrawerDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings_rounded),
+            label: Text('设置'),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: AppChoiceSegments<ThemeMode>(
+              options: const {
+                ThemeMode.light: '浅色',
+                ThemeMode.system: '自动',
+                ThemeMode.dark: '深色',
+              },
+              selected: {ref.watch(themeModeProvider)},
+              onChanged: (values) =>
+                  ref.read(themeModeProvider.notifier).set(values.first),
             ),
           ),
+        ],
+      );
+    }
+    final active = _destinations.indexWhere((item) => item.$1 == selectedIndex);
+    return NavigationRail(
+      minWidth: compactWidth,
+      backgroundColor: colors.surfaceContainerLowest,
+      labelType: NavigationRailLabelType.selected,
+      selectedIndex: active < 0 ? null : active,
+      scrollable: true,
+      groupAlignment: -1,
+      trailingAtBottom: true,
+      leading: const SizedBox(height: 16),
+      destinations: [
+        for (final item in _destinations)
+          NavigationRailDestination(
+            icon: icon(item.$1, item.$3),
+            selectedIcon: icon(item.$1, item.$4),
+            label: Text(item.$2),
+          ),
+      ],
+      onDestinationSelected: (index) => select(_destinations[index].$1),
+      trailing: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final tool in [
+              (
+                5,
+                'Agent',
+                Icons.auto_awesome_outlined,
+                Icons.auto_awesome_rounded,
+              ),
+              (
+                4,
+                '消息',
+                Icons.notifications_none_rounded,
+                Icons.notifications_rounded,
+              ),
+            ]) ...[
+              M3EIconButton(
+                icon: icon(tool.$1, tool.$3),
+                selectedIcon: icon(tool.$1, tool.$4),
+                tooltip: tool.$2,
+                isSelected: selectedIndex == tool.$1,
+                variant: selectedIndex == tool.$1
+                    ? M3EIconButtonVariant.tonal
+                    : M3EIconButtonVariant.standard,
+                onPressed: () => select(tool.$1),
+              ),
+              if (selectedIndex == tool.$1)
+                Text(tool.$2, style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 12),
+            ],
+            M3EIconButton(
+              icon: const Icon(Icons.settings_outlined),
+              selectedIcon: const Icon(Icons.settings_rounded),
+              tooltip: '设置',
+              isSelected: selectedIndex == 6,
+              variant: selectedIndex == 6
+                  ? M3EIconButtonVariant.tonal
+                  : M3EIconButtonVariant.standard,
+              onPressed: () => select(6),
+            ),
+            if (selectedIndex == 6)
+              Text('设置', style: Theme.of(context).textTheme.labelMedium),
+          ],
         ),
       ),
     );
