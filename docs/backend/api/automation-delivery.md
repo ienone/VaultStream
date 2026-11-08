@@ -116,3 +116,7 @@ POST `/bot/qq/{config_id}/group-capture` 使用 QQGroupCaptureRequest（QQ 原�
 ## QQ Agent 链接解析格式
 
 `POST /bot/qq/{config_id}/preview` 当前请求/响应及发送边界见 [QQ 链接解析](../../knowledges/adapters/QQ_GROUP_PREVIEW.md)。format 复用现有 full、summary、text；选择只影响本次回复，不修改分发规则。Bot 收藏写入必须携带当前 request_text 与 Agent 逐字摘录的 save_instruction；后端核验管理员、开关和原文归属，不重复调用意图模型。
+
+### 批量取消队列
+
+`POST /api/v1/distribution-queue/cancel` 接收 `BatchQueueCancelRequest {item_ids: int[]}`（1–500 项），返回 `BatchQueueCancelResponse {canceled_ids: int[]}`。ID 去重，一次条件更新和事务提交，不加载内容或媒体 manifest。不存在、已发送、发送中或回执未知的任一项导致整个操作回滚并返回 409。成功只广播一次 queue_updated。

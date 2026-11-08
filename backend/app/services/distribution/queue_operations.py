@@ -25,7 +25,7 @@ async def lock_item_for_edit(db: AsyncSession, item: ContentQueueItem) -> None:
         ).values(status=item.status).execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
-        raise QueueEditConflict("队列项正在发送、结果待核对或状态已变化，请刷新后逐条处理。")
+        raise QueueEditConflict("队列项正在发送、未收到发送回执或状态已变化，请刷新后逐条处理。")
 
 
 def schedule_item(item: ContentQueueItem, *, at: datetime, clear_receipt: bool = False) -> None:
@@ -51,3 +51,25 @@ def filter_item(item: ContentQueueItem, *, reason: str, error_type: str, at: dat
     item.last_error = reason
     item.last_error_type = error_type
     item.last_error_at = at
+
+
+async def cancel_items(db: AsyncSession, item_ids: list[int], *, at: datetime) -> list[int]:
+    """Cancel one selection atomically without loading content or media."""
+    ids = set(item_ids)
+    result = await db.execute(
+        update(ContentQueueItem).where(
+            ContentQueueItem.id.in_(ids),
+            ContentQueueItem.status.in_([QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED]),
+            delivery_is_resolved(),
+        ).values(
+            status=QueueItemStatus.FAILED,
+            locked_at=None, locked_by=None, next_attempt_at=None,
+            last_error="已取消发送", last_error_type="manual_canceled", last_error_at=at,
+        ).returning(ContentQueueItem.id).execution_options(synchronize_session=False)
+    )
+    canceled = list(result.scalars())
+    if set(canceled) != ids:
+        await db.rollback()
+        raise QueueEditConflict("所选记录已变化，请刷新列表后重试。")
+    await db.commit()
+    return canceled

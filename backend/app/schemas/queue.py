@@ -142,3 +142,13 @@ class ManualPushRequest(BaseModel):
 class ManualPushResponse(BaseModel):
     item_ids: List[int]
     already_sent: int
+
+
+class BatchQueueCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    item_ids: List[int] = Field(min_length=1, max_length=500)
+
+
+class BatchQueueCancelResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    canceled_ids: List[int]
