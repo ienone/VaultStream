@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'design_tokens.dart';
 import '../routing/navigation_scope.dart';
@@ -347,49 +346,50 @@ class AppTheme {
         ? ThemeData.light().textTheme
         : ThemeData.dark().textTheme;
 
-    return GoogleFonts.lexendTextTheme(baseTheme)
+    return baseTheme
+        .apply(fontFamily: 'Lexend')
         .copyWith(
-          displayLarge: GoogleFonts.lexend(
-            textStyle: baseTheme.displayLarge,
+          displayLarge: baseTheme.displayLarge?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.bold,
           ),
-          displayMedium: GoogleFonts.lexend(
-            textStyle: baseTheme.displayMedium,
+          displayMedium: baseTheme.displayMedium?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.bold,
           ),
-          displaySmall: GoogleFonts.lexend(
-            textStyle: baseTheme.displaySmall,
+          displaySmall: baseTheme.displaySmall?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.bold,
           ),
-          headlineLarge: GoogleFonts.lexend(
-            textStyle: baseTheme.headlineLarge,
+          headlineLarge: baseTheme.headlineLarge?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.bold,
           ),
-          headlineMedium: GoogleFonts.lexend(
-            textStyle: baseTheme.headlineMedium,
+          headlineMedium: baseTheme.headlineMedium?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.bold,
           ),
-          headlineSmall: GoogleFonts.lexend(
-            textStyle: baseTheme.headlineSmall,
+          headlineSmall: baseTheme.headlineSmall?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.bold,
           ),
-          titleLarge: GoogleFonts.lexend(
-            textStyle: baseTheme.titleLarge,
+          titleLarge: baseTheme.titleLarge?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.w600,
           ),
-          titleMedium: GoogleFonts.lexend(
-            textStyle: baseTheme.titleMedium,
+          titleMedium: baseTheme.titleMedium?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.w600,
           ),
-          titleSmall: GoogleFonts.lexend(
-            textStyle: baseTheme.titleSmall,
+          titleSmall: baseTheme.titleSmall?.copyWith(
+            fontFamily: 'Lexend',
             fontWeight: FontWeight.w600,
           ),
-          bodyLarge: GoogleFonts.inter(textStyle: baseTheme.bodyLarge),
-          bodyMedium: GoogleFonts.inter(textStyle: baseTheme.bodyMedium),
-          bodySmall: GoogleFonts.inter(textStyle: baseTheme.bodySmall),
-          labelLarge: GoogleFonts.inter(
-            textStyle: baseTheme.labelLarge,
+          bodyLarge: baseTheme.bodyLarge?.copyWith(fontFamily: 'Inter'),
+          bodyMedium: baseTheme.bodyMedium?.copyWith(fontFamily: 'Inter'),
+          bodySmall: baseTheme.bodySmall?.copyWith(fontFamily: 'Inter'),
+          labelLarge: baseTheme.labelLarge?.copyWith(
+            fontFamily: 'Inter',
             fontWeight: FontWeight.bold,
           ),
         )
