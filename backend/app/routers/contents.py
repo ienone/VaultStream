@@ -8,7 +8,6 @@ from typing import List, Optional
 from datetime import datetime
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -40,7 +39,7 @@ from app.schemas import (
     ShareCardListResponse, ContentListItemResponse, ContentListItem,
     ContentUpdate, ReviewAction, BatchReviewRequest,
     ContentParseCandidateResolution,
-    ContentDeleteResponse, ContentRetryResponse,
+    ContentDeleteResponse,
     ContentSummaryActionResponse, ContentPatrolScoreResponse,
     ContentReparseAcceptedResponse,
     PushedRecordDeleteResponse, CardReviewResponse, BatchCardReviewResponse,
@@ -51,12 +50,12 @@ from app.schemas import (
 )
 from app.core.logging import logger
 from app.core.config import settings
-from app.tasks import worker
+from app.core.queue import task_queue
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
 from app.services.content_service import (
     CaptureFileInput,
     ContentService,
-    ParseQueueUnavailableError,
+    InvalidShareInput,
 )
 from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
 from app.repositories.content_repository import ContentRepository
@@ -69,7 +68,6 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.media.extractor import sanitize_media_urls
-from app.adapters.utils import ensure_title
 from app.services.config_service import ConfigService
 from app.schemas.media import MediaPurpose
 from app.services.media_manifest import (
@@ -643,35 +641,6 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
     )
 
 
-async def _run_reparse_job(content_id: int, run_id: str, *, force: bool) -> None:
-    try:
-        ok = await worker.retry_parse(content_id, force=force)
-        if ok:
-            await record_task_run_success(
-                "content_reparse",
-                run_id,
-                content_id=content_id,
-                force=force,
-            )
-            return
-
-        await record_task_run_error(
-            "content_reparse",
-            run_id,
-            "内容不存在或已删除",
-            content_id=content_id,
-            force=force,
-        )
-    except Exception as exc:
-        await record_task_run_error(
-            "content_reparse",
-            run_id,
-            exc,
-            content_id=content_id,
-            force=force,
-        )
-        raise
-
 def _parse_list_param(values: Optional[List[str]]) -> Optional[List[str]]:
     """处理 FastAPI List[str] 参数，支持逗号分隔或多个相同 Key"""
     if not values:
@@ -711,15 +680,10 @@ async def create_share(
             status=content.status,
             created_at=content.created_at
         )
-    except ParseQueueUnavailableError as e:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "detail": "内容已保存，但解析任务未能入队",
-                "error_code": "parse_queue_unavailable",
-                "content_id": e.content_id,
-            },
-        )
+    except InvalidShareInput as error:
+        raise HTTPException(status_code=400, detail=build_error_payload(
+            message=str(error), code="invalid_capture_url",
+        )) from error
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1056,15 +1020,6 @@ async def update_content(
     }
     try:
         content = await service.update_content(content_id, updates)
-    except ParseQueueUnavailableError as e:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "detail": "内容状态已更新，但解析任务未能入队",
-                "error_code": "parse_queue_unavailable",
-                "content_id": e.content_id,
-            },
-        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -1119,33 +1074,6 @@ async def delete_content(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-@router.post("/contents/{content_id}/retry", response_model=ContentRetryResponse)
-async def retry_content(
-    content_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """手动触发重试解析"""
-    try:
-        result = await db.execute(select(Content).where(Content.id == content_id))
-        content = result.scalar_one_or_none()
-
-        if not content:
-            raise HTTPException(status_code=404, detail="内容不存在")
-
-        ok = await worker.retry_parse(content_id)
-
-        if not ok:
-            raise HTTPException(status_code=500, detail="重新解析失败")
-
-        await db.refresh(content)
-        return {"success": True, "content_id": content_id, "status": content.status}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"重试接口失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.post(
     "/contents/{content_id}/generate-summary",
     response_model=ContentSummaryActionResponse,
@@ -1181,7 +1109,7 @@ async def generate_content_summary(
             tag_count=len(content.tags or []),
         )
         from app.services.post_ingest import PostIngestService
-        PostIngestService().schedule_embedding_index(content_id, source="manual_summary")
+        await PostIngestService().schedule_embedding_index(content_id, source="manual_summary")
         return {"summary": content.summary, "content_id": content_id, "run_id": run["run_id"]}
     except SummaryGenerationError as e:
         await record_task_run_error(
@@ -1303,32 +1231,18 @@ async def score_content_patrol(
 )
 async def re_parse_content(
     content_id: int,
-    background_tasks: BackgroundTasks,
-    repo: ContentRepository = Depends(get_content_repo),
+    db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
     """强制重新解析内容 (异步)"""
-    content = await repo.get_by_id(content_id)
-    if not content:
+    content = await db.get(Content, content_id)
+    if content is None or content.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Content not found")
-
-    run = await record_task_run_started(
-        "content_reparse",
-        content_id=content_id,
-        force=True,
-        trigger="manual",
-    )
-    background_tasks.add_task(
-        _run_reparse_job,
-        content_id,
-        run["run_id"],
-        force=True,
-    )
+    task = await task_queue.enqueue_parse(db, content_id, manual=True)
+    await db.commit()
     return {
-        "status": "processing",
-        "content_id": content_id,
-        "run_id": run["run_id"],
-        "message": "Re-parsing started in background",
+        "status": "processing", "content_id": content_id,
+        "run_id": task.payload["run_id"], "message": "重新解析已加入队列",
     }
 
 @router.get("/pushed-records", response_model=List[PushedRecordResponse])

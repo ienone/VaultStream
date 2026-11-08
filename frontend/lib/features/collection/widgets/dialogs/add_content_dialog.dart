@@ -110,6 +110,7 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
   bool _isNsfw = false;
   bool _isLoading = false;
   String? _errorMessage;
+  String? _urlError;
   Size? _viewportSize;
 
   @override
@@ -133,24 +134,15 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    final primaryInput = switch (_kind) {
-      CaptureKind.link => _urlController.text.trim(),
-      CaptureKind.text => _textController.text.trim(),
-      CaptureKind.file =>
-        _selectedFiles.isEmpty ? '' : _selectedFiles.first.name,
-    };
-    if (primaryInput.isEmpty) {
-      setState(
-        () => _errorMessage = switch (_kind) {
-          CaptureKind.link => '请输入有效的 URL',
-          CaptureKind.text => '请输入要保存的文本',
-          CaptureKind.file => '请选择要归档的文件',
-        },
-      );
-      return;
-    }
+  String get _primaryInput => switch (_kind) {
+    CaptureKind.link => _urlController.text.trim(),
+    CaptureKind.text => _textController.text.trim(),
+    CaptureKind.file => _selectedFiles.isEmpty ? '' : _selectedFiles.first.name,
+  };
 
+  Future<void> _submit() async {
+    final primaryInput = _primaryInput;
+    if (_isLoading || primaryInput.isEmpty) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -202,7 +194,11 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
     } else {
       setState(() {
         _isLoading = false;
-        _errorMessage = result.message;
+        if (result.errorCode == 'invalid_capture_url') {
+          _urlError = result.message;
+        } else {
+          _errorMessage = result.message;
+        }
       });
     }
   }
@@ -300,12 +296,19 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
 
                     if (_kind == CaptureKind.link) ...[
                       TextField(
+                        key: const ValueKey(CaptureKind.link),
                         controller: _urlController,
-                        decoration: const InputDecoration(
+                        onChanged: (_) => setState(() {
+                          _urlError = null;
+                          _errorMessage = null;
+                        }),
+                        decoration: InputDecoration(
+                          errorText: _urlError,
+                          errorMaxLines: 2,
                           labelText: 'URL',
                           hintText: 'https://...',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.link_rounded),
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.link_rounded),
                           isDense: true,
                         ),
                         autofocus: true,
@@ -315,10 +318,11 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                       const SizedBox(height: 12),
                     ] else if (_kind == CaptureKind.text) ...[
                       TextField(
+                        key: const ValueKey(CaptureKind.text),
                         controller: _textController,
+                        onChanged: (_) => setState(() => _errorMessage = null),
                         decoration: const InputDecoration(
                           labelText: '原始文本',
-                          hintText: '粘贴摘录、笔记或稍后要整理的内容',
                           border: OutlineInputBorder(),
                           alignLabelWithHint: true,
                         ),
@@ -354,15 +358,15 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                       ),
                       if (_selectedFiles.isNotEmpty) ...[
                         const SizedBox(height: 8),
-                        Text(
-                          _selectedFiles.length == 1
-                              ? '将保存原始文件，可从内容详情重新打开。'
-                              : '这 ${_selectedFiles.length} 个文件会作为同一条内容归档。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
+                        if (_selectedFiles.length > 1) ...[
+                          Text(
+                            '${_selectedFiles.length} 个文件将保存为一条内容',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
+                          const SizedBox(height: 8),
+                        ],
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -484,7 +488,9 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
                         Expanded(
                           flex: 2,
                           child: FilledButton(
-                            onPressed: _isLoading ? null : _submit,
+                            onPressed: _isLoading || _primaryInput.isEmpty
+                                ? null
+                                : _submit,
                             child: _isLoading
                                 ? const SizedBox(
                                     width: 20,

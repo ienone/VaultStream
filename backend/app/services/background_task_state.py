@@ -195,12 +195,14 @@ async def _upsert_run(
             },
             where=and_(
                 BackgroundTaskRun.task == task_name,
-                BackgroundTaskRun.status == "running",
+                BackgroundTaskRun.status.in_(["pending", "running"]),
             ),
         )
     else:
-        statement = insert_statement.on_conflict_do_nothing(
-            index_elements=[BackgroundTaskRun.run_id]
+        statement = insert_statement.on_conflict_do_update(
+            index_elements=[BackgroundTaskRun.run_id],
+            set_={"status": "running", "started_at": now, "updated_at": now},
+            where=and_(BackgroundTaskRun.task == task_name, BackgroundTaskRun.status == "pending"),
         )
 
     async with AsyncSessionLocal() as db:

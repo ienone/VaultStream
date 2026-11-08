@@ -76,14 +76,6 @@ class ContentDeleteResponse(BaseModel):
     content_id: int
 
 
-class ContentRetryResponse(BaseModel):
-    """同步解析重试已完成并返回内容的最新状态。"""
-
-    success: Literal[True]
-    content_id: int
-    status: ContentStatus
-
-
 class ContentSummaryActionResponse(BaseModel):
     """摘要生成已同步完成，且本次运行已写入任务账本。"""
 

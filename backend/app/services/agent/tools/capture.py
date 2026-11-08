@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.models import AgentMessage, AgentToolCall, Content, LayoutType
 from app.services.agent.content_evidence import PARSE_ERROR_SCHEMA, content_parse_error
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError, AgentToolRegistry
-from app.services.content_service import ContentService, ParseQueueUnavailableError
+from app.services.content_service import ContentService
 
 
 class CaptureContentArgs(BaseModel):
@@ -120,23 +120,18 @@ async def _capture_content_tool(
     }
 
     content = None
-    try:
-        if url:
-            capture_kind = "link"
-            content = await service.create_share(url=url, **common)
-        else:
-            capture_kind = "text"
-            content = await service.create_text_capture(
-                text,
-                title=args.get("title"),
-                **common,
-            )
-        status = content.status.value
-        content_id = content.id
-    except ParseQueueUnavailableError as error:
+    if url:
         capture_kind = "link"
-        content_id = error.content_id
-        status = "parse_queue_unavailable"
+        content = await service.create_share(url=url, **common)
+    else:
+        capture_kind = "text"
+        content = await service.create_text_capture(
+            text,
+            title=args.get("title"),
+            **common,
+        )
+    status = content.status.value
+    content_id = content.id
 
     return {
         "saved": True,
@@ -173,23 +168,18 @@ async def _capture_qq_source(args: Dict[str, Any], context: AgentToolContext) ->
               "client_context": client_context, "layout_type_override": args.get("layout_type_override")}
     service = ContentService(context.db)
     kind = source["kind"]
-    queue_error = False
-    try:
-        if kind == "link":
-            content = await service.create_share(url=source["url"], **common)
-        elif kind == "text":
-            content = await service.create_text_capture(source["text"], title=args.get("title"), **common)
-        else:
-            capture_file = await fetch_attachment(source)
-            content = await service.create_files_capture([capture_file], storage=get_storage_backend(),
-                            max_bytes=max(1, settings.capture_upload_max_bytes), **common)
-    except ParseQueueUnavailableError as exc:
-        content = await context.db.get(Content, exc.content_id)
-        queue_error = True
+    if kind == "link":
+        content = await service.create_share(url=source["url"], **common)
+    elif kind == "text":
+        content = await service.create_text_capture(source["text"], title=args.get("title"), **common)
+    else:
+        capture_file = await fetch_attachment(source)
+        content = await service.create_files_capture([capture_file], storage=get_storage_backend(),
+                        max_bytes=max(1, settings.capture_upload_max_bytes), **common)
     content_id = content.id
     # Allow a simple save-and-read request to continue in the same Agent run.
     # Parsing itself stays in the existing durable task queue.
-    if kind == "link" and not queue_error:
+    if kind == "link":
         for _ in range(15):
             await context.db.refresh(content)
             if content.status.value not in {"unprocessed", "processing"}:
@@ -198,11 +188,11 @@ async def _capture_qq_source(args: Dict[str, Any], context: AgentToolContext) ->
             await asyncio.sleep(2)
     if (context.qq_origin or {}).get("group_id"):
         return {"saved": True, "content_id": content_id, "capture_kind": kind,
-                "status": "parse_queue_unavailable" if queue_error else content.status.value,
+                "status": content.status.value,
                 "route": f"/collection/{content_id}"}
     return {"saved": True, "content_id": content_id, "capture_kind": kind,
-            "status": "parse_queue_unavailable" if queue_error else content.status.value,
-            "parse_error": None if queue_error else content_parse_error(content),
+            "status": content.status.value,
+            "parse_error": content_parse_error(content),
             "title": content.title, "author": content.author_name,
             "body": (content.body or "")[:4000], "summary": content.summary,
             "url": content.clean_url, "route": f"/collection/{content_id}"}

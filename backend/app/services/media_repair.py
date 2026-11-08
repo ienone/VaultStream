@@ -42,7 +42,7 @@ async def enqueue_media_repair(db, content_id: int) -> bool:
         Task.status.in_([TaskStatus.PENDING, TaskStatus.RUNNING]),
     ).limit(1))
     if pending is None:
-        db.add(Task(task_type='repair_media', payload={'content_id': content_id}, status=TaskStatus.PENDING))
+        task_queue.add(db, 'repair_media', {'content_id': content_id, 'priority': 4, 'trigger': 'auto'}, run_name='media_repair')
         await db.flush()
     return True
 
@@ -129,7 +129,7 @@ async def repair_content_media(content_id: int, *, claimed_task: Task | None = N
 
 
 async def process_media_repair_task(task: Task) -> None:
-    run = await record_task_run_started('media_repair', content_id=task.payload['content_id'], task_db_id=task.id)
+    run = await record_task_run_started('media_repair', run_id=task.payload.get('run_id'), content_id=task.payload['content_id'], task_db_id=task.id)
     try:
         result = await asyncio.wait_for(repair_content_media(task.payload['content_id'], claimed_task=task),
                                         timeout=task_queue.EXECUTION_TIMEOUT.total_seconds())
@@ -143,3 +143,6 @@ async def process_media_repair_task(task: Task) -> None:
         await record_task_run_error('media_repair', run['run_id'], error)
         if isinstance(error, asyncio.CancelledError):
             raise
+    finally:
+        from app.core.events import event_bus
+        await event_bus.publish('content_updated', {'id': task.payload['content_id']})

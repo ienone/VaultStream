@@ -31,17 +31,8 @@ class TaskWorker:
         while self.running:
             try:
                 decision = await AutomationPolicyService().parse_worker_poll()
-                if not decision.allowed:
-                    logger.bind(
-                        component="parse_worker",
-                        policy=decision.as_dict(),
-                    ).debug("Parse worker polling skipped by automation policy")
-                    await asyncio.sleep(1)
-                    continue
+                claimed_task = await task_queue.dequeue(timeout=5, parse_enabled=decision.allowed)
 
-                # 从队列获取任务
-                claimed_task = await task_queue.dequeue(timeout=5)
-                
                 if claimed_task:
                     await self.process_task(claimed_task)
                     
@@ -66,6 +57,13 @@ class TaskWorker:
             from app.services.media_repair import process_media_repair_task
             await process_media_repair_task(claimed_task)
             return
+        if claimed_task.task_type in {"content_scoring", "content_summary", "content_distribution", "content_embedding", "document_extract"}:
+            from app.services.post_ingest import process_content_task
+            await process_content_task(claimed_task)
+            return
+        if claimed_task.task_type != "parse_content":
+            await task_queue.mark_failed(claimed_task, reason="unknown_task_type")
+            return
         task_data = claimed_task.payload
         content_id = task_data.get('content_id')
         task_id = ensure_task_id(task_data.get("task_id"))
@@ -83,11 +81,3 @@ class TaskWorker:
             task_id,
             claimed_task=claimed_task,
         )
-
-    async def retry_parse(self, content_id: int, force: bool = False):
-        """
-        手动触发重试解析 (代理到 Parser)
-        
-        这是给 API 调用的便捷方法
-        """
-        return await self.parser.retry_parse(content_id, force=force)
