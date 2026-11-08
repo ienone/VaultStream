@@ -14,7 +14,7 @@ bbcode==1.1.0
 beautifulsoup4==4.15.0
 boolean.py==5.0
 CacheControl==0.14.4
-certifi==2026.7.22
+certifi==2026.10.18
 cffi==2.1.1
 chardet==5.2.0
 charset-normalizer==3.5.1
@@ -46,7 +46,7 @@ langchain-protocol==0.0.18
 langgraph==1.2.11
 langgraph-checkpoint==4.2.0
 langgraph-prebuilt==1.1.0
-langgraph-sdk==0.4.3
+langgraph-sdk==0.4.6
 langsmith==0.11.1
 license-expression==30.4.4
 loguru==0.7.3
@@ -63,14 +63,14 @@ orjson==3.12.0
 ormsgpack==1.12.2
 packageurl-python==0.17.6
 packaging==26.3
-pillow==12.3.0
+pillow==13.0.0
 pip-api==0.0.34
 pip-requirements-parser==32.0.1
 pip_audit==2.10.1
 platformdirs==4.11.3
 playwright==1.62.0
 py-serializable==2.1.0
-pyasn1==0.6.4
+pyasn1==0.6.5
 pyasn1_modules==0.4.2
 pycparser==3.0
 pycryptodome==3.23.0
@@ -80,7 +80,7 @@ pydantic_core==2.46.4
 pyee==13.0.1
 Pygments==2.21.0
 pyparsing==3.3.2
-pypdf==6.18.0
+pypdf==6.21.4
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.3
 python-multipart==0.0.32
@@ -106,7 +106,7 @@ tomli_w==1.2.0
 truststore==0.10.4
 typing-inspection==0.4.4
 typing_extensions==4.16.0
-urllib3==2.7.0
+urllib3==2.8.0
 uuid_utils==0.17.0
 uvicorn==0.52.4
 uvloop==0.22.1
