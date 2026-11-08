@@ -15,6 +15,7 @@
 | 进行中的实施 | [计划索引](plans/README.md) |
 | 平台接入资料 | [Adapter 知识](knowledges/adapters/README.md) |
 | 页面截图与体验审校 | [2026-09-13 UI 审校](knowledges/ui-review-2026-09-13/README.md) |
+| 当前页面、交互与性能取舍 | [2026-10-25 页面与性能审视](knowledges/product-review-2026-10-25/README.md) |
 
 ## 目录职责
 
