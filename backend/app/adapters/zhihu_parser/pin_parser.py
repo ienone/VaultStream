@@ -14,13 +14,22 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
     if not data:
         return None
 
-    pin_id = url.split('/')[-1]
+    pin_id = urlparse(url).path.rstrip('/').split('/')[-1]
     entities = data.get('initialState', {}).get('entities', {})
     pin_data = entities.get('pins', {}).get(pin_id)
 
     if not pin_data:
         return None
 
+    return parse_pin_data(pin_data, url, entities)
+
+
+def parse_pin_data(pin_data: Dict[str, Any], url: str, entities=None) -> Optional[ParsedContent]:
+    pin_id = urlparse(url).path.rstrip('/').split('/')[-1]
+    if str(pin_data.get('id')) != pin_id or pin_data.get('isDeleted'):
+        return None
+    entities = entities or {}
+    pin_data = dict(pin_data)
     author_data = pin_data.get('author', {})
     if isinstance(author_data, str):
         # author is just an ID, look it up in users
@@ -50,16 +59,16 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
     
     media_urls = []
     
-    # Strategy 1: Extract from HTML
-    media_urls.extend(extract_images(processed_html))
-        
-    # Strategy 2: Check explicit 'content' list for images
+    # Structured images and HTML refer to the same attachments. Prefer the
+    # original structured URLs rather than storing both renditions.
     if 'content' in pin_data and isinstance(pin_data['content'], list):
         for item in pin_data['content']:
             if isinstance(item, dict) and item.get('type') == 'image':
-                url = item.get('url')
-                if url and isinstance(url, str):
-                    media_urls.append(url)
+                image_url = item.get('originalUrl') or item.get('url')
+                if image_url and isinstance(image_url, str):
+                    media_urls.append(image_url)
+    if not media_urls:
+        media_urls.extend(extract_images(processed_html))
                     
     # --- 强力去重逻辑 (针对知乎不同尺寸后缀的同一图片) ---
     def get_zhihu_img_id(url):
@@ -119,19 +128,19 @@ def parse_pin(html_content: str, url: str) -> Optional[ParsedContent]:
                      parts.append(text_content)
                  elif item.get('type') == 'link':
                      # Convert to Markdown link
-                     url = item.get('url', '')
+                     link_url = item.get('url', '')
                      # Handle Zhihu redirect links
-                     if 'link.zhihu.com' in url:
+                     if 'link.zhihu.com' in link_url:
                          try:
-                             parsed = urlparse(url)
+                             parsed = urlparse(link_url)
                              query = parse_qs(parsed.query)
                              if 'target' in query:
-                                 url = query['target'][0]
+                                 link_url = query['target'][0]
                          except:
                              pass
                      
                      title = item.get('title', 'Link')
-                     parts.append(f"[{title}]({url})")
+                     parts.append(f"[{title}]({link_url})")
                  elif item.get('type') == 'hashtag':
                       parts.append(f" #{item.get('title')} ")
          description = "".join(parts)

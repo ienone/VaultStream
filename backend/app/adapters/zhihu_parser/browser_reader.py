@@ -3,13 +3,17 @@ from playwright.async_api import Error as BrowserError, TimeoutError as BrowserT
 
 from app.adapters.browser import browser_manager
 from app.adapters.base import ParsedContent
-from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError
+from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError, PageExtractionRequired
 from app.core.safe_fetch import is_safe_url
 from .article_parser import parse_article
 from .question_parser import parse_question
 from .people_parser import parse_people
+from .pin_parser import parse_pin
+from .answer_parser import parse_answer
 
 _PAGES = {
+    "pin": ("https://www.zhihu.com/pin/", "pins", parse_pin),
+    "answer": ("https://www.zhihu.com/answer/", "answers", parse_answer),
     "article": ("https://zhuanlan.zhihu.com/p/", "articles", parse_article),
     "question": ("https://www.zhihu.com/question/", "questions", parse_question),
     "user_profile": ("https://www.zhihu.com/people/", "users", parse_people),
@@ -25,55 +29,75 @@ _TARGET_READY = """([collection, id]) => {
             return Object.values(entities).some(e => e.urlToken === id && !!e.name);
         }
         const entity = entities[id];
+        if (collection === 'pins') {
+            return entity && String(entity.id) === id && !entity.isDeleted
+                && (!!entity.contentHtml || entity.content?.length > 0);
+        }
+        if (collection === 'answers') {
+            return entity && String(entity.id) === id && !!entity.content;
+        }
         return entity && String(entity.id) === id && !!entity.title
             && (collection !== 'articles' || !!entity.content);
     } catch { return false; }
 }"""
 
 
-async def read_public_page(content_type: str, content_id: str, proxy: str | None = None) -> ParsedContent:
+async def read_public_page(content_type: str, content_id: str, proxy: str | None = None,
+                           *, source_url: str | None = None,
+                           cookies: dict[str, str] | None = None) -> ParsedContent:
     prefix, collection, parser = _PAGES[content_type]
-    url = prefix + content_id
-    if not is_safe_url(url):
+    url = source_url or prefix + content_id
+    if not await is_safe_url(url):
         raise NonRetryableAdapterError("知乎页面地址不可安全访问")
 
     async def read():
-        browser = await browser_manager.get_chromium_browser()
-        version = browser.version.split('.')[0]
-        ua = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-              f"(KHTML, like Gecko) Chrome/{version}.0.0.0 Safari/537.36")
-        context = await browser.new_context(
-            user_agent=ua,
-            viewport=browser_manager.fetch_viewport,
-            extra_http_headers={"sec-ch-ua": (
-                f'"Chromium";v="{version}", "Not_A Brand";v="8", "Google Chrome";v="{version}"'
-            )},
-            **({"proxy": {"server": proxy}} if proxy else {}),
-        )
+        context = await browser_manager.new_context(proxy=proxy)
         try:
+            if cookies:
+                await context.add_cookies([
+                    {"name": name, "value": value, "domain": ".zhihu.com", "path": "/"}
+                    for name, value in cookies.items()
+                ])
             async def guard(route, request):
-                if is_safe_url(request.url):
+                if request.resource_type in {"image", "media", "font"}:
+                    await route.abort()
+                elif await is_safe_url(request.url):
                     await route.continue_()
                 else:
                     await route.abort()
 
             await context.route("**/*", guard)
             page = await context.new_page()
-            response = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            response = await page.goto(url, wait_until="commit", timeout=15000)
             if response and response.status in (404, 410):
                 raise NonRetryableAdapterError("知乎内容不存在或已不可访问")
             if response and response.status == 429:
-                raise RetryableAdapterError("知乎请求受限，请稍后重试")
-            await page.wait_for_function(_TARGET_READY, arg=[collection, content_id], timeout=6000)
-            parsed = parser(await page.content(), url)
+                raise RetryableAdapterError("知乎请求受限，请稍后重试",
+                    details={"status": 429, "retry_after": response.headers.get("retry-after")})
+            try:
+                await page.wait_for_function(_TARGET_READY, arg=[collection, content_id], timeout=15000)
+            except BrowserTimeout:
+                from app.adapters.utils.tiered_fetcher import _has_sufficient_content
+                html = await page.content()
+                if _has_sufficient_content(html):
+                    raise PageExtractionRequired("知乎页面原生数据结构变化", content_id=content_id,
+                                                 content_type=content_type, html=html) from None
+                raise
+            html = await page.content()
+            parsed = parser(html, url)
             if parsed is None:
-                raise NonRetryableAdapterError("知乎页面未提供目标内容")
+                raise PageExtractionRequired("知乎页面未提供目标内容", content_id=content_id, content_type=content_type, html=html)
             return parsed
         finally:
             await context.close()
 
     try:
         return await browser_manager.submit_coro(read())
+    except RetryableAdapterError as error:
+        if (error.details or {}).get("status") == 429:
+            from app.services.source_reading import source_reading
+            await source_reading.http_cooldown("zhihu", error.details.get("retry_after"))
+        raise
     except BrowserTimeout as error:
         raise RetryableAdapterError("知乎页面读取超时") from error
     except BrowserError as error:

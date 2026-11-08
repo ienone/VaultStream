@@ -35,6 +35,14 @@ active
 
 ## 已知限制
 
+### 2026-10-19 想法与回答读取修复
+
+想法使用现有 Chromium 页面读取器，回答在账号 API 未取得内容时使用同一读取器，保留已有 Cookie。普通 HTTP 请求可能只返回 403 拒绝响应，而 Chromium 页面包含目标实体；成功条件是匹配目标 ID 且具有正文/内容节点，不以初次导航状态码判断成功。真正的 429 仍记录共享冷却，404/410 仍报告原文不可用。
+
+想法解析从 URL path 提取 ID，图片及外链处理不再覆盖原文 URL；结构化原图优先，避免与 HTML 图片重复保存。读取速率继续使用共享的每分钟 3 次配置。
+
+线上真实重试：11 条想法、20 篇回答全部恢复为 parse_success，正文及发布时间非空，错误清除；回答中 19 篇通过账号 API、1 篇通过 Chromium HTML 路径。原文不可用的 4 篇未纳入重试。逐条请求至少间隔 20 秒，带媒体归档时完成耗时更长。
+
 - API include 参数和 HTML 结构可能变化。
 - Cookie、zse/fingerprint 和访问限制可能影响真实解析。
 - 下文历史策略需要按当前代码和样本复核。
@@ -83,9 +91,9 @@ Tardis 入口为 `/tardis/zm/ans/{answer_id}` 与 `/tardis/zm/art/{article_id}`�
 
 旧回答 API 返回 `403/code=40353`，文章和问题 API 返回 `403/code=10003`，不能宣称 API 全部匿名可用。默认 WebKit/Chromium 和 Chrome TLS 指纹 HTTP 在本轮样本均失败；Crawl4AI 0.9.3 的 Chromium 配置成功后，通过消融定位到 `--disable-blink-features=AutomationControlled` 与匹配 UA 的 `sec-ch-ua` 必须同时存在。直接 Playwright 复现相同对象与正文后，复用现有浏览器管理器按需启动 Chromium，无需引入 Crawl4AI 依赖。
 
-等待条件核对 `js-initialData` 中的目标对象，不仅等待 script 标签，也不把首个 403 当作最终结果（实测存在 403 → JS 导航 → 200）。每次使用新 context，保留请求 URL 安全检查、代理配置与目标身份校验，结束必定关闭 context。实际适配器三次文章和三次问题均成功；主页三次中两次成功、一次 6 秒就绪等待超时，仍有访问限制，不能承诺全量稳定。
+导航只等待主文档开始响应，随后等待 `js-initialData` 中的目标对象就绪，不再等待整个页面 DOM 加载。等待条件核对 `js-initialData` 中的目标对象，不仅等待 script 标签，也不把首个 403 当作最终结果（实测存在 403 → JS 导航 → 200）。每次使用新 context，保留请求 URL 安全检查、代理配置与目标身份校验，结束必定关闭 context。读取结构化正文时不下载图片、音视频和字体；保留脚本、样式和接口请求以完成页面验证，正文中的媒体地址仍由原始结构化数据提取。实际适配器三次文章和三次问题均成功；主页三次中两次成功、一次 6 秒就绪等待超时，仍有访问限制，不能承诺全量稳定。
 
-本地运行需要安装 Chromium：仓库虚拟环境执行 `python -m playwright install chromium`。Dockerfile 已加入 Chromium 安装；本轮只在 macOS 本地验收，未构建/部署新镜像。原有 WebKit 认证与其他平台路径不随此次新增浏览器改变。
+本地运行需要安装 Chromium：仓库虚拟环境执行 `python -m playwright install chromium`。Dockerfile 只安装 Chromium；登录、平台读取和通用抓取共用同一个浏览器实例，各自隔离 context。
 
 错误处理：
 
@@ -191,3 +199,11 @@ HTML 解析器位于 `backend/app/adapters/zhihu_parser/`：
 - `answer_parser.py` - 回答解析
 - `pin_parser.py` - 想法解析
 - `people_parser.py` - 用户主页解析
+
+### 想法 API 优先与请求级限速（2026-10-19）
+
+想法先读取 `/api/v4/pins/{id}?include=topics`，校验目标 ID 和删除状态后，将 API 字段规范化交给与网页共用的 `parse_pin_data`。只有无法取得有效目标数据时才尝试浏览器；明确登录失效、内容不存在和 429 不继续降级。
+
+普通 HTTP 请求通过 `SourceReading.http_hooks` 在实际发送前排队，覆盖附加统计、重定向和降级请求；浏览器页面读取前使用同一限速器。限速不应用于页面的静态资源。小红书与知乎仍使用各自的平台队列。
+
+本次部署后通过正式 `re-parse` 接口强制重新解析两条真实想法，任务账本均成功，存档含 `raw_api_response`，正文与原存档一致；隔离运行实测请求间隔 20.04 秒。

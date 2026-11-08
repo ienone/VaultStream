@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import socket
 from dataclasses import dataclass
@@ -54,7 +55,7 @@ def _is_disallowed_ip(raw_ip: str) -> bool:
     )
 
 
-def validate_safe_url(url: str) -> None:
+async def validate_safe_url(url: str) -> None:
     parsed = urlparse((url or "").strip())
     if parsed.scheme not in ("http", "https"):
         raise UnsafeUrlError("Only http and https URLs are allowed")
@@ -62,7 +63,7 @@ def validate_safe_url(url: str) -> None:
         raise UnsafeUrlError("URL hostname is required")
 
     try:
-        infos = socket.getaddrinfo(parsed.hostname, parsed.port)
+        infos = await asyncio.get_running_loop().getaddrinfo(parsed.hostname, parsed.port)
     except socket.gaierror as e:
         raise UnsafeUrlError("URL hostname cannot be resolved") from e
 
@@ -71,9 +72,9 @@ def validate_safe_url(url: str) -> None:
             raise UnsafeUrlError("URL resolves to a disallowed address")
 
 
-def _resolve_safe_host(host: str, port: int | None = None) -> str:
+async def _resolve_safe_host(host: str, port: int | None = None) -> str:
     try:
-        infos = socket.getaddrinfo(host, port)
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port)
     except socket.gaierror as e:
         raise UnsafeUrlError("URL hostname cannot be resolved") from e
 
@@ -90,24 +91,30 @@ def _resolve_safe_host(host: str, port: int | None = None) -> str:
     return candidates[0]
 
 
-def is_safe_url(url: str) -> bool:
+async def is_safe_url(url: str) -> bool:
     try:
-        validate_safe_url(url)
+        await validate_safe_url(url)
         return True
     except (UnsafeUrlError, ValueError):
         return False
 
 
 class SafeAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
-    """httpcore network backend that connects to a prevalidated IP address."""
+    """Validate direct destinations while allowing the configured proxy hop."""
 
-    def __init__(self, backend: httpcore.AsyncNetworkBackend | None = None) -> None:
+    def __init__(
+        self,
+        backend: httpcore.AsyncNetworkBackend | None = None,
+        *,
+        proxy_address: tuple[str, int] | None = None,
+    ) -> None:
         if backend is None:
             from httpcore._backends.auto import AutoBackend
 
             self._backend = AutoBackend()
         else:
             self._backend = backend
+        self._proxy_address = proxy_address
 
     async def connect_tcp(
         self,
@@ -117,7 +124,13 @@ class SafeAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options: Any = None,
     ) -> httpcore.AsyncNetworkStream:
-        resolved_ip = _resolve_safe_host(host, port)
+        # With HTTP/SOCKS proxies this TCP destination is the configured gateway,
+        # not the fetched URL. Callers still validate targets and every redirect.
+        resolved_ip = (
+            host
+            if (host, port) == self._proxy_address
+            else await _resolve_safe_host(host, port)
+        )
         return await self._backend.connect_tcp(
             resolved_ip,
             port,
@@ -126,16 +139,30 @@ class SafeAsyncNetworkBackend(httpcore.AsyncNetworkBackend):
             socket_options=socket_options,
         )
 
+    async def sleep(self, seconds: float) -> None:
+        await self._backend.sleep(seconds)
+
 
 def create_safe_async_transport(**kwargs: Any) -> httpx.AsyncHTTPTransport:
-    """Create an HTTP transport whose direct TCP connections use safe DNS results."""
+    """Pin direct connections to safe DNS results; trust only the configured proxy."""
 
     transport = httpx.AsyncHTTPTransport(**kwargs)
     pool = getattr(transport, "_pool", None)
     if hasattr(pool, "_network_backend"):
+        proxy = kwargs.get("proxy")
+        proxy_address = None
+        if proxy is not None:
+            proxy_url = (proxy if isinstance(proxy, httpx.Proxy) else httpx.Proxy(proxy)).url
+            proxy_address = (
+                proxy_url.host,
+                proxy_url.port
+                or {"https": 443, "socks5": 1080, "socks5h": 1080}.get(
+                    proxy_url.scheme, 80
+                ),
+            )
         # httpx does not expose httpcore's network_backend in 0.28.x. This
-        # private assignment is intentionally narrow and covered by tests.
-        pool._network_backend = SafeAsyncNetworkBackend()
+        # private assignment only replaces the TCP backend, not URL validation.
+        pool._network_backend = SafeAsyncNetworkBackend(proxy_address=proxy_address)
     return transport
 
 
@@ -160,7 +187,7 @@ async def safe_client_get(
 
     current_url = url
     for _ in range(max_redirects + 1):
-        validate_safe_url(current_url)
+        await validate_safe_url(current_url)
         async with client.stream(
             "GET",
             current_url,

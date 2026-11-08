@@ -25,7 +25,7 @@ active
 
 1. `UniversalAdapter.parse()` 接收 URL。
 2. 调用 `tiered_fetch()` 获取原始内容。
-3. 一次 HTTP 内容协商同时接受 Markdown/HTML，直接复用返回的 HTML；内容不足才使用共享 Playwright/WebKit。404/410 和 429 不启动浏览器。
+3. 一次 HTTP 内容协商同时接受 Markdown/HTML，直接复用返回的 HTML；内容不足才使用共享 Playwright/Chromium。404/410 和 429 不启动浏览器。
 4. 将获取结果交给 `process_content()`。
 5. 明确的正文节点直接提取，其余页面由 content agent 处理；适配器统一映射为 `ParsedContent`。
 
@@ -35,9 +35,12 @@ active
 - 多级抓取，尽量先使用低成本路径；已知验证页不作为正文。
 - Telegraph 的 `article.tl_article_content`，以及 Article/NewsArticle/BlogPosting/TechArticle 中单一 `itemprop=articleBody`，可直接转换并读取明确元数据，零模型调用。存在音视频/iframe 或明确付费标识时继续原处理流程，不声称简单抽取覆盖复杂页面。
 - 重定向后按最终 URL 解析相对链接。
-- 使用 LangChain function calling 和本地 Pydantic contract 完成可选选择器定位，以及一次完成正文边界、字段和清理项的提取；缺失工具调用、字段类型错误或越界行号直接失败，不使用正则 JSON 提取或静默回退。
+- HTML 锚点包含多个块级子节点时，转换器只将该链接标签内部的换行折为空格，再由 markdownify 生成链接，避免空行把链接拆成原始括号文本；不对已存正文做全局替换。已用 Ahrefs 公开 SEO 指南的 9 个真实章节锚点验证转换后均可解析为链接。
+- 使用确定性的正文选择器；未知布局保留完整页面文本，由一次 LangChain function calling 和本地 Pydantic contract 确定正文边界、字段和清理项；缺失工具调用、字段类型错误或越界行号直接失败，不使用正则 JSON 提取或静默回退。
 - 内容处理过程复用同一个 `ChatOpenAI`，OpenAI 兼容端点使用 chat completions，并保留完整模型名及配置的 extra_body。
-- 输出统一 `ParsedContent`，供内容服务入库。
+- 输出统一 `ParsedContent`，供内容服务入库。代码块保留空白和运算符，模型不得改写或截断代码；标题进入元数据，不在正文重复。
+- 原生解析明确报告结构变化时，`ConfiguredParser` 使用同一账号的浏览器页面提取正文，并记录 `webpage_fallback`；登录、删除和限流错误保留原有失败语义。
+- 登录、平台读取与通用抓取共享一个 Chromium，各操作使用独立 context、Cookie 和代理配置；镜像安装 Chromium。
 
 ## 与代码的关系
 

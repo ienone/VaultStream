@@ -2,7 +2,7 @@
 分层内容获取模块 (Tiered Content Fetcher)
 
 HTTP：一次内容协商请求，接受 Markdown 或 HTML，不重复请求同一页面。
-浏览器：共享 Playwright/WebKit (适用 JS 渲染页面)
+浏览器：共享 Playwright/Chromium (适用 JS 渲染页面)
 
 每一级尝试后判断内容质量, 不达标则降级到下一级。
 """
@@ -19,9 +19,11 @@ from bs4 import BeautifulSoup
 
 from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError
 from app.core.crawler_config import get_delay_for_url
-from app.core.safe_fetch import is_safe_url, safe_client_get
+from app.core.safe_fetch import is_safe_url, safe_client_get, create_safe_async_transport
+from app.services.config_service import ConfigService
 
 _MAX_FETCH_TEXT_BYTES = 5 * 1024 * 1024
+_CHALLENGE_WAIT_SECONDS = 45.0
 _TEXT_CONTENT_TYPES = (
     "text/",
     "application/xhtml+xml",
@@ -46,12 +48,26 @@ class FetchResult:
 # 内容质量检测
 # ============================================================
 
+def _is_cloudflare_challenge(html: str) -> bool:
+    soup = BeautifulSoup(html, "html.parser")
+    return bool(
+        soup.select_one('#challenge-form, #challenge-running, #cf-challenge-running')
+        or (soup.find("script", src=re.compile(r"/cdn-cgi/challenge-platform/"))
+            and soup.title and soup.title.get_text(strip=True).lower() in {
+                "just a moment...", "just a moment…", "请稍候…", "请稍候...",
+            })
+        or "_cf_chl_opt" in html
+    )
+
+
 def _has_sufficient_content(html: str, min_text_length: int = 500) -> bool:
     """
     判断 HTML 是否包含足够的正文内容 (非 JS 渲染的空壳)。
     
     使用文本/标签比率 + 最小文本长度做启发式判断。
     """
+    if _is_cloudflare_challenge(html):
+        return False
     soup = BeautifulSoup(html, "html.parser")
 
     title = soup.title.get_text(" ", strip=True).lower() if soup.title else ""
@@ -111,7 +127,7 @@ def _is_valid_markdown(text: str, min_length: int = 200) -> bool:
 # HTTP 内容协商
 # ============================================================
 
-async def _try_http(url: str, cookies: Optional[dict] = None, timeout: float = 15.0) -> Optional[FetchResult]:
+async def _try_http(url: str, cookies: Optional[dict] = None, timeout: float = 30.0, *, proxy: str | None = None) -> Optional[FetchResult]:
     """Negotiate Markdown and reuse an HTML response from the same GET."""
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
@@ -119,9 +135,15 @@ async def _try_http(url: str, cookies: Optional[dict] = None, timeout: float = 1
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
     try:
-        async with httpx.AsyncClient(timeout=timeout, cookies=cookies) as client:
+        jar = httpx.Cookies()
+        for name, value in (cookies or {}).items():
+            jar.set(name, value, domain=urlparse(url).hostname, path="/")
+        async with httpx.AsyncClient(
+            timeout=timeout, cookies=jar, trust_env=False,
+            transport=create_safe_async_transport(proxy=proxy),
+        ) as client:
             resp = await safe_client_get(
-                client, url, headers=headers, cookies=cookies,
+                client, url, headers=headers,
                 max_bytes=_MAX_FETCH_TEXT_BYTES,
                 allowed_content_type_prefixes=_TEXT_CONTENT_TYPES,
             )
@@ -148,14 +170,15 @@ async def _try_http(url: str, cookies: Optional[dict] = None, timeout: float = 1
     return None
 
 
-async def _try_browser(url: str, cookies: Optional[dict] = None) -> Optional[FetchResult]:
+async def _try_browser(url: str, cookies: Optional[dict] = None, *, proxy: str | None = None) -> Optional[FetchResult]:
     """
-    使用共享 WebKit 浏览器实例抓取页面。
+    使用共享 Chromium 的独立会话抓取页面。
 
     将爬取任务打包为协程，通过 browser_manager.submit_coro() 在专门的
     后台 Playwright 事件循环中安全执行并获取结果。
     """
     from app.adapters.browser import browser_manager
+    from playwright.async_api import Error as BrowserError
 
     delay = get_delay_for_url(url)
 
@@ -168,27 +191,57 @@ async def _try_browser(url: str, cookies: Optional[dict] = None) -> Optional[Fet
             pw_cookies.append({"name": k, "value": v, "domain": domain, "path": "/"})
 
     async def _fetch_coro() -> Optional[tuple[str, str]]:
-        if not is_safe_url(url):
+        if not await is_safe_url(url):
             return None
 
-        browser = browser_manager.get_browser()
-        context = await browser.new_context(
-            viewport=browser_manager.fetch_viewport,
-            user_agent=browser_manager.ua
-        )
+        context = await browser_manager.new_context(proxy=proxy)
         if pw_cookies:
             await context.add_cookies(pw_cookies)
             
         try:
             async def _route_guard(route, request) -> None:
-                if is_safe_url(request.url):
+                if await is_safe_url(request.url):
                     await route.continue_()
                 else:
                     await route.abort()
 
             await context.route("**/*", _route_guard)
             page = await context.new_page()
+            navigation = {"status": None, "challenge": False}
+
+            def track_navigation(response):
+                if (response.request.is_navigation_request()
+                        and response.frame == page.main_frame):
+                    navigation["status"] = response.status
+                    navigation["challenge"] = response.headers.get("cf-mitigated") == "challenge"
+
+            page.on("response", track_navigation)
             response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            html = await page.content()
+            if navigation["challenge"] or _is_cloudflare_challenge(html):
+                deadline = asyncio.get_running_loop().time() + _CHALLENGE_WAIT_SECONDS
+                while True:
+                    if not navigation["challenge"] and not _is_cloudflare_challenge(html):
+                        if navigation["status"] in (404, 410):
+                            raise NonRetryableAdapterError("页面不存在或已删除")
+                        if navigation["status"] == 429:
+                            raise RetryableAdapterError("网站限制请求频率，请稍后重试")
+                        if navigation["status"] == 200 and _has_sufficient_content(html):
+                            return page.url, html
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise RetryableAdapterError("Cloudflare 安全验证未通过，等待正文超时（45 秒）")
+                    await asyncio.sleep(1)
+                    try:
+                        html = await page.content()
+                    except BrowserError as error:
+                        # 验证完成时页面会跳转，读取 DOM 可能短暂失效。
+                        if "navigating" not in str(error).lower():
+                            raise
+
+            if response is not None and response.status in (404, 410):
+                raise NonRetryableAdapterError(f"页面不存在或已删除（HTTP {response.status}）")
+            if response is not None and response.status == 429:
+                raise RetryableAdapterError("网站限制请求频率，请稍后重试")
             if response is None or response.status != 200:
                 return None
 
@@ -215,6 +268,8 @@ async def _try_browser(url: str, cookies: Optional[dict] = None) -> Optional[Fet
             source="browser",
             html=html,
         )
+    except (NonRetryableAdapterError, RetryableAdapterError):
+        raise
     except Exception as e:
         logger.warning(f"Shared browser fetch failed for {url}: {e}")
         return None
@@ -229,9 +284,18 @@ async def tiered_fetch(
     cookies: Optional[dict] = None,
 ) -> FetchResult:
     """One negotiated HTTP request, then browser rendering for unreadable HTML."""
-    result = await _try_http(url, cookies=cookies)
+    proxy = await ConfigService().get_http_proxy()
+    result = await _try_http(url, cookies=cookies, proxy=proxy)
     if result is None:
-        result = await _try_browser(url, cookies=cookies)
+        result = await _try_browser(url, cookies=cookies, proxy=proxy)
+    if result is None:
+        raise NonRetryableAdapterError("网页未返回可读取正文")
+    return result
+
+
+async def fetch_rendered_page(url: str, *, cookies: dict | None = None) -> FetchResult:
+    proxy = await ConfigService().get_http_proxy()
+    result = await _try_browser(url, cookies=cookies, proxy=proxy)
     if result is None:
         raise NonRetryableAdapterError("网页未返回可读取正文")
     return result

@@ -111,11 +111,15 @@ async def prepare_link_preview_images(messages: list[dict]) -> None:
         proxy=proxy or None,
         transport=None if proxy else create_safe_async_transport(),
         timeout=25, trust_env=False,
-    ) as client:
+    ) as client, httpx.AsyncClient(
+        transport=create_safe_async_transport(), timeout=25, trust_env=False,
+    ) as direct_client:
         async def fetch(item: dict) -> None:
             async with semaphore:
+                host = (urlsplit(item["url"]).hostname or "").lower()
+                image_client = direct_client if host == "hdslb.com" or host.endswith(".hdslb.com") else client
                 result = await safe_client_get(
-                    client, item["url"], headers=_request_headers_for_url(item["url"]),
+                    image_client, item["url"], headers=_request_headers_for_url(item["url"]),
                     max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
                     allowed_content_type_prefixes=("image/",),
                 )

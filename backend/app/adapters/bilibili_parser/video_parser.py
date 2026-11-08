@@ -20,7 +20,7 @@ from .video_media import read_video_media
 
 
 # API端点
-API_VIDEO_INFO = "https://api.bilibili.com/x/web-interface/view"
+API_VIDEO_INFO = "https://api.bilibili.com/x/web-interface/wbi/view"
 
 
 async def parse_video(
@@ -62,7 +62,17 @@ async def parse_video(
     async with httpx.AsyncClient(headers=headers, cookies=cookies, timeout=10.0) as client:
         try:
             response = await client.get(API_VIDEO_INFO, params=params)
+            if response.status_code == 412:
+                raise NonRetryableAdapterError("B站请求触发安全风控", details={"status": 412})
+            response.raise_for_status()
             data = response.json()
+        except httpx.HTTPStatusError as e:
+            raise RetryableAdapterError(
+                f"B站接口返回 HTTP {e.response.status_code}",
+                details={"status": e.response.status_code},
+            ) from e
+        except ValueError as e:
+            raise NonRetryableAdapterError("B站接口未返回有效 JSON") from e
         except httpx.RequestError as e:
             raise RetryableAdapterError(f"B站请求失败: {format_request_error(e)}")
         

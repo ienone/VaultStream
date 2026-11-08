@@ -8,7 +8,6 @@ from fastapi import HTTPException
 from sqlalchemy import select, text
 
 from app.adapters import AdapterFactory, managed_adapter
-from app.adapters.bilibili_parser.video_parser import parse_video
 from app.core.database import AsyncSessionLocal
 from app.core.logging import logger
 from app.models import BotChat, BotConfigPlatform, Platform, SystemSetting
@@ -95,12 +94,8 @@ async def preview_links(config_id: int, request: QQPreviewRequest) -> QQPreviewR
                             async with managed_adapter(AdapterFactory.create(platform, public_only=True)) as adapter:
                                 parsed = await adapter.parse(capability.url)
                         else:
-                            async with open_configured_adapter(platform) as adapter:
-                                if platform == Platform.BILIBILI and capability.content_type == "video":
-                                    clean_url = await adapter.clean_url(capability.url)
-                                    parsed = await parse_video(clean_url, adapter.headers, adapter.cookies, include_media=False)
-                                else:
-                                    parsed = await adapter.parse(capability.url)
+                            async with open_configured_adapter(platform, include_video_media=False) as adapter:
+                                parsed = await adapter.parse(capability.url)
                     except Exception:
                         if not allow_cleaning or platform == Platform.UNIVERSAL:
                             raise

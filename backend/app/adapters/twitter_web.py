@@ -4,6 +4,12 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from playwright.async_api import Error as BrowserError, TimeoutError as BrowserTimeout
 from app.adapters.browser import browser_manager
 from app.services.config_service import ConfigService
+from app.services.source_reading import source_reading
+
+
+class _RateLimited(Exception):
+    def __init__(self, retry_after):
+        self.retry_after = retry_after
 
 
 def _error(code, message):
@@ -17,13 +23,10 @@ async def read_x_page(cookies, *, cursor=None, tweet_id=None):
     operation = "TweetDetail" if tweet_id is not None else "Bookmarks"
     if tweet_id is not None and (not isinstance(tweet_id, str) or not tweet_id.isdigit()):
         raise ValueError("invalid X tweet ID")
+    await source_reading.wait("twitter")
     proxy = await ConfigService().get_http_proxy()
     async def read():
-        browser = browser_manager.get_browser()
-        options = {"viewport": browser_manager.fetch_viewport}
-        if proxy:
-            options["proxy"] = {"server": proxy}
-        context = await browser.new_context(**options)
+        context = await browser_manager.new_context(proxy=proxy)
         route_error = False
         try:
             await context.add_cookies([{"name": key, "value": value, "domain": ".x.com", "path": "/", "secure": True}
@@ -64,7 +67,9 @@ async def read_x_page(cookies, *, cursor=None, tweet_id=None):
                 raise _error("upstream_error", "X 页面响应超时") from None
             if response.status in (401,):
                 raise _error("auth_required", "X 登录已失效")
-            if response.status in (403, 429):
+            if response.status == 429:
+                raise _RateLimited(response.headers.get("retry-after"))
+            if response.status == 403:
                 raise _error("verification_required", "X 拒绝或限制当前书签访问，请在网页处理")
             if response.status != 200:
                 raise _error("upstream_error", f"X 书签返回 HTTP {response.status}")
@@ -78,6 +83,10 @@ async def read_x_page(cookies, *, cursor=None, tweet_id=None):
             await context.close()
     try:
         return await browser_manager.submit_coro(read())
+    except _RateLimited as error:
+        # Persist on the API loop, not the browser worker's event loop.
+        await source_reading.http_cooldown("twitter", error.retry_after)
+        raise _error("rate_limited", "X 请求频率受限，请等待冷却后重试") from None
     except BrowserError:
         raise _error("browser_unavailable", "X 页面读取失败") from None
 

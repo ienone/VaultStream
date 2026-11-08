@@ -6,6 +6,7 @@ Twitter/X 平台适配器
 import re
 from datetime import datetime
 from datetime import timezone
+from app.services.source_reading import source_reading
 from app.utils.datetime_utils import normalize_datetime_for_db
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
@@ -134,6 +135,8 @@ class TwitterAdapter(PlatformAdapter):
             raise NonRetryableAdapterError(f"无法从 URL 提取推文信息: {url}")
         
         username, tweet_id = tweet_info
+        from app.adapters.errors import PageExtractionRequired
+
         config = ConfigService()
         cookie_text = None if self.public_only else await config.get_platform_cookie_string("twitter", fresh=True)
         if cookie_text:
@@ -150,8 +153,12 @@ class TwitterAdapter(PlatformAdapter):
             except FavoritesFetchError as error:
                 # A failed authenticated read must not silently use an
                 # anonymous third-party copy of a private tweet.
-                raise NonRetryableAdapterError(error.message) from None
+                if error.code == "parse_failed":
+                    raise PageExtractionRequired(error.message, content_id=tweet_id, content_type="tweet") from error
+                raise NonRetryableAdapterError(error.message, details={"reason": error.code}) from None
         
+        await source_reading.wait("twitter")
+
         # 构建 FxTwitter API URL
         api_url = f"{self.FXTWITTER_API}/{username}/status/{tweet_id}"
         
@@ -176,12 +183,14 @@ class TwitterAdapter(PlatformAdapter):
                         f"推文不存在或已被删除 (Tweet ID: {tweet_id})"
                     )
                 elif response.status_code == 429:
+                    await source_reading.http_cooldown("twitter", response.headers.get("Retry-After"))
                     raise RetryableAdapterError(
                         "FxTwitter API 速率限制，请稍后重试"
                     )
                 elif response.status_code >= 500:
-                    raise RetryableAdapterError(
-                        f"FxTwitter API 服务器错误 ({response.status_code})"
+                    raise PageExtractionRequired(
+                        f"FxTwitter API 服务器错误 ({response.status_code})",
+                        content_id=tweet_id, content_type="tweet",
                     )
                 elif response.status_code != 200:
                     raise NonRetryableAdapterError(
@@ -203,7 +212,7 @@ class TwitterAdapter(PlatformAdapter):
                 
                 tweet = data.get("tweet")
                 if not tweet:
-                    raise NonRetryableAdapterError("FxTwitter API 返回数据格式错误")
+                    raise PageExtractionRequired("FxTwitter API 返回数据格式错误", content_id=tweet_id, content_type="tweet")
                 
                 return self._parse_tweet_data(tweet, url)
         
@@ -212,7 +221,7 @@ class TwitterAdapter(PlatformAdapter):
         except httpx.NetworkError as e:
             raise RetryableAdapterError(f"网络错误: {str(e)}")
         except Exception as e:
-            if isinstance(e, (NonRetryableAdapterError, RetryableAdapterError)):
+            if isinstance(e, (NonRetryableAdapterError, RetryableAdapterError, PageExtractionRequired)):
                 raise
             logger.error(f"解析 Twitter 推文时出错: {e}", exc_info=True)
             raise NonRetryableAdapterError(f"解析失败: {str(e)}")

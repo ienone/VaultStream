@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.api_errors import build_error_payload
 from app.core.dependencies import require_api_token
 from app.core.database import get_db
-from app.core.safe_fetch import create_safe_async_transport, is_safe_url
+from app.core.safe_fetch import UnsafeUrlError, create_safe_async_transport, is_safe_url
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.models.media import MediaArchiveStatus, MediaVariant, MediaVariantStatus
 from app.schemas.media import (
@@ -127,11 +127,6 @@ def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
     return file_path
 
 
-def _is_safe_url(url: str) -> bool:
-    """检查 URL 是否安全（防止 SSRF 访问内网）"""
-    return is_safe_url(url)
-
-
 async def _download_remote_image(
     client: httpx.AsyncClient,
     url: str,
@@ -140,7 +135,7 @@ async def _download_remote_image(
     """下载远程图片，并在每次重定向前重新执行 SSRF 与大小校验。"""
     current_url = url
     for _ in range(_MAX_PROXY_REDIRECTS + 1):
-        if not _is_safe_url(current_url):
+        if not await is_safe_url(current_url):
             raise HTTPException(
                 status_code=400,
                 detail="目标 URL 不允许访问（内网地址或无效协议）",
@@ -459,9 +454,11 @@ async def _fetch_proxy_image_response(
                 )
     except HTTPException:
         raise
-    except httpx.TimeoutException:
-        logger.error(f"图片代理请求超时: {url}")
-        raise HTTPException(status_code=504, detail="上游服务器响应超时")
+    except UnsafeUrlError as exc:
+        raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效地址）") from exc
+    except (httpx.TimeoutException, TimeoutError) as exc:
+        logger.error("图片代理请求超时: url={}, type={}", url, type(exc).__name__)
+        raise HTTPException(status_code=504, detail="上游服务器响应超时") from exc
     except httpx.RequestError as e:
         logger.error(f"图片代理网络错误: {url}, {e}")
         raise HTTPException(status_code=502, detail=f"网络请求失败: {str(e)}")
