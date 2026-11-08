@@ -197,6 +197,11 @@ class _TaskSummary extends StatelessWidget {
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
+        if (presentation.subject case final subject?)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+            child: Text(subject, style: theme.textTheme.titleMedium),
+          ),
         if (run.startedAt != null)
           MetadataWrap(
             items: [

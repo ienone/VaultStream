@@ -133,6 +133,7 @@ class TaskRunAllowedAction(BaseModel):
 
 
 class TaskRunPresentation(BaseModel):
+    subject: Optional[str] = None
     kind: str
     title: str
     summary: str

@@ -182,6 +182,7 @@ class TaskRunPresentation {
     required this.allowedActions,
     required this.resultSections,
     this.errorCode,
+    this.subject,
   });
 
   factory TaskRunPresentation.fromJson(Map<String, dynamic> json) {
@@ -190,6 +191,7 @@ class TaskRunPresentation {
       title: json['title']?.toString() ?? '后台任务',
       summary: json['summary']?.toString() ?? '',
       errorCode: json['error_code']?.toString(),
+      subject: json['subject'] as String?,
       entityLinks: _mapList(json['entity_links'], TaskRunEntityLink.fromJson),
       allowedActions: _mapList(
         json['allowed_actions'],
@@ -206,6 +208,7 @@ class TaskRunPresentation {
   final String title;
   final String summary;
   final String? errorCode;
+  final String? subject;
   final List<TaskRunEntityLink> entityLinks;
   final List<TaskRunAllowedAction> allowedActions;
   final List<TaskRunResultSection> resultSections;

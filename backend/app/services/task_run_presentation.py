@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from urllib.parse import urlsplit
 from typing import Any
+
+from app.adapters.errors import MissingParserModelKey
 
 
 TASK_ERROR_STATUSES = frozenset({"error", "failed"})
@@ -14,9 +17,12 @@ _TASK_TITLES = {
     "content_parse": "内容解析",
     "content_reparse": "重新解析内容",
     "content_summary": "生成内容摘要",
+    "content_scoring": "动态候选评分",
+    "content_distribution": "匹配推送规则",
     "content_aggregation": "多来源自动聚合",
     "content_embedding": "建立搜索索引",
     "document_extract": "提取 PDF 正文",
+    "media_repair": "归档媒体",
     "semantic_reindex": "重建搜索索引",
     "discovery_sync": "发现源同步",
     "discovery_source_test": "发现源测试",
@@ -33,6 +39,16 @@ _TASK_TITLES = {
 }
 
 
+def task_content_subject(title: str | None, url: str | None) -> str | None:
+    if title and title.strip():
+        return title.strip()
+    try:
+        source = urlsplit(url or "")
+        return source.hostname if source.scheme in {"https", "http"} else None
+    except ValueError:
+        return None
+
+
 def build_task_run_presentation(run: Mapping[str, Any]) -> dict[str, Any]:
     """Project one persisted run into a stable, user-facing result contract."""
     task = _text(run.get("task")) or "unknown"
@@ -44,7 +60,11 @@ def build_task_run_presentation(run: Mapping[str, Any]) -> dict[str, Any]:
 
     sections = _sections_for_task(task, metadata, result) if result else []
     links = _entity_links(task, metadata, result)
-    actions = _allowed_actions(task, status, metadata, result, links)
+    missing_parser_key = task in {"content_parse", "content_reparse"} and status in TASK_ERROR_STATUSES and (
+        result.get("error_type") == MissingParserModelKey.__name__
+        or run.get("error") == MissingParserModelKey.message
+    )
+    actions = _allowed_actions(task, status, metadata, result, links, missing_parser_key)
     error_code = _first_text(
         result.get("error_code"),
         result.get("reason"),
@@ -77,10 +97,19 @@ def _summary_for_task(
     metadata: Mapping[str, Any],
     result: Mapping[str, Any],
 ) -> str:
+    if status == "pending":
+        return f"{title}已排队，等待处理。"
     if status == "running":
         return f"{title}正在运行。"
     if status in TASK_ERROR_STATUSES:
         return _failure_summary(error)
+    if result.get("skipped") is True and task in {"content_scoring", "content_summary", "content_embedding", "content_distribution"}:
+        reason = result.get("reason")
+        if reason == "content_deleted":
+            return "内容已删除，任务已跳过。"
+        if reason == "not_pending_discovery":
+            return "内容无需重新评分。"
+        return "自动处理已暂停，任务已跳过。"
 
     if task == "telegram_account_sync":
         return (f"已检查 {_int(result.get('channels'))} 个频道，"
@@ -99,7 +128,7 @@ def _summary_for_task(
         if result.get("skipped") is True:
             reason = _text(result.get("reason"))
             return f"内容无需重复解析{f'：{reason}' if reason else '。'}"
-        return "内容解析与后处理已完成。"
+        return "正文解析已完成，后续处理可分别查看。"
     if task == "content_reparse":
         return "内容已重新解析，可查看最新正文和解析候选。"
     if task == "content_summary":
@@ -339,7 +368,7 @@ def _entity_links(
 
     source_id = _positive_int(_first_value(result.get("source_id"), metadata.get("source_id")))
     if source_id is not None:
-        links.append({"kind": "discovery_source", "label": f"发现源 #{source_id}", "href": "/automation/processing"})
+        links.append({"kind": "discovery_source", "label": f"发现源 #{source_id}", "href": "/sources"})
 
     queue_item_id = _positive_int(_first_value(result.get("queue_item_id"), metadata.get("queue_item_id")))
     if queue_item_id is not None:
@@ -358,16 +387,24 @@ def _allowed_actions(
     metadata: Mapping[str, Any],
     result: Mapping[str, Any],
     links: list[dict[str, str]],
+    missing_parser_key: bool,
 ) -> list[dict[str, str]]:
     actions: list[dict[str, str]] = []
+    if missing_parser_key:
+        actions.append({"id": "open_ai_settings", "label": "配置文本模型", "href": "/settings?tab=automation", "emphasis": "primary"})
     content_link = next((link for link in links if link["kind"] == "content"), None)
     if content_link:
-        actions.append({"id": "open_content", "label": "查看内容", "href": content_link["href"], "emphasis": "primary"})
+        actions.append({
+            "id": "open_content",
+            "label": "前往内容页重新解析" if missing_parser_key else "查看内容",
+            "href": content_link["href"],
+            "emphasis": "secondary" if actions else "primary",
+        })
 
     if task == "telegram_account_sync":
         actions.append({"id": "open_accounts", "label": "查看账号", "href": "/accounts/telegram", "emphasis": "primary"})
     if task == "favorites_sync":
-        actions.append({"id": "open_sync", "label": "查看收藏同步", "href": "/automation/sync", "emphasis": "primary" if not actions else "secondary"})
+        actions.append({"id": "open_sync", "label": "查看收藏同步", "href": "/sources/sync", "emphasis": "primary" if not actions else "secondary"})
     elif task.startswith("distribution_"):
         actions.append({"id": "open_distribution", "label": "查看分发", "href": "/automation/distribution", "emphasis": "primary" if not actions else "secondary"})
     elif task.startswith("discovery_"):
@@ -386,7 +423,7 @@ def _allowed_actions(
 def _task_kind(task: str) -> str:
     if task == "favorites_sync":
         return "favorites_sync"
-    if task in {"content_parse", "content_reparse", "content_summary", "content_aggregation", "content_embedding", "document_extract"}:
+    if task in {"content_parse", "content_reparse", "content_summary", "content_scoring", "content_distribution", "content_aggregation", "content_embedding", "document_extract"}:
         return "content_processing"
     if task == "semantic_reindex":
         return "semantic_index"
