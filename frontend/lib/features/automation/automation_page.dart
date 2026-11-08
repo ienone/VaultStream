@@ -1,5 +1,6 @@
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
+import '../../routing/navigation_scope.dart';
 import '../../core/widgets/app_filter_menu.dart';
 import '../../core/layout/app_page_body.dart';
 import '../../core/widgets/workspace_tabs.dart';
@@ -131,12 +132,16 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   StreamSubscription<SseEvent>? _sseSub;
   ShareCard? _preview;
   LocalHistoryEntry? _readerHistory;
+  final _lastContentIds = <_DistributionDomainView, int>{};
+  int? _lastRuleId;
+  int? _pendingDefaultRuleId;
 
   @override
   void initState() {
     super.initState();
     _distributionView = _distributionViewFromTab(widget.initialTab);
     _selectedRuleId = widget.filterRuleId;
+    _lastRuleId = widget.ruleId;
     _bindRealtimeEvents();
     _scheduleQueueFilter();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -147,6 +152,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   @override
   void didUpdateWidget(DistributionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.ruleId != null) _lastRuleId = widget.ruleId;
     if (oldWidget.filterRuleId != widget.filterRuleId) {
       _selectedRuleId = widget.filterRuleId;
     }
@@ -249,6 +255,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   void _openContent(QueueItem item, BuildContext sourceContext) {
+    _lastContentIds[_distributionView] = item.contentId;
     _preview = ShareCard(
       id: item.contentId,
       platform: item.platform,
@@ -281,21 +288,63 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   void _closeReader() {
+    if (widget.selectedContentId == null) return;
     final uri = GoRouterState.of(context).uri;
     final query = {...uri.queryParametersAll}..remove('item');
     context.replace(uri.replace(queryParameters: query).toString());
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => _buildWorkspace(context, constraints),
+  );
+
+  Widget _buildWorkspace(BuildContext context, BoxConstraints constraints) {
+    final wide = AppListDetailWorkspace.supportsSplit(
+      context,
+      availableSize: constraints.biggest,
+    );
+    final rules = ref.watch(distributionRulesProvider).value;
+    if (wide &&
+        TickerMode.valuesOf(context).enabled &&
+        AppNavigationScope.isActiveOf(context) &&
+        _distributionView == _DistributionDomainView.rules &&
+        widget.editorRouteKey == null &&
+        rules != null &&
+        rules.isNotEmpty) {
+      final rule =
+          rules.where((rule) => rule.id == _lastRuleId).firstOrNull ??
+          rules.first;
+      _scheduleDefaultRule(rule.id);
+    }
+    final isQueue =
+        _distributionView == _DistributionDomainView.queue ||
+        _distributionView == _DistributionDomainView.history;
+    QueueItem? defaultItem;
+    if (wide && isQueue && widget.selectedContentId == null) {
+      final filter = ref.watch(queueFilterProvider);
+      if (filter.ruleId == _selectedRuleId && filter.status == _queueStatus) {
+        final items = ref.watch(contentQueueProvider).value?.items;
+        defaultItem =
+            items
+                ?.where(
+                  (item) =>
+                      item.contentId == _lastContentIds[_distributionView],
+                )
+                .firstOrNull ??
+            items?.firstOrNull;
+      }
+    }
     final editorKey = widget.editorRouteKey;
     final configuration = widget.configuration;
     final creating = widget.ruleId == null;
-    final contentId = widget.selectedContentId;
+    final contentId = widget.selectedContentId ?? defaultItem?.contentId;
     final preview = _preview?.id == contentId ? _preview : null;
     return AppListDetailWorkspace(
       onClose: editorKey != null
           ? () => context.go('/automation/distribution/rules')
+          : widget.selectedContentId == null
+          ? null
           : _closeReader,
       selectedId:
           editorKey ?? (contentId == null ? null : ('content', contentId)),
@@ -307,7 +356,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
             onChanged: _showView,
           ),
         ),
-        body: _buildDistributionDomain(),
+        body: _buildDistributionDomain(contentId),
       ),
       detailBuilder: (deferBody, focused, toggleFocus) => editorKey != null
           ? Scaffold(
@@ -325,9 +374,28 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
               deferBody: deferBody,
               focused: focused,
               onToggleFocus: toggleFocus,
+              showBackButton: widget.selectedContentId != null,
               onClose: _closeReader,
             ),
     );
+  }
+
+  void _scheduleDefaultRule(int ruleId) {
+    if (_pendingDefaultRuleId == ruleId) return;
+    _pendingDefaultRuleId = ruleId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingDefaultRuleId = null;
+      if (!mounted ||
+          !TickerMode.valuesOf(context).enabled ||
+          !AppNavigationScope.isActiveOf(context) ||
+          !AppListDetailWorkspace.supportsSplit(context) ||
+          _distributionView != _DistributionDomainView.rules ||
+          widget.editorRouteKey != null) {
+        return;
+      }
+      _lastRuleId = ruleId;
+      context.replace('/automation/distribution/rules/$ruleId');
+    });
   }
 
   _DistributionDomainView _distributionViewFromTab(String? tab) =>
@@ -338,12 +406,14 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         _ => _DistributionDomainView.queue,
       };
 
-  Widget _buildDistributionDomain() => _buildDistributionContent();
+  Widget _buildDistributionDomain(int? activeContentId) =>
+      _buildDistributionContent(activeContentId);
 
   Color get _rulesBackgroundColor =>
       Theme.of(context).colorScheme.surfaceContainerLow;
 
   Widget _buildRules({bool showAutomaticSending = false}) => AppPageBody(
+    maxWidth: AppPane.readableMaxWidth,
     child: LayoutBuilder(
       builder: (context, constraints) {
         const inset = 16.0;
@@ -395,7 +465,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     ),
   );
 
-  Widget _buildDistributionContent() {
+  Widget _buildDistributionContent(int? activeContentId) {
     final header = <Widget>[
       if ((_distributionView == _DistributionDomainView.queue ||
           _distributionView == _DistributionDomainView.history))
@@ -416,7 +486,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
                 const PushTab(targetsOnly: true),
               if (_distributionView == _DistributionDomainView.queue ||
                   _distributionView == _DistributionDomainView.history)
-                AppPageBody(child: _buildQueueList(header)),
+                AppPageBody(child: _buildQueueList(header, activeContentId)),
             ],
           ),
         ),
@@ -428,7 +498,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
       .watch(systemSettingsProvider)
       .when(
         data: (settings) => SettingSwitch(
-          title: const Text('自动分发'),
+          title: const Text('自动发送'),
           value:
               getSettingValue(settings, 'distribution_mode', 'auto') !=
               'paused',
@@ -443,7 +513,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         loading: () => const LinearProgressIndicator(),
         error: (_, _) => TextButton(
           onPressed: () => ref.invalidate(systemSettingsProvider),
-          child: const Text('自动分发设置加载失败，重试'),
+          child: const Text('自动发送设置加载失败，重试'),
         ),
       );
 
@@ -507,7 +577,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         );
   }
 
-  Widget _buildQueueList(List<Widget> header) {
+  Widget _buildQueueList(List<Widget> header, int? activeContentId) {
     if (widget.creatingRule) return const SizedBox.expand();
     final queueAsync = ref.watch(contentQueueProvider);
     final filter = ref.watch(queueFilterProvider);
@@ -550,7 +620,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
           key: ValueKey((filter.ruleId, filter.status)),
           header: header,
           items: response.items,
-          activeContentId: widget.selectedContentId,
+          activeContentId: activeContentId,
           onOpen: _openContent,
           currentStatus: filter.status,
           onLoadMore: response.hasMore
@@ -571,6 +641,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   void _openRule(DistributionRule rule) {
+    _lastRuleId = rule.id;
     _navigateRule('/automation/distribution/rules/${rule.id}');
   }
 

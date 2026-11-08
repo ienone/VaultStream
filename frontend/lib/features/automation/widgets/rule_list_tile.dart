@@ -89,7 +89,10 @@ class DistributionNavigationTile extends StatelessWidget {
             fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           ),
         ),
-        trailing: trailing,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [?trailing, const Icon(Icons.chevron_right)],
+        ),
         onTap: onTap,
       ),
     );

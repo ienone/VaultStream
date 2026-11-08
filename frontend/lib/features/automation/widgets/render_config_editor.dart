@@ -33,9 +33,6 @@ class RenderConfigEditor extends ConsumerWidget {
                 value: preset.id,
                 title: Text(preset.name),
                 shape: const RoundedRectangleBorder(),
-                subtitle: preset.description == null
-                    ? null
-                    : Text(preset.description!),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 8,
