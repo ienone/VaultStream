@@ -282,9 +282,10 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
             width: widget.width,
             height: widget.height,
             fit: widget.fit,
-            loadingBuilder: (context, child, progress) => progress == null
-                ? child
-                : _LoadingThumbnail(colorScheme: colorScheme),
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+                frame == null
+                ? _LoadingThumbnail(colorScheme: colorScheme)
+                : child,
             errorBuilder: (context, error, stackTrace) =>
                 _onError(colorScheme, error),
           )

@@ -277,7 +277,7 @@ class _RichContentState extends State<RichContent> {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -292,11 +292,11 @@ class _RichContentState extends State<RichContent> {
             contentId: detail.id,
             presentation: MediaPresentation.body,
             fit: BoxFit.fitWidth,
-            borderRadius: AppShape.paneBorder,
+            borderRadius: const BorderRadius.all(Radius.circular(AppRadius.sm)),
           ),
           if (alt != null && alt.trim().isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+              padding: const EdgeInsets.only(top: 8, left: 16, right: 16),
               child: Text(
                 alt,
                 textAlign: TextAlign.center,

@@ -104,14 +104,15 @@ class MediaGalleryItem extends StatelessWidget {
     if (fit == BoxFit.fitWidth && width == null && height == null) {
       final sourceWidth = mediaAsset?.width;
       final sourceHeight = mediaAsset?.height;
-      final ratio =
-          sourceWidth != null &&
-              sourceWidth > 0 &&
-              sourceHeight != null &&
-              sourceHeight > 0
-          ? sourceWidth / sourceHeight
-          : 16 / 9;
-      return AspectRatio(aspectRatio: ratio, child: image);
+      if (sourceWidth != null &&
+          sourceWidth > 0 &&
+          sourceHeight != null &&
+          sourceHeight > 0) {
+        return AspectRatio(
+          aspectRatio: sourceWidth / sourceHeight,
+          child: image,
+        );
+      }
     }
     return image;
   }

@@ -142,13 +142,24 @@ def _prepare_image(data: bytes, quality: int) -> tuple[bytes, bytes | None, dict
 
 async def _download(client: httpx.AsyncClient, url: str, *, kind: str, max_bytes: int):
     request_url = _build_request_url(url)
-    for attempt in range(3):
+    source_refreshed = False
+    attempt = 0
+    while attempt < 3:
         try:
+            # CDN errors may omit Content-Type; classify status before media MIME.
             response = await safe_client_get(
                 client, request_url, headers=_request_headers_for_url(url),
-                max_bytes=max_bytes, allowed_content_type_prefixes=(f"{kind}/",),
+                max_bytes=max_bytes,
             )
             if response.status_code >= 400:
+                if response.status_code == 403 and kind == "image" and not source_refreshed:
+                    from app.services.xiaohongshu_media_refresh import refresh_xiaohongshu_image_url
+
+                    source_refreshed = True
+                    refreshed = await refresh_xiaohongshu_image_url(url)
+                    if refreshed:
+                        request_url = _build_request_url(refreshed)
+                        continue
                 error = httpx.HTTPStatusError(
                     f"Media upstream status {response.status_code}",
                     request=httpx.Request("GET", request_url),
@@ -159,6 +170,8 @@ async def _download(client: httpx.AsyncClient, url: str, *, kind: str, max_bytes
                 if attempt == 2:
                     raise error
             else:
+                if not response.headers.get("content-type", "").lower().startswith(f"{kind}/"):
+                    raise ValueError(f"Media response is not {kind}")
                 if not response.content:
                     raise ValueError("Empty media response")
                 return response
@@ -166,6 +179,7 @@ async def _download(client: httpx.AsyncClient, url: str, *, kind: str, max_bytes
             if attempt == 2:
                 raise
         await asyncio.sleep(0.8 * (attempt + 1))
+        attempt += 1
     raise AssertionError("unreachable")
 
 

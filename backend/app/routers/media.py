@@ -131,6 +131,8 @@ async def _download_remote_image(
     client: httpx.AsyncClient,
     url: str,
     headers: dict[str, str],
+    *,
+    allow_source_refresh: bool = True,
 ) -> tuple[bytes, str, str]:
     """下载远程图片，并在每次重定向前重新执行 SSRF 与大小校验。"""
     current_url = url
@@ -158,6 +160,19 @@ async def _download_remote_image(
                 continue
 
             if resp.status_code != 200:
+                if resp.status_code == 403 and allow_source_refresh:
+                    from app.adapters.errors import AdapterError
+                    from app.services.xiaohongshu_media_refresh import refresh_xiaohongshu_image_url
+
+                    await resp.aclose()
+                    try:
+                        refreshed = await refresh_xiaohongshu_image_url(url)
+                    except AdapterError as error:
+                        raise HTTPException(status_code=502, detail=f"图片来源刷新失败: {error}") from error
+                    if refreshed:
+                        return await _download_remote_image(
+                            client, refreshed, headers, allow_source_refresh=False,
+                        )
                 logger.error(f"图片代理上游错误 {resp.status_code}: {current_url}")
                 raise HTTPException(
                     status_code=502,
@@ -268,10 +283,12 @@ async def _enforce_proxy_cache_quota(storage: LocalStorageBackend) -> None:
 
 def _proxy_cache_media_type(path: str) -> str | None:
     """Infer the media type encoded by a cache filename, never assume WebP."""
-    media_type, _ = mimetypes.guess_type(path)
-    if media_type and media_type.startswith("image/"):
-        return media_type
-    return None
+    # Use exactly the formats we write; minimal container MIME tables omit WebP.
+    return {
+        ".webp": "image/webp", ".jpg": "image/jpeg", ".png": "image/png",
+        ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp",
+        ".tif": "image/tiff",
+    }.get(Path(path).suffix.lower())
 
 
 async def _find_proxy_cache_file(
@@ -382,13 +399,14 @@ async def _fetch_proxy_image_response(
         transport = create_safe_async_transport(**transport_kwargs)
         async with httpx.AsyncClient(
             transport=transport,
-            timeout=httpx.Timeout(10.0, connect=5.0),
+            timeout=httpx.Timeout(30.0, connect=15.0),
         ) as client:
-            original_data, content_type, final_url = await _download_remote_image(
-                client,
-                url,
-                headers,
-            )
+            async with asyncio.timeout(120.0):
+                original_data, content_type, final_url = await _download_remote_image(
+                    client,
+                    url,
+                    headers,
+                )
             await asyncio.to_thread(_validate_proxy_image_pixels, original_data)
 
             try:
