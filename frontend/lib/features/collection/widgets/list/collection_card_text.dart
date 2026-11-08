@@ -11,7 +11,10 @@ class CollectionCardText {
         ? matched
         : content.excerpt?.trim() ?? '';
     if (hasTitle) {
-      primary = rawTitle;
+      final question = content.platform == 'zhihu'
+          ? rawTitle.replaceFirst(RegExp(r'^回答[：:]\s*'), '')
+          : rawTitle;
+      primary = question.isEmpty ? rawTitle : question;
       final titlePrefix = rawTitle
           .replaceFirst(RegExp(r'(…|\.{3})$'), '')
           .trim();

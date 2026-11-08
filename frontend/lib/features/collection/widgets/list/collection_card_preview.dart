@@ -231,7 +231,7 @@ class _CardSurfaceState extends State<_CardSurface> {
                   padding: EdgeInsets.only(right: widget.trailingSpace),
                   child: metadata,
                 ),
-                const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: AppSpacing.xs),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -429,7 +429,8 @@ class _CardMeta extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w600,
                     height: 1.2,
                   ),
                 ),

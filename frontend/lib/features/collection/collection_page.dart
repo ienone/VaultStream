@@ -222,11 +222,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    final filter = ref.watch(collectionFilterProvider);
     ref.listen<String>(
       collectionFilterProvider.select((state) => state.searchQuery),
       (_, query) => _syncSearchText(query),
     );
+    final filter = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
     return CollectionWorkspace(
@@ -255,7 +255,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
             child: KeyedSubtree(
               key: ValueKey(selection.isSelectionMode),
               child: selection.isSelectionMode
-                  ? _buildSelectionAppBar(selection)
+                  ? _buildSelectionAppBar(selection, collectionAsync.value)
                   : _buildAppBar(filter),
             ),
           ),
@@ -355,7 +355,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
         child: ContentEmptyState(
           icon: filtered ? Icons.search_off_rounded : Icons.inbox_outlined,
           message: filtered ? '没有符合条件的内容' : '尚未保存内容',
-          hint: filtered ? null : '点击“保存”添加内容。',
           action: filtered
               ? TextButton(
                   onPressed: () => ref
@@ -406,7 +405,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     );
   }
 
-  PreferredSizeWidget _buildSelectionAppBar(BatchSelectionState selection) {
+  PreferredSizeWidget _buildSelectionAppBar(
+    BatchSelectionState selection,
+    ShareCardListResponse? response,
+  ) {
+    final items = response?.items ?? const <ShareCard>[];
+    final canSelectMore = items.any((item) => !selection.isSelected(item.id));
     return AppBar(
       toolbarHeight: WindowMetrics.of(context).toolbarHeight,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -421,17 +425,15 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
       ),
       title: Text('已选择 ${selection.count} 项'),
       actions: [
-        IconButton(
-          tooltip: '全选',
-          icon: const Icon(Icons.select_all_rounded),
-          onPressed: selection.isProcessing
+        TextButton(
+          onPressed: selection.isProcessing || !canSelectMore
               ? null
               : () {
-                  final items = ref.read(collectionProvider).value?.items ?? [];
                   ref
                       .read(batchSelectionProvider.notifier)
                       .selectAll(items.map((e) => e.id).toList());
                 },
+          child: Text(response?.hasMore == true ? '全选已加载项' : '全选'),
         ),
         const SizedBox(width: AppSpacing.xs),
       ],

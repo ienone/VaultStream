@@ -84,7 +84,7 @@ class CollectionGridMetrics {
                       width: listTextWidth,
                     )) +
           statusHeight;
-      final base = 24 + 32 * scale + 12;
+      final base = 24 + 32 * scale + 8;
       listHeights.add(base + math.max(hasImage ? 64 : 0, listText) + 4);
       gridHeights.add(
         (overviewWidth < 600

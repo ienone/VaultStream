@@ -142,12 +142,27 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                         : widget.isActive,
                     trailingSpace: widget.isSelectionMode ? 28 : 0,
                   ),
-                  if (widget.isSelectionMode && widget.isSelected)
-                    const Positioned(
-                      top: 8,
+                  if (widget.isSelectionMode)
+                    Positioned(
+                      top:
+                          12 +
+                          (32 *
+                                      MediaQuery.textScalerOf(context)
+                                          .scale(16) /
+                                      16 -
+                                  20) /
+                              2,
                       right: 12,
-                      child: ExcludeSemantics(
-                        child: Icon(Icons.check_rounded, size: 20),
+                      child: IgnorePointer(
+                        child: Icon(
+                          widget.isSelected
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          color: widget.isSelected
+                              ? colors.primary
+                              : colors.onSurfaceVariant,
+                          size: 20,
+                        ),
                       ),
                     ),
                 ],

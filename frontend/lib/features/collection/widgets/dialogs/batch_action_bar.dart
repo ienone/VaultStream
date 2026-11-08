@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../theme/design_tokens.dart';
 import '../../providers/batch_selection_provider.dart';
+import '../../providers/collection_provider.dart';
 
 AnimationStyle _surfaceAnimation(BuildContext context) =>
     MediaQuery.disableAnimationsOf(context)
@@ -47,6 +48,13 @@ class _BatchActionBarState extends ConsumerState<BatchActionBar> {
   Widget build(BuildContext context) {
     final selection = ref.watch(batchSelectionProvider);
     final enabled = !selection.isProcessing && selection.count > 0;
+    final selectedItems = ref
+        .watch(collectionProvider)
+        .value
+        ?.items
+        .where((item) => selection.isSelected(item.id));
+    final hasSensitive = selectedItems?.any((item) => item.isNsfw) ?? false;
+    final hasRegular = selectedItems?.any((item) => !item.isNsfw) ?? false;
     final actions = ref.read(batchSelectionProvider.notifier);
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerHigh,
@@ -102,28 +110,32 @@ class _BatchActionBarState extends ConsumerState<BatchActionBar> {
                           leadingIcon: const Icon(Icons.refresh_rounded),
                           child: const Text('重新解析'),
                         ),
-                        MenuItemButton(
-                          onPressed: enabled
-                              ? () => _perform(
-                                  () => actions.batchSetNsfw(true),
-                                  '已标记',
-                                )
-                              : null,
-                          leadingIcon: const Icon(
-                            Icons.eighteen_up_rating_outlined,
+                        if (hasRegular)
+                          MenuItemButton(
+                            onPressed: enabled
+                                ? () => _perform(
+                                    () => actions.batchSetNsfw(true),
+                                    '已标记',
+                                  )
+                                : null,
+                            leadingIcon: const Icon(
+                              Icons.eighteen_up_rating_outlined,
+                            ),
+                            child: Text(hasSensitive ? '全部标为敏感' : '标记为敏感内容'),
                           ),
-                          child: const Text('标记为敏感内容'),
-                        ),
-                        MenuItemButton(
-                          onPressed: enabled
-                              ? () => _perform(
-                                  () => actions.batchSetNsfw(false),
-                                  '已标记',
-                                )
-                              : null,
-                          leadingIcon: const Icon(Icons.verified_user_outlined),
-                          child: const Text('取消敏感标记'),
-                        ),
+                        if (hasSensitive)
+                          MenuItemButton(
+                            onPressed: enabled
+                                ? () => _perform(
+                                    () => actions.batchSetNsfw(false),
+                                    '已取消敏感标记',
+                                  )
+                                : null,
+                            leadingIcon: const Icon(
+                              Icons.verified_user_outlined,
+                            ),
+                            child: Text(hasRegular ? '全部取消敏感标记' : '取消敏感标记'),
+                          ),
                         const Divider(),
                         MenuItemButton(
                           onPressed: enabled ? _confirmDelete : null,
