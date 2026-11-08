@@ -59,6 +59,17 @@ class ProcessingAutomationPanel extends ConsumerWidget {
                 '发送整理结果',
                 'enable_aggregation_push',
                 false,
+                subtitle:
+                    parseBoolSetting(
+                      getSettingValue(
+                        settings,
+                        'enable_content_aggregation',
+                        false,
+                      ),
+                      false,
+                    )
+                    ? null
+                    : '启用自动整理后生效',
               ),
             ],
           ),
@@ -77,9 +88,11 @@ class ProcessingAutomationPanel extends ConsumerWidget {
     String key,
     bool defaultValue, {
     String category = 'automation',
+    String? subtitle,
   }) => SettingSwitch(
     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
     title: Text(title),
+    subtitle: subtitle == null ? null : Text(subtitle),
     value: parseBoolSetting(
       getSettingValue(settings, key, defaultValue),
       defaultValue,

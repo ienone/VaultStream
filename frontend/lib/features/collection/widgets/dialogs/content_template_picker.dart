@@ -43,13 +43,13 @@ class ContentTemplatePicker extends StatelessWidget {
   final String? current;
   static const autoValue = '__auto__';
   // Values match the backend LayoutType enum; auto clears the override.
-  static const _options = <(String, String, String)>[
-    (autoValue, '自动判定', '由来源和内容特征决定'),
-    ('article', '文章', '连续阅读，正文限宽'),
-    ('gallery', '图集 / 图文', '媒体为主体'),
-    ('video', '视频', '播放器与简介'),
-    ('audio', '音频', '封面、播放与文字说明'),
-    ('link', '书签', '链接与保存记录'),
+  static const _options = <(String, String)>[
+    (autoValue, '自动判定'),
+    ('article', '文章'),
+    ('gallery', '图集 / 图文'),
+    ('video', '视频'),
+    ('audio', '音频'),
+    ('link', '书签'),
   ];
   @override
   Widget build(BuildContext context) => Padding(
@@ -72,7 +72,7 @@ class ContentTemplatePicker extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      for (final (value, label, _) in _options)
+                      for (final (value, label) in _options)
                         RadioListTile<String>(
                           value: value,
                           title: Text(label),

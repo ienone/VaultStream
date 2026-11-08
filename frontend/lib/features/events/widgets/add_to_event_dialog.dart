@@ -196,7 +196,7 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
                     ],
                   ),
                   data: (data) => data.items.isEmpty
-                      ? const Text('还没有可加入的进行中事件，请先创建事件。')
+                      ? const Text('没有可加入的进行中事件')
                       : Semantics(
                           label: '已有事件',
                           child: AppFilterMenu(

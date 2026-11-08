@@ -64,7 +64,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
       } else {
         if (mounted) {
           setState(() {
-            _error = 'API 密钥无效，请检查后重试。';
+            _error = '访问密钥无效';
             _isLoading = false;
           });
         }
@@ -118,13 +118,6 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
                             ? theme.textTheme.titleLarge
                             : theme.textTheme.headlineSmall,
                       ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        '填写服务器地址和访问密钥',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
                       const SizedBox(height: AppSpacing.xl),
                       TextField(
                         key: const ValueKey('connection-url'),
@@ -143,7 +136,7 @@ class _ConnectPageState extends ConsumerState<ConnectPage> {
                         key: const ValueKey('connection-token'),
                         controller: _tokenController,
                         decoration: const InputDecoration(
-                          labelText: 'API 密钥',
+                          labelText: '访问密钥',
                           hintText: 'VS_...',
                           prefixIcon: Icon(Icons.key),
                         ),

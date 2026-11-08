@@ -138,11 +138,11 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
           Padding(
             padding: const EdgeInsets.all(20),
             child: SettingsSlider(
-              title: 'AI 评分阈值',
+              title: '进入动态的最低评分',
               min: 0,
               max: 10,
               divisions: 20,
-              formatValue: (value) => value.toStringAsFixed(1),
+              formatValue: (value) => '${value.toStringAsFixed(1)} / 10',
               errorMessage: '评分阈值保存失败',
               value: settings.scoreThreshold,
               onSaved: (value) => ref
@@ -291,11 +291,8 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
   ) async {
     try {
       final result = await ref.read(aiConnectivityTestProvider).run(target);
-      final suffix = result.runId.isEmpty
-          ? ''
-          : ' #${result.runId.length > 8 ? result.runId.substring(0, 8) : result.runId}';
       if (context.mounted) {
-        showToast(context, result.ok ? '连通性测试通过$suffix' : '连通性测试失败$suffix');
+        showToast(context, result.ok ? '连接测试通过' : '连接测试失败');
       }
     } catch (e) {
       if (context.mounted) {
@@ -372,8 +369,8 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                           : field == 'output_dimensionality'
                           ? TextInputType.number
                           : null,
-                      description: field == 'api_key' && hasSavedKey
-                          ? '留空保留原密钥'
+                      description: field == 'api_key'
+                          ? (hasSavedKey ? '已配置，留空保留原密钥' : '尚未配置')
                           : null,
                     ),
                     const SizedBox(height: 12),
@@ -552,15 +549,11 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                 child: TextButton.icon(
                   onPressed: () async {
                     try {
-                      final result = await ref
+                      await ref
                           .read(semanticIndexActionsProvider)
                           .retryFailed();
                       if (context.mounted) {
-                        final runId = result.runId;
-                        final suffix = runId == null
-                            ? ''
-                            : ' #${runId.length > 8 ? runId.substring(0, 8) : runId}';
-                        showToast(context, '已调度失败索引重试$suffix');
+                        showToast(context, '已提交重试');
                       }
                     } catch (e) {
                       if (context.mounted) {

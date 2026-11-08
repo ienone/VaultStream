@@ -826,10 +826,7 @@ class _BookmarkEditDialogState extends State<_BookmarkEditDialog> {
               maxLength: 2000,
               minLines: 2,
               maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: '笔记（可选）',
-                hintText: '为什么这个时间点值得回来？',
-              ),
+              decoration: const InputDecoration(labelText: '笔记（可选）'),
             ),
             if (_error != null) ...[
               const SizedBox(height: AppSpacing.sm),
