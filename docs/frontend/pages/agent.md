@@ -79,7 +79,7 @@ Agent 工作台可从三个主页的页头工具菜单进入。`search_content` 
 
 ## 文档页码引用（2026-09-10）
 
-PDF 搜索证据卡片按 filename 和 page_number 显示，并用 content_id、media_asset_id 和 page_number 构造原页路由；不降级为内容首页。样本 DTO 与本地工具读取已验证，真实模型回答仍待验收。
+PDF 搜索证据卡片按 filename 和 page_number 显示，并用 content_id、media_asset_id 和 page_number 定位到对应文件的提取文本页；不降级为内容首页。样本 DTO 与本地工具读取已验证，真实模型回答仍待验收。
 
 内联引用使用可点击阅读条目，不使用单行 Chip 承载长标题。标题可换两行，页码、时间点或对象类型单独显示，避免定位信息被文件名截掉；完整标题和原有上下文可通过提示查看。引用自身不再额外套卡片。跳转继续使用已校验的 appRoute。
 
