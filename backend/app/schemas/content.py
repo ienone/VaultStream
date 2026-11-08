@@ -299,6 +299,7 @@ class ShareCard(BaseModel):
     content_type: Optional[str] = None
     effective_layout_type: Optional[str] = None
     title: Optional[str] = None
+    excerpt: Optional[str] = Field(None, description="正文纯文本预览，最多 280 字及省略号；不修改原始标题或正文")
     author_name: Optional[str] = None
     author_id: Optional[str] = None
     author_avatar_url: Optional[str] = None

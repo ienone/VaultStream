@@ -61,7 +61,7 @@ from app.services.content_service import (
 from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
 from app.repositories.content_repository import ContentRepository
 from app.services.content_presenter import (
-    compute_effective_layout_type, compute_display_title, build_content_detail,
+    compute_effective_layout_type, compute_content_excerpt, build_content_detail,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -968,6 +968,7 @@ async def list_contents(
 async def get_content_detail(
     content_id: int,
     request: Request,
+    for_edit: bool = False,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -987,7 +988,7 @@ async def get_content_detail(
         await db.refresh(content)
         
     base_url = resolve_media_base_url(str(request.base_url))
-    return await build_content_detail(db, content, base_url)
+    return await build_content_detail(db, content, base_url, for_edit=for_edit)
 
 
 @router.get("/contents/{content_id}/document-text", response_model=DocumentTextResponse)
@@ -1422,7 +1423,8 @@ async def list_share_cards(
             "clean_url": c.clean_url,
             "content_type": c.content_type,
             "effective_layout_type": compute_effective_layout_type(c),
-            "title": ensure_title(c.title, None),
+            "title": c.title,
+            "excerpt": compute_content_excerpt(c),
             "author_name": c.author_name,
             "author_id": c.author_id,
             "author_avatar_url": media_preview_url(manifests.get(c.id, []), avatar=True),
@@ -1479,7 +1481,8 @@ async def get_share_card(
         "clean_url": c.clean_url,
         "content_type": c.content_type,
         "effective_layout_type": compute_effective_layout_type(c),
-        "title": compute_display_title(c),
+        "title": c.title,
+        "excerpt": compute_content_excerpt(c),
         "author_name": c.author_name,
         "author_id": c.author_id,
         "author_avatar_url": media_preview_url(manifests.get(c.id, []), avatar=True),

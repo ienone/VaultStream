@@ -8,6 +8,24 @@ from app.schemas.content import ContentDetail
 from app.schemas.media import MediaPurpose
 from app.services.media_manifest import load_content_media_assets, build_media_manifest
 from app.services.media_segments import build_media_segment_items
+from bs4 import BeautifulSoup
+from markdown_it import MarkdownIt
+
+_excerpt_markdown = MarkdownIt()
+
+
+def compute_content_excerpt(content, max_len: int = 280) -> str | None:
+    """Return a bounded, plain-text preview of the stored body without changing it."""
+    body = (content.body or "").strip()
+    if not body:
+        return None
+    soup = BeautifulSoup(_excerpt_markdown.render(body[:12000]), "html.parser")
+    for node in soup.find_all(["img", "script", "style"]):
+        node.decompose()
+    text = " ".join(soup.stripped_strings)
+    if not text:
+        return None
+    return text if len(text) <= max_len else text[:max_len].rstrip() + "…"
 
 # 平台/内容类型 → gallery 的推断规则（DB 中 layout_type 为 NULL 时的运行时兜底）
 _GALLERY_PLATFORMS = frozenset({'twitter', 'weibo', 'xiaohongshu', 'douyin'})
@@ -37,7 +55,7 @@ def compute_display_title(content, max_len: int = 60, fallback: str = "无标题
     return ensure_title(content.title, content.body, max_len=max_len, fallback=fallback)
 
 
-async def build_content_detail(session, content, base_url: str) -> ContentDetail:
+async def build_content_detail(session, content, base_url: str, *, for_edit: bool = False) -> ContentDetail:
     """Resolve stored references once, from asset records to response sources."""
     detail = ContentDetail.model_validate(content)
     detail.media_assets = []
@@ -66,6 +84,8 @@ async def build_content_detail(session, content, base_url: str) -> ContentDetail
         return value
 
     for field in ("body", "cover_url", "author_avatar_url", "media_urls", "rich_payload", "context_data"):
+        if for_edit and field in {"body", "cover_url"}:
+            continue
         setattr(detail, field, bind(getattr(detail, field)))
     detail.media_segments = build_media_segment_items(
         content_id=content.id, rich_payload=content.rich_payload, assets=detail.media_assets,

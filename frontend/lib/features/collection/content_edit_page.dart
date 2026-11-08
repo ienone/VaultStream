@@ -2,9 +2,17 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'models/content.dart';
-import 'providers/collection_provider.dart';
+import '../../core/network/api_client.dart';
 import 'providers/content_editor_key_provider.dart';
 import 'widgets/content_editor.dart';
+
+final _editContentProvider = FutureProvider.autoDispose
+    .family<ContentDetail, int>((ref, id) async {
+      final response = await ref
+          .watch(apiClientProvider)
+          .get('/contents/$id', queryParameters: {'for_edit': true});
+      return ContentDetail.fromJson(response.data);
+    });
 
 class ContentEditPage extends ConsumerStatefulWidget {
   const ContentEditPage({
@@ -24,7 +32,7 @@ class _ContentEditPageState extends ConsumerState<ContentEditPage> {
 
   @override
   Widget build(BuildContext context) {
-    final content = ref.watch(contentDetailProvider(widget.contentId));
+    final content = ref.watch(_editContentProvider(widget.contentId));
     // Background refreshes must not replace the original revision or draft.
     _initialContent ??= content.value;
     final detail = _initialContent;
@@ -57,7 +65,7 @@ class _ContentEditPageState extends ConsumerState<ContentEditPage> {
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () =>
-                      ref.invalidate(contentDetailProvider(widget.contentId)),
+                      ref.invalidate(_editContentProvider(widget.contentId)),
                   child: const Text('重试'),
                 ),
               ],
