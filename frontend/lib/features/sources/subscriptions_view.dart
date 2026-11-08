@@ -7,8 +7,8 @@ import '../../core/widgets/app_filter_menu.dart';
 import '../../theme/design_tokens.dart';
 import '../discovery/models/discovery_models.dart';
 import '../discovery/providers/discovery_sources_provider.dart';
-import '../settings/presentation/widgets/setting_components.dart';
-import '../settings/presentation/tabs/push_tab.dart';
+import '../settings/presentation/widgets/setting_components.dart'
+    show LoadingGroup, showToast;
 
 class SubscriptionsView extends ConsumerStatefulWidget {
   const SubscriptionsView({
@@ -39,24 +39,15 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
 
   @override
   Widget build(BuildContext context) => AppPageBody(
+    maxWidth: AppPane.readableMaxWidth,
     child: CustomScrollView(
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          sliver: SliverMainAxisGroup(
-            slivers: [
-              _buildDiscoverySources(
-                context,
-                ref,
-                ref.watch(discoverySourcesProvider),
-              ),
-              const SliverToBoxAdapter(
-                child: SettingSection(
-                  title: '机器人消息',
-                  child: PushTab(monitoringOnly: true, embedded: true),
-                ),
-              ),
-            ],
+          sliver: _buildDiscoverySources(
+            context,
+            ref,
+            ref.watch(discoverySourcesProvider),
           ),
         ),
       ],
@@ -89,7 +80,7 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
                 final add = TextButton.icon(
                   onPressed: widget.onAdd,
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('添加'),
+                  label: const Text('添加订阅'),
                 );
                 final filters = AppFilterMenuRow(
                   menus: [
@@ -153,10 +144,12 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
                 )
                 .toList();
             return sources.isEmpty
-                ? const SliverToBoxAdapter(
+                ? SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: Text('没有匹配的订阅来源'),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        allSources.isEmpty ? '尚未添加订阅来源' : '没有匹配的订阅来源',
+                      ),
                     ),
                   )
                 : SliverList.builder(

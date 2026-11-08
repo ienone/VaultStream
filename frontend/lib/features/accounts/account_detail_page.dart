@@ -11,8 +11,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/widgets/metadata_wrap.dart';
 
-import '../../core/layout/responsive_layout.dart';
-import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
 import '../../theme/design_tokens.dart';
 import '../settings/presentation/tabs/connection_tab.dart';
@@ -20,19 +18,33 @@ import '../settings/providers/platform_auth_controller.dart';
 import '../settings/providers/platform_health_provider.dart';
 
 class AccountDetailPage extends ConsumerWidget {
-  const AccountDetailPage({super.key, required this.platform, this.onClose});
+  const AccountDetailPage({
+    super.key,
+    required this.platform,
+    this.onClose,
+    this.showBackButton = true,
+  });
 
   final VoidCallback? onClose;
+  final bool showBackButton;
 
   final String platform;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (platform == 'telegram') return TelegramAccountPage(onClose: onClose);
+    if (platform == 'telegram') {
+      return TelegramAccountPage(
+        onClose: onClose,
+        showBackButton: showBackButton,
+      );
+    }
     if (platform == 'qq') {
       return Scaffold(
         appBar: AppBar(
-          leading: onClose == null
+          automaticallyImplyLeading: false,
+          leading: !showBackButton
+              ? null
+              : onClose == null
               ? const AppBackButton(fallback: '/accounts')
               : BackButton(onPressed: onClose),
           title: const Text('QQ'),
@@ -46,60 +58,12 @@ class AccountDetailPage extends ConsumerWidget {
         ),
       );
     }
-    final health = ref.watch(platformHealthProvider);
-    return Scaffold(
-      appBar: AppBar(
-        leading: onClose == null
-            ? const AppBackButton(fallback: '/accounts')
-            : BackButton(onPressed: onClose),
-        title: Text(
-          health.maybeWhen(
-            data: (data) => _findPlatform(data, platform)?.label ?? '平台账号详情',
-            orElse: () => '平台账号详情',
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '刷新账号状态',
-            onPressed: health.isLoading
-                ? null
-                : () => ref.invalidate(platformHealthProvider),
-            icon: health.isLoading
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: health.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => _AccountDetailError(error: error),
-        data: (data) {
-          final account = _findPlatform(data, platform);
-          if (account == null) {
-            return const _UnknownAccount();
-          }
-          return _AccountDetailBody(account: account);
-        },
-      ),
-    );
+    return const SizedBox.shrink();
   }
 }
 
-PlatformHealthStatus? _findPlatform(
-  PlatformHealthResponse response,
-  String platform,
-) {
-  for (final item in response.platforms) {
-    if (item.platform == platform) return item;
-  }
-  return null;
-}
-
-class _AccountDetailBody extends ConsumerWidget {
-  const _AccountDetailBody({required this.account});
+class AccountPlatformPanel extends ConsumerWidget {
+  const AccountPlatformPanel({super.key, required this.account});
 
   final PlatformHealthStatus account;
 
@@ -163,31 +127,20 @@ class _AccountDetailBody extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => LayoutBuilder(
-    builder: (context, constraints) {
-      final metrics = WindowMetrics.fromSize(
-        Size(constraints.maxWidth, constraints.maxHeight),
-      );
-      return AppPageBody(
-        maxWidth: 720,
-        child: ListView(
-          padding: EdgeInsets.all(
-            metrics.isCompact ? AppSpacing.md : AppSpacing.xl,
-          ),
-          children: [
-            _AccountOverview(
-              account: account,
-              controls: _AccountControls(
-                account: account,
-                onLogin: () => _login(context, ref),
-                onCheck: () => _check(context, ref),
-                onLogout: () => _logout(context, ref),
-              ),
-            ),
-          ],
+  Widget build(BuildContext context, WidgetRef ref) => Semantics(
+    container: true,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: _AccountOverview(
+        account: account,
+        controls: _AccountControls(
+          account: account,
+          onLogin: () => _login(context, ref),
+          onCheck: () => _check(context, ref),
+          onLogout: () => _logout(context, ref),
         ),
-      );
-    },
+      ),
+    ),
   );
 }
 
@@ -206,13 +159,33 @@ class _AccountOverview extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        OverflowBar(
+          alignment: MainAxisAlignment.spaceBetween,
+          overflowAlignment: OverflowBarAlignment.start,
+          spacing: AppSpacing.md,
+          overflowSpacing: AppSpacing.sm,
           children: [
-            Icon(status.icon, color: status.color(scheme)),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: Text(status.label, style: theme.textTheme.titleLarge),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(status.icon, size: 20, color: status.color(scheme)),
+                const SizedBox(width: AppSpacing.sm),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(account.label, style: theme.textTheme.titleMedium),
+                    if (account.hasCookie || account.health == 'error')
+                      Text(
+                        status.label,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
+            controls,
           ],
         ),
         if (account.issues.isNotEmpty) ...[
@@ -223,10 +196,8 @@ class _AccountOverview extends ConsumerWidget {
               child: Text(issue, style: theme.textTheme.bodyMedium),
             ),
         ],
-        const SizedBox(height: AppSpacing.md),
-        controls,
-        const SizedBox(height: AppSpacing.lg),
-        if (account.favoritesSupported)
+        if (account.hasCookie && account.favoritesSupported) ...[
+          const SizedBox(height: AppSpacing.lg),
           ref
               .watch(favoritesSyncStatusProvider)
               .when(
@@ -241,15 +212,20 @@ class _AccountOverview extends ConsumerWidget {
                       .firstOrNull;
                   return sync == null
                       ? const SizedBox.shrink()
-                      : AccountFavoritesSyncControls(status: sync);
+                      : AccountFavoritesSyncControls(
+                          status: sync,
+                          loginAvailable:
+                              account.hasCookie &&
+                              account.browserAuthValid != false,
+                        );
                 },
               ),
+        ],
         if (account.platform == 'bilibili')
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('手动凭据'),
             children: [
-              Text('手动凭据', style: theme.textTheme.titleMedium),
-              const SizedBox(height: AppSpacing.md),
               const ConnectionTab().buildBiliAdvancedEditor(context, ref),
             ],
           ),
@@ -282,12 +258,15 @@ class _AccountControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = ref.watch(platformAuthActionsProvider);
     final busy = pending.any((key) => key.startsWith('${account.platform}:'));
+    final canLogin =
+        account.browserAuthSupported || account.platform == 'twitter';
+    final connected = account.hasCookie && account.browserAuthValid == true;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (account.browserAuthSupported || account.platform == 'twitter')
+        if (canLogin && !connected)
           FilledButton.tonalIcon(
             onPressed: busy ? null : onLogin,
             icon: Icon(
@@ -296,9 +275,7 @@ class _AccountControls extends ConsumerWidget {
                   : Icons.qr_code_2_rounded,
             ),
             label: Text(
-              account.platform == 'twitter'
-                  ? '保存网页登录'
-                  : !account.hasCookie
+              !account.hasCookie
                   ? '连接账号'
                   : account.browserAuthValid == false
                   ? '重新登录'
@@ -309,9 +286,38 @@ class _AccountControls extends ConsumerWidget {
           PopupMenuButton<String>(
             tooltip: '账号操作',
             enabled: !busy,
-            onSelected: (value) => value == 'check' ? onCheck() : onLogout(),
+            onSelected: (value) {
+              switch (value) {
+                case 'login':
+                  onLogin();
+                case 'check':
+                  onCheck();
+                case 'logout':
+                  onLogout();
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '账号操作',
+                    style: TextStyle(
+                      color: busy
+                          ? Theme.of(context).disabledColor
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_drop_down_rounded),
+                ],
+              ),
+            ),
             itemBuilder: (_) => [
-              if (account.browserAuthSupported || account.platform == 'twitter')
+              if (canLogin && connected)
+                const PopupMenuItem(value: 'login', child: Text('更新登录')),
+              if (canLogin)
                 const PopupMenuItem(value: 'check', child: Text('检测有效性')),
               const PopupMenuItem(value: 'logout', child: Text('清除登录')),
             ],
@@ -353,54 +359,6 @@ class _LastSyncCard extends StatelessWidget {
   }
 }
 
-class _AccountDetailError extends ConsumerWidget {
-  const _AccountDetailError({required this.error});
-
-  final Object error;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.cloud_off_rounded, size: 48),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            formatApiErrorMessage(error, fallbackMessage: '无法读取平台账号'),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          FilledButton.tonal(
-            onPressed: () => ref.invalidate(platformHealthProvider),
-            child: const Text('重试'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _UnknownAccount extends StatelessWidget {
-  const _UnknownAccount();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-    child: Padding(
-      padding: EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.account_circle_outlined, size: 48),
-          SizedBox(height: AppSpacing.md),
-          Text('服务器没有返回这个平台账号'),
-        ],
-      ),
-    ),
-  );
-}
-
 ({String label, IconData icon, Color Function(ColorScheme) color})
 _accountStatus(PlatformHealthStatus account) {
   if (account.browserAuthValid == false || account.health == 'error') {
@@ -412,7 +370,7 @@ _accountStatus(PlatformHealthStatus account) {
   }
   if (!account.hasCookie) {
     return (
-      label: '尚未连接',
+      label: '未连接',
       icon: Icons.account_circle_outlined,
       color: (scheme) => scheme.outline,
     );

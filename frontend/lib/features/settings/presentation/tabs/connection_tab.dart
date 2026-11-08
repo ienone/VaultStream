@@ -15,7 +15,7 @@ import '../../../../core/providers/local_settings_provider.dart';
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/utils/safe_url_launcher.dart';
 import '../../../../core/widgets/adaptive_form_dialog.dart';
-import '../../../../core/widgets/metadata_wrap.dart';
+import '../../../accounts/account_detail_page.dart';
 import '../../../../core/network/api_client.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/platform_auth_controller.dart';
@@ -30,13 +30,11 @@ class ConnectionTab extends ConsumerWidget {
   const ConnectionTab({
     super.key,
     this.accountsOnly = false,
-    this.onOpenPlatform,
     this.selectedPlatform,
   });
 
   final String? selectedPlatform;
   final bool accountsOnly;
-  final ValueChanged<PlatformHealthStatus>? onOpenPlatform;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -204,34 +202,9 @@ class ConnectionTab extends ConsumerWidget {
         if (health.platforms.isEmpty) {
           return const SizedBox.shrink();
         }
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: AppSettingGroup(
-            children: [
-              for (final platform in health.platforms)
-                ListTile(
-                  selected: selectedPlatform == platform.platform,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  shape: const RoundedRectangleBorder(),
-                  title: Text(
-                    platform.label,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  subtitle: MetadataWrap(items: _platformHealthFacts(platform)),
-                  leading: Icon(
-                    _platformHealthIcon(platform),
-                    color: _platformHealthColor(context, platform),
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: onOpenPlatform == null
-                      ? null
-                      : () => onOpenPlatform!(platform),
-                ),
-            ],
-          ),
+        return _PlatformAccountList(
+          platforms: health.platforms,
+          selectedPlatform: selectedPlatform,
         );
       },
       loading: () => const Padding(
@@ -256,60 +229,6 @@ class ConnectionTab extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  List<String> _platformHealthFacts(PlatformHealthStatus platform) {
-    final parts = <String>[];
-    if (platform.hasCookie) {
-      parts.add(platform.browserAuthValid == false ? '登录失效' : '已配置登录');
-    } else {
-      parts.add('未配置登录');
-    }
-    if (platform.favoritesSupported) {
-      if (platform.favoritesEnabled) {
-        parts.add(
-          platform.favoritesAuthenticated == false ? '同步认证失败' : '收藏同步已启用',
-        );
-      } else {
-        parts.add('收藏同步未启用');
-      }
-    }
-    if (platform.health == 'error' &&
-        platform.browserAuthValid != false &&
-        platform.favoritesAuthenticated != false) {
-      parts.add('需要处理');
-    }
-    return parts;
-  }
-
-  IconData _platformHealthIcon(PlatformHealthStatus platform) {
-    switch (platform.health) {
-      case 'ok':
-        return Icons.verified_user_rounded;
-      case 'error':
-        return Icons.report_gmailerrorred_rounded;
-      case 'inactive':
-        return Icons.account_circle_outlined;
-      default:
-        return Icons.info_outline_rounded;
-    }
-  }
-
-  Color? _platformHealthColor(
-    BuildContext context,
-    PlatformHealthStatus platform,
-  ) {
-    final colors = Theme.of(context).colorScheme;
-    switch (platform.health) {
-      case 'ok':
-        return colors.primary;
-      case 'error':
-        return colors.error;
-      case 'inactive':
-        return colors.outline;
-      default:
-        return null;
-    }
   }
 
   Widget _buildBaseUrlEditor(
@@ -340,7 +259,7 @@ class ConnectionTab extends ConsumerWidget {
   ) {
     return _ConnectionValueEditor(
       initialValue: currentValue,
-      label: 'API 访问密钥',
+      label: '访问密钥',
       obscureText: true,
       buttonLabel: '更新密钥',
       onSave: (value) async {
@@ -514,7 +433,7 @@ class ConnectionTab extends ConsumerWidget {
       if (context.mounted) {
         if (result['success'] == true) {
           final authOk = result['auth_ok'] == true;
-          showToast(context, authOk ? '连接并认证成功' : '连接成功，但 API 密钥无效');
+          showToast(context, authOk ? '连接成功' : '访问密钥无效');
         } else {
           showToast(context, result['error'] as String);
         }
@@ -537,7 +456,7 @@ class ConnectionTab extends ConsumerWidget {
           : null,
       builder: (ctx) => AlertDialog(
         title: const Text('退出登录'),
-        content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
+        content: const Text('退出后需重新输入访问密钥。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -555,6 +474,59 @@ class ConnectionTab extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PlatformAccountList extends StatefulWidget {
+  const _PlatformAccountList({
+    required this.platforms,
+    required this.selectedPlatform,
+  });
+
+  final List<PlatformHealthStatus> platforms;
+  final String? selectedPlatform;
+
+  @override
+  State<_PlatformAccountList> createState() => _PlatformAccountListState();
+}
+
+class _PlatformAccountListState extends State<_PlatformAccountList> {
+  final _platformKeys = <String, GlobalKey>{};
+  String? _revealedPlatform;
+
+  @override
+  void didUpdateWidget(_PlatformAccountList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedPlatform != widget.selectedPlatform) {
+      _revealedPlatform = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    for (final platform in widget.platforms) {
+      _platformKeys.putIfAbsent(platform.platform, GlobalKey.new);
+    }
+    final target = widget.selectedPlatform;
+    final key = _platformKeys[target];
+    if (key != null && _revealedPlatform != target) {
+      _revealedPlatform = target;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || widget.selectedPlatform != target) return;
+        final targetContext = key.currentContext;
+        if (targetContext != null) Scrollable.ensureVisible(targetContext);
+      });
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final platform in widget.platforms)
+          AccountPlatformPanel(
+            key: _platformKeys[platform.platform],
+            account: platform,
+          ),
+      ],
     );
   }
 }

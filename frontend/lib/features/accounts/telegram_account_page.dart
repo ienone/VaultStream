@@ -30,8 +30,13 @@ final telegramAccountProvider = FutureProvider.autoDispose((ref) async {
 });
 
 class TelegramAccountPage extends ConsumerStatefulWidget {
-  const TelegramAccountPage({super.key, this.onClose});
+  const TelegramAccountPage({
+    super.key,
+    this.onClose,
+    this.showBackButton = true,
+  });
   final VoidCallback? onClose;
+  final bool showBackButton;
 
   @override
   ConsumerState<TelegramAccountPage> createState() =>
@@ -101,7 +106,10 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
     final status = ref.watch(telegramAccountProvider);
     return Scaffold(
       appBar: AppBar(
-        leading: widget.onClose == null
+        automaticallyImplyLeading: false,
+        leading: !widget.showBackButton
+            ? null
+            : widget.onClose == null
             ? const AppBackButton(fallback: '/accounts')
             : BackButton(onPressed: widget.onClose),
         title: const Text('Telegram'),

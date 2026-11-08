@@ -21,7 +21,6 @@ class PushTab extends ConsumerStatefulWidget {
     super.key,
     this.targetsOnly = false,
     this.monitoringOnly = false,
-    this.embedded = false,
     this.platform,
   });
 
@@ -29,7 +28,6 @@ class PushTab extends ConsumerStatefulWidget {
 
   final bool targetsOnly;
   final bool monitoringOnly;
-  final bool embedded;
 
   @override
   ConsumerState<PushTab> createState() => _PushTabState();
@@ -261,10 +259,18 @@ class _PushTabState extends ConsumerState<PushTab> {
     }
   }
 
+  String get _addChatLabel => widget.monitoringOnly
+      ? '添加监听来源'
+      : widget.targetsOnly
+      ? '添加推送目标'
+      : '添加群组或频道';
+
   Future<void> _showAddChatDialog() async {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => BotChatDialog(
+        createTitle: _addChatLabel,
+        monitoringOnly: widget.monitoringOnly,
         platform: widget.platform,
         resolveBotConfigId: _resolveBotConfigId,
         onCreate: (chat) async {
@@ -348,11 +354,11 @@ class _PushTabState extends ConsumerState<PushTab> {
     settingsAsync?.whenData(_initFromSettings);
 
     final content = ListView(
-      shrinkWrap: widget.platform != null || widget.embedded,
-      physics: widget.platform != null || widget.embedded
+      shrinkWrap: widget.platform != null,
+      physics: widget.platform != null
           ? const NeverScrollableScrollPhysics()
           : null,
-      padding: widget.platform != null || widget.embedded
+      padding: widget.platform != null
           ? EdgeInsets.zero
           : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       children: widget.targetsOnly || widget.monitoringOnly
@@ -377,7 +383,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                     OutlinedButton.icon(
                       onPressed: _showAddChatDialog,
                       icon: const Icon(Icons.add_rounded),
-                      label: const Text('手动新增'),
+                      label: Text(_addChatLabel),
                     ),
                   ],
                 ),
@@ -466,19 +472,19 @@ class _PushTabState extends ConsumerState<PushTab> {
                     const SizedBox(height: 20),
                     _buildPermissionField(
                       controller: _adminsCtrl,
-                      label: '超级管理员 ID',
+                      label: '超级管理员用户 ID',
                       hint: '多个 ID 用逗号分隔',
                     ),
                     const SizedBox(height: 20),
                     _buildPermissionField(
                       controller: _whiteCtrl,
-                      label: '白名单 ID',
+                      label: '白名单用户 ID',
                       hint: '多个 ID 用逗号分隔',
                     ),
                     const SizedBox(height: 20),
                     _buildPermissionField(
                       controller: _blackCtrl,
-                      label: '黑名单 ID',
+                      label: '黑名单用户 ID',
                       hint: '多个 ID 用逗号分隔',
                     ),
                     const SizedBox(height: 24),
@@ -575,7 +581,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                   SizedBox(
                     width: inline ? 200 * scale : constraints.maxWidth,
                     child: AppFilterMenu(
-                      label: '摘要周期',
+                      label: enabled ? '定时周期' : '定时周期（定时已关闭）',
                       value: selectedInterval.toString(),
                       options: const {
                         '6': '每 6 小时',
@@ -600,7 +606,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.summarize_rounded),
-                    label: Text(_isGeneratingDigest ? '检查中' : '立即生成摘要'),
+                    label: Text(_isGeneratingDigest ? '生成中' : '立即生成摘要'),
                   ),
                 ],
               );
@@ -635,9 +641,15 @@ class _PushTabState extends ConsumerState<PushTab> {
             )
             .toList();
         if (chats.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Text('暂无群组或频道'),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              widget.monitoringOnly
+                  ? '尚未添加监听来源'
+                  : widget.targetsOnly
+                  ? '尚未添加推送目标'
+                  : '暂无群组或频道',
+            ),
           );
         }
 

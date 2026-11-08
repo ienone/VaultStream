@@ -83,6 +83,7 @@ GoRouter goRouter(Ref ref) {
         destination == '/sources' ||
         destination == '/accounts' ||
         destination == '/sources/sync' ||
+        destination == '/sources/chats' ||
         destination == '/agent' ||
         destination == '/settings') {
       return true;
@@ -297,13 +298,20 @@ GoRouter goRouter(Ref ref) {
                   ShellRoute(
                     observers: [backObserver()],
                     builder: (context, state, child) => SourcesPage(
-                      tab: state.uri.queryParameters['from'] == 'sync'
-                          ? 2
+                      tab:
+                          state.uri.queryParameters['from'] == 'sync' &&
+                              const {
+                                'telegram',
+                                'qq',
+                              }.contains(state.pathParameters['platform'])
+                          ? SourcesSection.sync
                           : state.uri.path.startsWith('/accounts')
-                          ? 1
+                          ? SourcesSection.accounts
                           : state.uri.path == '/sources/sync'
-                          ? 2
-                          : 0,
+                          ? SourcesSection.sync
+                          : state.uri.path == '/sources/chats'
+                          ? SourcesSection.monitoring
+                          : SourcesSection.subscriptions,
                       highlightRunId: state.uri.queryParameters['run'],
                       editor: state.uri.queryParameters['edit'],
                       platform: state.pathParameters['platform'],
@@ -323,19 +331,32 @@ GoRouter goRouter(Ref ref) {
                           GoRoute(
                             path: ':platform',
                             pageBuilder: (context, state) => NoTransitionPage(
-                              child: WorkspaceBackTarget(
-                                child: AccountDetailPage(
-                                  platform: state.pathParameters['platform']!,
-                                  onClose: () => context.go(
-                                    state.uri.queryParameters['from'] == 'sync'
-                                        ? '/sources/sync'
-                                        : '/accounts',
-                                  ),
-                                ),
-                              ),
+                              child:
+                                  const {
+                                    'telegram',
+                                    'qq',
+                                  }.contains(state.pathParameters['platform'])
+                                  ? WorkspaceBackTarget(
+                                      child: AccountDetailPage(
+                                        platform:
+                                            state.pathParameters['platform']!,
+                                        onClose: () => context.go(
+                                          state.uri.queryParameters['from'] ==
+                                                  'sync'
+                                              ? '/sources/sync'
+                                              : '/accounts',
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
                           ),
                         ],
+                      ),
+                      GoRoute(
+                        path: '/sources/chats',
+                        pageBuilder: (context, state) =>
+                            const NoTransitionPage(child: SizedBox.shrink()),
                       ),
                       GoRoute(
                         path: '/sources/sync',

@@ -11,6 +11,8 @@ import '../models/bot_chat.dart';
 
 class BotChatDialog extends ConsumerStatefulWidget {
   final BotChat? chat;
+  final String createTitle;
+  final bool monitoringOnly;
   final String? platform;
   final Future<void> Function(BotChatCreate) onCreate;
   final Future<int> Function(String chatType) resolveBotConfigId;
@@ -19,6 +21,8 @@ class BotChatDialog extends ConsumerStatefulWidget {
   const BotChatDialog({
     super.key,
     this.chat,
+    this.monitoringOnly = false,
+    this.createTitle = '添加群组或频道',
     this.platform,
     required this.onCreate,
     required this.resolveBotConfigId,
@@ -37,6 +41,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
 
   late String _chatType;
   late bool _enabled;
+
+  bool _submitting = false;
 
   bool get isEditing => widget.chat != null;
   bool get _isQQType => _chatType == 'qq_group' || _chatType == 'qq_private';
@@ -66,7 +72,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   @override
   Widget build(BuildContext context) {
     return AdaptiveFormDialog(
-      title: isEditing ? '编辑群组或频道' : '添加群组或频道',
+      title: isEditing ? '编辑群组或频道' : widget.createTitle,
       contentBuilder: (context, width, short) => Form(
         key: _formKey,
         child: Column(
@@ -74,9 +80,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           children: [
             if (!isEditing) ...[
               Semantics(
-                label: '目标类型',
+                label: '会话类型',
                 child: AppFilterMenu(
-                  label: '目标类型',
+                  label: '会话类型',
                   value: _chatType,
                   options: {
                     if (widget.platform != 'qq') ...{
@@ -99,7 +105,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
               label: _isQQType
                   ? (_chatType == 'qq_group' ? 'QQ 群号' : 'QQ 号')
                   : 'Chat ID',
-              hint: _isQQType ? '例如：123456789' : '数字 ID 或 @名称',
+              hint: _isQQType ? null : '数字 ID 或 @名称',
               keyboardType: _isQQType ? TextInputType.number : null,
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -117,27 +123,24 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
               },
             ),
             const SizedBox(height: 20),
-            _textField(
-              controller: _titleController,
-              label: '显示名称（可选）',
-              hint: '填写备注名称',
-            ),
+            _textField(controller: _titleController, label: '显示名称（可选）'),
             const SizedBox(height: 12),
             SwitchListTile(
               shape: const RoundedRectangleBorder(
                 borderRadius: AppShape.cardMediaBorder,
               ),
               contentPadding: EdgeInsets.zero,
-              title: const Text('启用此目标'),
+              title: Text(widget.monitoringOnly ? '启用此来源' : '启用此目标'),
               value: _enabled,
               onChanged: (value) => setState(() => _enabled = value),
             ),
             const SizedBox(height: 8),
-            _textField(
-              controller: _nsfwChatIdController,
-              label: '敏感内容备用目标 ID（可选）',
-              hint: '填写目标 ID',
-            ),
+            if (!widget.monitoringOnly)
+              _textField(
+                controller: _nsfwChatIdController,
+                label: '敏感内容接收会话 ID（可选）',
+                hint: _isQQType ? 'QQ 接收会话 ID' : 'Telegram Chat ID',
+              ),
           ],
         ),
       ),
@@ -152,7 +155,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
             child: const Text('取消'),
           ),
           FilledButton(
-            onPressed: _submit,
+            onPressed: _chatIdController.text.trim().isEmpty || _submitting
+                ? null
+                : _submit,
             child: Text(isEditing ? '保存修改' : '添加'),
           ),
         ],
@@ -166,7 +171,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   Widget _textField({
     required TextEditingController controller,
     required String label,
-    required String hint,
+    String? hint,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) => Column(
@@ -180,6 +185,9 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
           controller: controller,
           keyboardType: keyboardType,
           validator: validator,
+          onChanged: controller == _chatIdController
+              ? (_) => setState(() {})
+              : null,
           decoration: InputDecoration(
             hintText: hint,
             hintMaxLines: 2,
@@ -191,7 +199,8 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   );
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_submitting || !_formKey.currentState!.validate()) return;
+    setState(() => _submitting = true);
 
     try {
       final normalizedChatId = _normalizeChatId(_chatIdController.text.trim());
@@ -226,6 +235,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
       if (!mounted) return;
       Navigator.of(context).pop();
     } catch (e) {
+      if (mounted) setState(() => _submitting = false);
       if (!mounted) return;
       Toast.show(
         context,

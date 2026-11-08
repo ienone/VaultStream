@@ -8,6 +8,7 @@ import '../discovery/models/discovery_models.dart';
 
 class SourceEditor extends StatefulWidget {
   final VoidCallback onClose;
+  final bool showBackButton;
   final DiscoverySource? initialSource;
   final Future<void> Function(DiscoverySource) onSave;
   final Future<void> Function()? onDelete;
@@ -15,6 +16,7 @@ class SourceEditor extends StatefulWidget {
   const SourceEditor({
     super.key,
     required this.onClose,
+    this.showBackButton = true,
     this.initialSource,
     required this.onSave,
     this.onDelete,
@@ -50,7 +52,7 @@ class _SourceEditorState extends State<SourceEditor> {
         _pendingAction = null;
         _error = formatApiErrorMessage(
           error,
-          fallbackMessage: action == 'delete' ? '来源删除失败，请稍后重试' : '来源保存失败，请稍后重试',
+          fallbackMessage: action == 'delete' ? '来源删除失败' : '来源保存失败',
           includeRequestId: false,
         );
       });
@@ -103,7 +105,10 @@ class _SourceEditorState extends State<SourceEditor> {
       canPop: !_busy,
       child: Scaffold(
         appBar: AppBar(
-          leading: BackButton(onPressed: _busy ? null : widget.onClose),
+          automaticallyImplyLeading: false,
+          leading: widget.showBackButton
+              ? BackButton(onPressed: _busy ? null : widget.onClose)
+              : null,
           title: Text(widget.initialSource == null ? '添加来源' : '编辑来源'),
         ),
         body: AppPageBody(
@@ -138,14 +143,13 @@ class _SourceEditorState extends State<SourceEditor> {
                     const Gap(16),
                     TextField(
                       controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: '名称',
-                        hintText: '如：IT之家',
-                      ),
+                      onChanged: (_) => setState(() {}),
+                      decoration: const InputDecoration(labelText: '名称'),
                     ),
                     const Gap(16),
                     TextField(
                       controller: _urlController,
+                      onChanged: (_) => setState(() {}),
                       keyboardType: TextInputType.url,
                       decoration: InputDecoration(
                         labelText: meta.urlLabel,
@@ -155,10 +159,7 @@ class _SourceEditorState extends State<SourceEditor> {
                     const Gap(16),
                     TextField(
                       controller: _categoryController,
-                      decoration: const InputDecoration(
-                        labelText: '分类标签（可选）',
-                        hintText: '如：科技、新闻',
-                      ),
+                      decoration: const InputDecoration(labelText: '分类标签（可选）'),
                     ),
                     const Gap(16),
                     AppFilterMenu(
@@ -209,7 +210,10 @@ class _SourceEditorState extends State<SourceEditor> {
                     child: const Text('取消'),
                   ),
                   FilledButton(
-                    onPressed: _busy
+                    onPressed:
+                        _busy ||
+                            _nameController.text.trim().isEmpty ||
+                            _urlController.text.trim().isEmpty
                         ? null
                         : () {
                             final url = _urlController.text.trim();

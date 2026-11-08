@@ -18,7 +18,8 @@ Root Shell 主导航分支：
 - `/collection/:id`: 独立收藏内容详情，用于外部深链和跨页面结果。
 - `/collection/:id/edit`: 内容编辑，位于详情的根 Navigator 子路由。
 - `/sources`: 订阅来源、名称搜索和类型／启停筛选；全局筛选保留策略位于 `/settings?tab=discovery`。
-- `/accounts`: 来源工作区的连接账号页签。
+- `/sources/chats`: 机器人会话监听，管理作为输入来源的群组与频道。
+- `/accounts`: 来源工作区的账号页签。
 - `/sources/sync`: 来源工作区的收藏同步页签。
 - `/settings?tab=processing`: 内容处理策略。
 - `/automation/distribution`: 待发送队列；其下 history、rules 与规则编辑共用同一个分发 Shell，只更新右侧内容。
@@ -35,7 +36,7 @@ Root Shell 主导航分支：
 
 工具入口：
 
-- `/accounts`、`/accounts/:platform`: 来源工作区的账号页签与单平台详情；宽屏保留列表，详情原位展开。`?from=sync` 保留收藏同步上下文与返回位置。
+- `/accounts`、`/accounts/:platform`: 来源工作区的账号页签；普通内容平台直接在列表内操作，带平台参数的深链定位对应条目。仅 Telegram、QQ 展示独立详情，宽屏保留列表；这两类详情的 `?from=sync` 保留收藏同步上下文。
 - `/sources?edit=new`、`/sources?edit=ID`: 在同一工作区添加或编辑订阅，跨宽窄屏保留草稿与列表筛选。
 
 - 捕获 surface：由主页共用的页头保存按钮打开；它不是独立业务分支，应用内与系统分享共用同一 adaptive surface。
