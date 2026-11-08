@@ -210,7 +210,7 @@ class SystemSettingUpdate(BaseModel):
 class SystemSettingResponse(SystemSettingBase):
     """系统设置响应"""
     key: str
-    updated_at: UtcDatetime
+    updated_at: OptionalUtcDatetime = None
 
     model_config = ConfigDict(from_attributes=True)
 

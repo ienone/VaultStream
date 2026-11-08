@@ -235,29 +235,43 @@ class ConfigService:
             return True
 
     async def list_values(self, category: Optional[str] = None) -> list[dict[str, Any]]:
+        from app.core.config import settings
+        from app.repositories import SystemRepository
+
+        groups = {
+            "automation": (
+                "distribution_mode", "ingest_mode", "enable_discovery_patrol", "enable_ai_scoring",
+                "enable_auto_semantic_indexing", "enable_parse_worker", "enable_auto_summary",
+                "text_llm_api_key", "text_llm_base_url", "text_llm_model",
+                "embedding_api_key", "embedding_model", "embedding_output_dimensionality",
+                "summary_api_key", "summary_model", "summary_api_version",
+            ),
+            "storage": (
+                "enable_archive_media_processing", "enable_archive_image_processing",
+                "enable_archive_video_processing", "archive_image_webp_quality",
+                "archive_image_max_count", "archive_video_max_count", "archive_video_max_bytes",
+            ),
+            "platform": ("enable_cookie_keepalive", "enable_favorites_sync_scheduler"),
+            "general": ("http_proxy",),
+        }
+        items = {}
+        for group, keys in groups.items():
+            for key in keys:
+                value = getattr(settings, key)
+                if is_sensitive_setting_key(key):
+                    value = as_configured_placeholder(extract_secret_value(value), source="env") or ""
+                items[key] = {"key": key, "value": value, "category": group,
+                              "description": None, "updated_at": None}
         async with self._session_factory() as db:
-            from app.repositories import SystemRepository
-
-            repo = SystemRepository(db)
-            settings_list = await repo.list_settings(category=category)
-
-            response_items: list[dict[str, Any]] = []
-            for setting in settings_list:
+            for setting in await SystemRepository(db).list_settings():
                 value = setting.value
                 if is_sensitive_setting_key(setting.key):
-                    value = as_configured_placeholder(setting.value, source="db") or ""
-
-                response_items.append(
-                    {
-                        "key": setting.key,
-                        "value": value,
-                        "category": setting.category,
-                        "description": setting.description,
-                        "updated_at": setting.updated_at,
-                    }
-                )
-
-            return response_items
+                    value = as_configured_placeholder(value, source="db") or ""
+                items[setting.key] = {
+                    "key": setting.key, "value": value, "category": setting.category,
+                    "description": setting.description, "updated_at": setting.updated_at,
+                }
+        return [item for item in items.values() if category is None or item["category"] == category]
 
     def invalidate(self, key: str) -> None:
         self._cache.pop(key, None)
@@ -646,13 +660,7 @@ class ConfigService:
             setattr(settings, key, value)
 
     def _clear_runtime_setting(self, key: str) -> None:
-        from app.core.config import settings
+        from app.core.config import Settings, settings
 
-        if not hasattr(settings, key):
-            return
-
-        field_type = settings.__annotations__.get(key)
-        if field_type == SecretStr or "SecretStr" in str(field_type):
-            setattr(settings, key, None)
-        else:
-            setattr(settings, key, "")
+        if key in Settings.model_fields:
+            setattr(settings, key, getattr(Settings(), key))

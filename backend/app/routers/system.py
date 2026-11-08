@@ -343,17 +343,14 @@ async def get_setting(
     _: None = Depends(require_api_token),
 ):
     """获取单个设置"""
-    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
-    setting = result.scalar_one_or_none()
-    if not setting:
-        raise HTTPException(
-            status_code=404,
-            detail=build_error_payload(
-                message="Setting not found",
-                code="setting_not_found",
-            ),
-        )
-    return _serialize_setting_for_response(setting)
+    from app.services.settings_service import list_settings_values
+
+    setting = next((item for item in await list_settings_values() if item["key"] == key), None)
+    if setting is None:
+        raise HTTPException(status_code=404, detail=build_error_payload(
+            message="Setting not found", code="setting_not_found",
+        ))
+    return setting
 
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
 async def update_setting(
