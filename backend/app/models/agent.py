@@ -75,6 +75,10 @@ class AgentMessage(Base):
 
     @property
     def rendered_content(self) -> str:
+        if self.role == "user" and (self.payload or {}).get("qq_origin"):
+            text = next((source["text"] for source in self.payload["qq_sources"].values()
+                         if source["scope"] == "current" and source["kind"] == "text"), "")
+            return text.strip() or "[分享消息]"
         if self.tool_call_id:
             payload = self.rendered_payload
             return json.dumps({key: value for key, value in payload.items()

@@ -529,6 +529,6 @@ class AgentController extends Notifier<AgentViewState> {
 
   String _formatRequestError(Object error) {
     if (error is DioException) return _formatAgentErrorMessage(error);
-    return 'Agent 工作台加载失败，请检查连接后重试。';
+    return '会话加载失败';
   }
 }

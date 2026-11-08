@@ -406,8 +406,6 @@ class _AgentUnavailable extends StatelessWidget {
                 color: theme.colorScheme.error,
               ),
               const SizedBox(height: 16),
-              Text('暂时无法打开 Agent 工作台', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 8),
               Text(
                 message,
                 textAlign: TextAlign.center,
