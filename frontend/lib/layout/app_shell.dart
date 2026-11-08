@@ -9,6 +9,7 @@ import '../core/layout/responsive_layout.dart';
 import '../features/share_receiver/share_receiver_service.dart';
 import '../features/player/global_player_widgets.dart';
 import '../features/collection/models/capture_draft.dart';
+import '../features/collection/providers/batch_selection_provider.dart';
 import '../features/collection/widgets/dialogs/add_content_dialog.dart';
 import '../core/utils/toast.dart';
 import '../routing/navigation_scope.dart';
@@ -112,10 +113,21 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
+    final uri = GoRouterState.of(context).uri;
+    final editingInWorkspace =
+        (uri.path == '/sources' && uri.queryParameters.containsKey('edit')) ||
+        uri.path.startsWith('/automation/distribution/rules/');
+    final selectingCollection =
+        uri.path == '/collection' &&
+        ref.watch(batchSelectionProvider.select((s) => s.isSelectionMode));
     return PopScope(
       canPop: widget.navigationShell.currentIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (selectingCollection) {
+          ref.read(batchSelectionProvider.notifier).exitSelectionMode();
+          return;
+        }
         if (widget.navigationShell.currentIndex != 0) {
           widget.navigationShell.goBranch(0);
         }
@@ -204,7 +216,9 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ],
               ),
               bottomNavigationBar:
-                  useRail ||
+                  editingInWorkspace ||
+                      selectingCollection ||
+                      useRail ||
                       widget.navigationShell.currentIndex >= 4 ||
                       MediaQuery.viewInsetsOf(context).bottom > 0
                   ? null
