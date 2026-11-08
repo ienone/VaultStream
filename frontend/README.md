@@ -49,7 +49,7 @@ flutter doctor
 ```bash
 # 获取最新依赖
 flutter pub get
-dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
 ```
 
 安装后补丁直接修正已解析的 GoRouter 分支返回拦截，不复制依赖。清理 pub 缓存或更新依赖后需重新执行；CI 也执行此步骤。若上游代码已变化，脚本会要求重新核对并更新或移除补丁。

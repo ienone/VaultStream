@@ -93,7 +93,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter pub get
-          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+          dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Prepare release signing key
@@ -217,7 +217,7 @@ jobs:
         working-directory: frontend
         run: |
           flutter pub get
-          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+          dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Flutter Web
