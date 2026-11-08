@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
@@ -439,12 +440,9 @@ class ConfigService:
     ) -> FavoritesSyncConfig:
         read = self.get_value_fresh if fresh else self.get_value
 
-        interval = coerce_int(
-            await read("favorites_sync_interval_minutes", default_interval_minutes),
-            default_interval_minutes,
+        interval = await self.get_source_sync_interval(
+            "favorites", default_minutes=default_interval_minutes, fresh=fresh,
         )
-        if interval <= 0:
-            interval = default_interval_minutes
 
         max_items = coerce_int(
             await read("favorites_sync_max_items", default_max_items),
@@ -506,7 +504,6 @@ class ConfigService:
         self,
         platform: str,
         *,
-        default_rate_per_minute: float,
         fresh: bool = False,
     ) -> FavoritesSyncPlatformState:
         read = self.get_value_fresh if fresh else self.get_value
@@ -516,15 +513,24 @@ class ConfigService:
 
         return FavoritesSyncPlatformState(
             platform=platform,
-            rate_per_minute=coerce_float(
-                await read(
-                    f"favorites_sync_rate_{platform}",
-                    default_rate_per_minute,
-                ),
-                default_rate_per_minute,
-            ),
+            rate_per_minute=await self.get_source_read_rate(platform, fresh=fresh),
             cursor=cursor,
         )
+
+    async def get_source_read_rate(self, platform: str, *, fresh: bool = False) -> float:
+        """Keep the existing rate setting as the sole platform rate control."""
+        default = 3.0 if platform in {"zhihu", "xiaohongshu", "telegram"} else 5.0
+        read = self.get_value_fresh if fresh else self.get_value
+        rate = coerce_float(await read(f"favorites_sync_rate_{platform}", default), default)
+        return rate if math.isfinite(rate) and rate > 0 else default
+
+    async def get_source_sync_interval(
+        self, source: str, *, default_minutes: int, fresh: bool = False,
+    ) -> int:
+        """Polling cadence is independent of per-item reading speed."""
+        read = self.get_value_fresh if fresh else self.get_value
+        value = coerce_int(await read(f"{source}_sync_interval_minutes", default_minutes), default_minutes)
+        return value if value > 0 else default_minutes
 
     async def set_favorites_sync_cursor(
         self,

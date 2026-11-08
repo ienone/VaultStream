@@ -15,6 +15,7 @@ from app.adapters.favorites.base import BaseFavoritesFetcher, FavoriteItem
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.utils.anti_risk import merge_response_cookies
 from app.services.config_service import ConfigService
+from app.services.source_reading import source_reading
 
 
 class _Contract(BaseModel):
@@ -84,12 +85,16 @@ class BilibiliFavoritesFetcher(BaseFavoritesFetcher):
         return bool((await self._cookies()).get("SESSDATA"))
 
     async def _get(self, path: str, cookies: dict[str, str], params: dict | None = None) -> dict:
+        await source_reading.wait("bilibili")
         try:
             async with httpx.AsyncClient(
                 timeout=20, proxy=await ConfigService().get_http_proxy(),
                 headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/"},
             ) as client:
                 response = await client.get("https://api.bilibili.com" + path, params=params, cookies=cookies)
+            if response.status_code == 429:
+                await source_reading.http_cooldown("bilibili", response.headers.get("Retry-After"))
+                raise _failure("rate_limited", "Bilibili 请求频率受限")
             if response.status_code != 200:
                 raise _failure("upstream_error", f"Bilibili 返回 HTTP {response.status_code}")
             payload = response.json()

@@ -93,6 +93,7 @@ def assemble_posts(messages: list[types.Message]) -> list[TelegramPost]:
 class TelegramAccountReader:
     def __init__(self, client: TelegramClient):
         self.client = client
+        self.entities: dict[int, types.User | types.Chat | types.Channel] = {}
 
     async def subscribed_channels(self) -> list[dict]:
         defaults = await self.client(functions.account.GetNotifySettingsRequest(types.InputNotifyBroadcasts()))
@@ -102,10 +103,13 @@ class TelegramAccountReader:
             entity = dialog.entity
             if not isinstance(entity, types.Channel) or not entity.broadcast or entity.left:
                 continue
+            self.entities[dialog.id] = entity
             channels.append({
                 "peer_id": dialog.id,
                 "title": dialog.title,
                 "username": entity.username,
+                "unread_count": dialog.unread_count,
+                "read_inbox_max_id": dialog.dialog.read_inbox_max_id,
                 "notifications_enabled": notifications_enabled(dialog.dialog.notify_settings, defaults, now),
             })
         return channels
@@ -119,6 +123,9 @@ class TelegramAccountReader:
         """
         if not 1 <= limit <= 500:
             raise ValueError("Telegram page size must be between 1 and 500")
+        from app.services.source_reading import source_reading
+
+        await source_reading.wait("telegram")
         messages = []
         boundary_group = None
         high_water = after
@@ -148,6 +155,7 @@ class TelegramAccountReader:
             seen.add(address)
             try:
                 entity = await self.client.get_entity(address.peer_id)
+                self.entities[address.peer_id] = entity
                 upstream = await self.client.get_messages(entity, ids=address.message_id)
             except (ValueError, errors.ChannelPrivateError, errors.ChannelInvalidError, errors.MsgIdInvalidError):
                 break

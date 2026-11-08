@@ -4,6 +4,7 @@
 负责解析小红书笔记内容（图文/视频）
 包含API和SSR两种获取方式
 """
+from app.adapters.xiaohongshu_parser.transport import reading_hooks
 import httpx
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -163,10 +164,9 @@ async def fetch_note(
     try:
         result = await fetch_note_via_api(note_id, xhs_client, cookies, headers, xsec_token, xsec_source, session=session)
         return result
-    except (AuthRequiredAdapterError, NonRetryableAdapterError, RetryableAdapterError) as e:
-        if not xsec_token:
+    except NonRetryableAdapterError as e:
+        if not xsec_token or (e.details or {}).get("reason") != "missing_target":
             raise
-        logger.warning(f"API获取失败，回退到SSR解析: {e}")
     
     # 回退到SSR方式
     result = await fetch_note_via_ssr(note_id, cookies, headers, xsec_token, xsec_source)
@@ -200,17 +200,19 @@ async def fetch_note_via_api(
         payload["xsec_token"] = xsec_token
     
     # 生成签名
-    sign_headers = xhs_client.sign_headers_post(
-        uri=API_NOTE_FEED,
-        cookies=cookies,
-        payload=payload,
-        session=session,
-    )
-    
-    request_headers = {**headers, **sign_headers}
+    hooks = reading_hooks()
+
+    async def sign_request(request):
+        request.headers.update(xhs_client.sign_headers_post(
+            uri=API_NOTE_FEED, cookies=cookies, payload=payload, session=session,
+        ))
+
+    hooks["request"].append(sign_request)
+    request_headers = headers
+
     url = f"{API_BASE}{API_NOTE_FEED}"
     
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(event_hooks=hooks, timeout=15.0) as client:
         try:
             response = await client.post(
                 url,
@@ -237,7 +239,7 @@ async def fetch_note_via_api(
             items = data.get('data', {}).get('items', [])
             if not items:
                 if xsec_token:
-                    raise NonRetryableAdapterError(f"API返回空数据: {note_id}，可能被风控拦截")
+                    raise NonRetryableAdapterError("小红书 API 未返回目标笔记", details={"reason": "missing_target"})
                 else:
                     raise NonRetryableAdapterError(f"找不到笔记: {note_id}，缺少xsec_token")
             
@@ -247,7 +249,7 @@ async def fetch_note_via_api(
                 note = item.get('note_card')
                 if isinstance(note, dict) and str(note.get('note_id', note_id)) == note_id:
                     return note
-            raise NonRetryableAdapterError("小红书 API 未返回目标笔记")
+            raise NonRetryableAdapterError("小红书 API 未返回目标笔记", details={"reason": "missing_target"})
             
         except httpx.RequestError as e:
             raise RetryableAdapterError(f"小红书请求失败: {e}")
@@ -267,7 +269,7 @@ async def fetch_note_via_ssr(
         from urllib.parse import quote
         url += f"?xsec_token={quote(xsec_token, safe='')}&xsec_source={quote(xsec_source, safe='')}"
     
-    async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+    async with httpx.AsyncClient(event_hooks=reading_hooks(), follow_redirects=True, timeout=15.0) as client:
         try:
             response = await client.get(
                 url,

@@ -75,8 +75,14 @@ class RssAdapter(PlatformAdapter):
             raise ValueError("RSS 来源缺少订阅地址")
         if limit is not None and limit <= 0:
             return []
+        from app.services.source_reading import source_reading
+
+        scope = source_reading.feed_scope(feed_url)
+        await source_reading.wait(scope)
         try:
             response = await self.client.get(feed_url)
+            if response.status_code == 429:
+                await source_reading.http_cooldown(scope, response.headers.get("Retry-After"))
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise RuntimeError(f"RSS 抓取失败（HTTP {exc.response.status_code}）") from None

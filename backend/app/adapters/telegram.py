@@ -10,6 +10,7 @@ from datetime import datetime
 
 from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY, LAYOUT_VIDEO
 from app.models.base import Platform
+from app.services.source_reading import source_reading
 
 
 class TelegramAdapter(PlatformAdapter):
@@ -41,7 +42,10 @@ class TelegramAdapter(PlatformAdapter):
         else:
             embed_url = clean_url
             
+        await source_reading.wait("telegram")
         resp = await self.client.get(embed_url)
+        if resp.status_code == 429:
+            await source_reading.http_cooldown("telegram", resp.headers.get("Retry-After"))
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
         
@@ -77,9 +81,12 @@ class TelegramAdapter(PlatformAdapter):
         results: dict[int, ParsedContent] = {}
         before = None
         for _ in range(100):
+            await source_reading.wait("telegram")
             resp = await self.client.get(
                 channel_url, params={"before": before} if before is not None else None,
             )
+            if resp.status_code == 429:
+                await source_reading.http_cooldown("telegram", resp.headers.get("Retry-After"))
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, 'html.parser')
             if not soup.select_one('.tgme_channel_history'):

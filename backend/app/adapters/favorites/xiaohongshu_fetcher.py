@@ -16,8 +16,6 @@ from app.adapters.favorites.errors import FavoritesFetchError
 from app.adapters.utils.anti_risk import (
     exponential_backoff,
     merge_response_cookies,
-    progressive_captcha_cooldown,
-    truncated_gaussian_delay,
 )
 from app.adapters.xiaohongshu_profile import (
     DEFAULT_XHS_USER_AGENT,
@@ -25,6 +23,7 @@ from app.adapters.xiaohongshu_profile import (
 )
 from app.core.logging import logger
 from app.services.config_service import ConfigService
+from app.services.source_reading import source_reading
 
 _USER_AGENT = DEFAULT_XHS_USER_AGENT
 _EDITH_HOST = "https://edith.xiaohongshu.com"
@@ -38,9 +37,6 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         config = build_xhs_crypto_config(_USER_AGENT)
         self._xhs_client = Xhshow(config)
         self._session = SessionManager(config)
-        self._base_request_delay = 1.0
-        self._request_delay = 1.0
-        self._verify_count = 0
 
     def platform_name(self) -> str:
         return "xiaohongshu"
@@ -86,15 +82,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         url = f"{_EDITH_HOST}{uri}"
 
         for attempt in range(_MAX_RETRY):
-            await asyncio.sleep(
-                truncated_gaussian_delay(
-                    base_delay=self._request_delay,
-                    mean=0.3,
-                    sigma=0.15,
-                    long_pause_probability=0.05,
-                    long_pause_range=(2.0, 5.0),
-                )
-            )
+            await source_reading.wait("xiaohongshu")
 
             try:
                 sign_headers = self._xhs_client.sign_headers_get(
@@ -132,7 +120,6 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
             merge_response_cookies(cookies, resp)
 
             if resp.status_code == 200:
-                self._verify_count = 0
                 try:
                     payload = resp.json()
                 except ValueError as e:
@@ -149,17 +136,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                 return payload
 
             if resp.status_code in (461, 471):
-                self._verify_count += 1
-                self._request_delay = max(self._request_delay, self._base_request_delay * 2)
-                cooldown = progressive_captcha_cooldown(self._verify_count)
-                logger.warning(
-                    "[xhs favorites] captcha/risk triggered status={}, cooldown {:.1f}s",
-                    resp.status_code,
-                    cooldown,
-                )
-                if attempt < _MAX_RETRY - 1:
-                    await asyncio.sleep(cooldown)
-                    continue
+                await source_reading.cooldown("xiaohongshu", 300.0)
                 raise FavoritesFetchError(
                     code="captcha_required",
                     message="Xiaohongshu risk verification required",
@@ -167,19 +144,16 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                     retryable=True,
                 )
 
-            self._verify_count = 0
-
-            if resp.status_code in (429,) or resp.status_code >= 500:
+            if resp.status_code == 429:
+                await source_reading.http_cooldown("xiaohongshu", resp.headers.get("Retry-After"))
+                raise FavoritesFetchError(
+                    code="rate_limited", message="Xiaohongshu API rate limited",
+                    hint="请求频率受限，请等待冷却后重试", retryable=True,
+                )
+            if resp.status_code >= 500:
                 if attempt < _MAX_RETRY - 1:
                     await asyncio.sleep(exponential_backoff(attempt))
                     continue
-                if resp.status_code == 429:
-                    raise FavoritesFetchError(
-                        code="rate_limited",
-                        message="Xiaohongshu API rate limited",
-                        hint="请求频率过高，建议稍后重试或降低同步速率",
-                        retryable=True,
-                    )
                 raise FavoritesFetchError(
                     code="upstream_error",
                     message=f"Xiaohongshu API returned {resp.status_code}",
@@ -244,9 +218,6 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                 hint="请先在设置中配置小红书 Cookie",
                 auth_required=True,
             )
-
-        self._request_delay = self._base_request_delay
-        self._verify_count = 0
 
         user_id = await self._get_self_user_id(cookies)
         if not user_id:

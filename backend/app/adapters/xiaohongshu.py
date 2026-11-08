@@ -15,9 +15,10 @@ from urllib.parse import urlparse, parse_qs, quote
 
 from xhshow import SessionManager, Xhshow
 
+from app.adapters.xiaohongshu_parser.transport import reading_hooks
 from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
-from app.adapters.errors import NonRetryableAdapterError
+from app.adapters.errors import NonRetryableAdapterError, RetryableAdapterError
 from app.adapters.xiaohongshu_profile import (
     DEFAULT_XHS_USER_AGENT,
     build_xhs_crypto_config,
@@ -146,13 +147,12 @@ class XiaohongshuAdapter(PlatformAdapter):
         if 'xhslink.com' not in url:
             return url
         
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+        async with httpx.AsyncClient(event_hooks=reading_hooks(), follow_redirects=True, timeout=10.0) as client:
             try:
                 response = await client.get(url, headers={'User-Agent': self.headers['User-Agent']})
                 return str(response.url)
-            except Exception as e:
-                logger.warning(f"解析小红书短链接失败: {e}")
-                return url
+            except httpx.RequestError as e:
+                raise RetryableAdapterError("小红书短链接请求失败") from e
     
     async def _refresh_cookie_from_settings(self) -> None:
         if self.public_only:
