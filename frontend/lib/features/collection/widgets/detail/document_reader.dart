@@ -3,15 +3,12 @@ import '../../../../core/utils/toast.dart';
 
 import 'package:material_ui/material_ui.dart';
 
-import '../../../../core/widgets/app_choice_segments.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../providers/content_actions_controller.dart';
 import '../../providers/document_text_provider.dart';
-import 'document_pdf_preview.dart';
 
 class DocumentReader extends ConsumerStatefulWidget {
   const DocumentReader({super.key, required this.contentId});
@@ -27,7 +24,6 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
   String? _routeKey;
   final _readerKey = GlobalKey();
   bool _scrollToPage = false;
-  bool _showOriginal = true;
 
   @override
   void didChangeDependencies() {
@@ -114,14 +110,14 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
             .firstOrNull;
         final invalidTarget =
             (_assetId != null && selected == null) ||
-            (!_showOriginal && page == null && document.pages.isNotEmpty);
+            (page == null && document.pages.isNotEmpty);
         return Padding(
           key: _readerKey,
           padding: const EdgeInsets.symmetric(vertical: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('文档阅读', style: Theme.of(context).textTheme.titleLarge),
+              Text('文档正文', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -155,32 +151,12 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                   ),
                 ),
               const SizedBox(height: 12),
-              AppChoiceSegments<bool>(
-                options: const {true: '原页', false: '文本'},
-                selected: {_showOriginal},
-                onChanged: (values) =>
-                    setState(() => _showOriginal = values.first),
-              ),
-              const SizedBox(height: 12),
-              if (_assetId == null || selected != null)
-                Visibility(
-                  visible: _showOriginal,
-                  maintainState: true,
-                  child: DocumentPdfPreview(
-                    key: ValueKey(document.assetId),
-                    assetId: document.assetId,
-                    pageNumber: _pageNumber,
-                    onPageChanged: (number) =>
-                        _select(document.assetId, number),
-                  ),
-                ),
-              if (!_showOriginal && document.status != 'ready')
-                Text(_statusLabel(document)),
+              if (document.status != 'ready') Text(_statusLabel(document)),
               if (invalidTarget) ...[
                 const SizedBox(height: 12),
                 const Text('引用的文件或页码已不存在，请重新选择。'),
               ],
-              if (!_showOriginal && document.pages.isNotEmpty) ...[
+              if (document.pages.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -221,7 +197,7 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     child: page.text.trim().isEmpty
-                        ? const Text('本页没有文本，可切换到原页查看。')
+                        ? const Text('本页没有文本，可打开原文件查看。')
                         : SelectableText(
                             page.text,
                             style: Theme.of(context).textTheme.bodyLarge
@@ -238,7 +214,7 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
 
   String _statusLabel(DocumentText document) => switch (document.status) {
     'partial' => '${document.textPageCount} / ${document.pageCount} 页有文本',
-    'no_text' => '没有可读取的文本，可切换到原页查看。',
+    'no_text' => '没有可读取的文本，可打开原文件查看。',
     'pending' => '正文尚未提取',
     'encrypted' => '文件已加密，无法读取正文。请上传解密后的 PDF。',
     'invalid_pdf' => '文件损坏或不是有效 PDF，原文件仍保留。',

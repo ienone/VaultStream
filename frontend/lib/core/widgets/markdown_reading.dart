@@ -3,7 +3,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:re_highlight/re_highlight.dart';
 import 'package:re_highlight/languages/bash.dart';
@@ -271,7 +270,8 @@ class _MathBuilder extends MarkdownElementBuilder {
 
 TextStyle _codeStyle(BuildContext context) {
   final theme = Theme.of(context);
-  return GoogleFonts.firaCode(textStyle: theme.textTheme.bodyMedium).copyWith(
+  return (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
+    fontFamily: 'FiraCode',
     fontFamilyFallback: theme.textTheme.bodyMedium?.fontFamilyFallback,
     height: 1.65,
     letterSpacing: 0,

@@ -12,7 +12,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -69,13 +68,8 @@ Future<void> initializeLocalSecrets() async {
   }
 }
 
-void configureRuntimeAssets() {
-  GoogleFonts.config.allowRuntimeFetching = false;
-}
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  configureRuntimeAssets();
   sharedPrefs = await SharedPreferences.getInstance();
   await initializeLocalSecrets();
 
