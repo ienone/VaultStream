@@ -12,25 +12,31 @@ class CollectionWorkspace extends StatelessWidget {
     required this.selectedId,
     required this.onClose,
     this.preview,
+    this.defaultSelection = false,
   });
   final Widget list;
+  final bool defaultSelection;
   final int? selectedId;
   final ShareCard? preview;
   final VoidCallback onClose;
 
-  static bool supportsSplit(BuildContext context) =>
-      AppListDetailWorkspace.supportsSplit(context);
+  static bool supportsSplit(BuildContext context, {Size? availableSize}) =>
+      AppListDetailWorkspace.supportsSplit(
+        context,
+        availableSize: availableSize,
+      );
 
   @override
   Widget build(BuildContext context) => AppListDetailWorkspace(
     list: list,
     selectedId: selectedId,
-    onClose: onClose,
+    onClose: defaultSelection ? null : onClose,
     detailBuilder: (deferBody, focused, toggleFocus) => ContentDetailPage(
       contentId: selectedId!,
       preview: preview,
       deferBody: deferBody,
       onClose: onClose,
+      showBackButton: !defaultSelection,
       focused: focused,
       onToggleFocus: toggleFocus,
     ),

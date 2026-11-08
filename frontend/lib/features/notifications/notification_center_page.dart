@@ -29,6 +29,7 @@ class _NotificationCenterPageState
   String _state = 'active';
   int _offset = 0;
   NotificationInboxItem? _selected;
+  int? _lastSelectedId;
 
   NotificationQuery get _query =>
       (category: _category, state: _state, offset: _offset);
@@ -56,12 +57,26 @@ class _NotificationCenterPageState
   @override
   Widget build(BuildContext context) {
     final inbox = ref.watch(notificationInboxProvider(_query));
-    final selected = _selected;
     return LayoutBuilder(
       builder: (context, constraints) {
+        final items = inbox.value?.items ?? const <NotificationInboxItem>[];
+        final wide = AppListDetailWorkspace.supportsSplit(
+          context,
+          availableSize: constraints.biggest,
+        );
+        final selected =
+            _selected ??
+            (wide
+                ? items
+                          .where((item) => item.id == _lastSelectedId)
+                          .firstOrNull ??
+                      items.firstOrNull
+                : null);
         return AppListDetailWorkspace(
-          onClose: () => setState(() => _selected = null),
-          selectedId: _selected?.id,
+          onClose: _selected == null
+              ? null
+              : () => setState(() => _selected = null),
+          selectedId: selected?.id,
           list: Scaffold(
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(
@@ -85,7 +100,7 @@ class _NotificationCenterPageState
                 ),
               ],
             ),
-            body: _buildList(inbox),
+            body: _buildList(inbox, selected?.id),
           ),
           detailBuilder: (_, focused, toggleFocus) => _buildDetail(
             selected!,
@@ -97,7 +112,10 @@ class _NotificationCenterPageState
     );
   }
 
-  Widget _buildList(AsyncValue<NotificationInbox> inbox) => SafeArea(
+  Widget _buildList(
+    AsyncValue<NotificationInbox> inbox,
+    int? selectedId,
+  ) => SafeArea(
     top: false,
     child: RefreshIndicator(
       onRefresh: _refresh,
@@ -131,7 +149,7 @@ class _NotificationCenterPageState
                     inbox: value,
                     state: _state,
                     onOpen: _open,
-                    selectedId: _selected?.id,
+                    selectedId: selectedId,
                     onAction: _applyAction,
                   ),
                   loading: () => const SliverFillRemaining(
@@ -217,7 +235,11 @@ class _NotificationCenterPageState
           contentId: id,
           focused: focused,
           onToggleFocus: toggleFocus,
-          onClose: () => setState(() => _selected = null),
+          showBackButton: _selected != null,
+          onClose: () {
+            setState(() => _selected = null);
+            ref.invalidate(notificationInboxProvider(_query));
+          },
         );
       }
     }
@@ -260,7 +282,10 @@ class _NotificationCenterPageState
     VoidCallback? toggleFocus,
   ) => Scaffold(
     appBar: AppBar(
-      leading: BackButton(onPressed: () => setState(() => _selected = null)),
+      automaticallyImplyLeading: false,
+      leading: _selected == null
+          ? null
+          : BackButton(onPressed: () => setState(() => _selected = null)),
       title: const Text('消息详情'),
       actions: [
         if (toggleFocus != null)
@@ -290,7 +315,12 @@ class _NotificationCenterPageState
     if (item.isUnread) {
       await _run(() => applyNotificationAction(ref, item.id, 'read'));
     }
-    if (mounted) setState(() => _selected = item);
+    if (mounted) {
+      setState(() {
+        _selected = item;
+        _lastSelectedId = item.id;
+      });
+    }
   }
 
   Future<void> _applyAction(NotificationInboxItem item, String action) async {

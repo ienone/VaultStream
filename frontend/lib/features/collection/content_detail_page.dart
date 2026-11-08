@@ -51,6 +51,7 @@ class ContentDetailPage extends ConsumerStatefulWidget {
     this.initialPlaybackSeconds,
     this.initialMediaAssetId,
     this.onClose,
+    this.showBackButton = true,
     this.onToggleFocus,
     this.focused = false,
     this.deferBody = false,
@@ -70,6 +71,7 @@ class ContentDetailPage extends ConsumerStatefulWidget {
 
   /// 内嵌入口的关闭与专注阅读动作；布局仍由阅读器自身空间决定。
   final VoidCallback? onClose;
+  final bool showBackButton;
   final VoidCallback? onToggleFocus;
   final bool focused;
   final bool deferBody;
@@ -410,7 +412,8 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
       backgroundColor: Theme.of(context).colorScheme.surface,
       scrolledUnderElevation: 0,
       toolbarHeight: WindowMetrics.of(context).toolbarHeight,
-      leading: widget.onClose == null
+      automaticallyImplyLeading: widget.showBackButton,
+      leading: !widget.showBackButton || widget.onClose == null
           ? null
           : BackButton(onPressed: widget.onClose),
       title: Text('阅读', maxLines: 1, overflow: TextOverflow.ellipsis),

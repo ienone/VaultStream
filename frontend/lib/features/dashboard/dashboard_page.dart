@@ -40,6 +40,7 @@ class DashboardPage extends ConsumerStatefulWidget {
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
   ShareCard? _preview;
+  int? _lastReadId;
   LocalHistoryEntry? _readerHistory;
 
   @override
@@ -249,9 +250,28 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) =>
+        _buildWorkspace(context, constraints.biggest),
+  );
+
+  Widget _buildWorkspace(BuildContext context, Size availableSize) {
     final feed = ref.watch(discoveryFeedProvider);
     final metrics = WindowMetrics.of(context);
+    final items = feed.value?.items ?? const <DiscoveryItem>[];
+    final previous = items
+        .where((item) => item.id == (_lastReadId ?? _preview?.id))
+        .firstOrNull;
+    final defaultItem = previous ?? items.firstOrNull;
+    final selectedId =
+        widget.selectedContentId ??
+        (!_showEventUpdates &&
+                CollectionWorkspace.supportsSplit(
+                  context,
+                  availableSize: availableSize,
+                )
+            ? defaultItem?.id
+            : null);
 
     final content = _showEventUpdates
         ? _EventUpdatesFeed(onRefresh: _refresh)
@@ -265,7 +285,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               child: _FeedError(
                 message: formatApiErrorMessage(
                   error,
-                  fallbackMessage: '无法读取动态，请检查服务器连接',
+                  fallbackMessage: '无法读取动态',
                 ),
                 onRetry: _refresh,
               ),
@@ -294,7 +314,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 children.add(
                   _FeedCard(
                     item: item,
-                    selected: widget.selectedContentId == item.id,
+                    selected: selectedId == item.id,
                     busy: _busyItems.contains(item.id),
                     onOpen: (sourceContext) => _openItem(item, sourceContext),
                     onPromote: () => _actOnItem(item, stateValue: 'promoted'),
@@ -326,9 +346,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               return _FeedSliverList(children: children);
             },
           );
+    if (selectedId != null) _lastReadId = selectedId;
     return CollectionWorkspace(
-      selectedId: widget.selectedContentId,
-      preview: _preview?.id == widget.selectedContentId ? _preview : null,
+      selectedId: selectedId,
+      defaultSelection: widget.selectedContentId == null,
+      preview: _preview?.id == selectedId ? _preview : null,
       onClose: _closeReader,
       list: Builder(
         builder: (context) {
@@ -487,11 +509,7 @@ class _EventFeedLead extends StatelessWidget {
     child: DefaultTextStyle(
       style: Theme.of(context).textTheme.bodySmall!
           .copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-      child: Wrap(
-        spacing: AppSpacing.md,
-        runSpacing: AppSpacing.xs,
-        children: [Text('$total 个进行中事件'), const Text('最近更新优先')],
-      ),
+      child: Text('$total 个进行中事件'),
     ),
   );
 }
@@ -907,16 +925,6 @@ class _EmptyFeed extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          if (view == DiscoveryFeedView.recent) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              '可以添加信息来源，或稍后刷新。',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
           const SizedBox(height: AppSpacing.xl),
           Center(
             child: FilledButton.icon(
