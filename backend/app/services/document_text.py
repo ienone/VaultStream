@@ -13,17 +13,14 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.adapters.storage import get_storage_backend
 from app.core.db_adapter import AsyncSessionLocal
-from app.core.events import event_bus
 from app.core.time_utils import utcnow
 from app.models import Content
 from app.models.media import MediaAsset, MediaType, MediaVariant, MediaVariantKind, MediaVariantStatus
 from app.models.search import ContentEmbedding
 from app.schemas.document import DocumentPageItem, DocumentTextItem
-from app.services.background_task_state import record_task_run_started, record_task_run_success, record_task_run_error
 
 _SUCCESS = {"ready", "partial", "no_text"}
 _STATUSES = _SUCCESS | {"encrypted", "invalid_pdf", "limit_exceeded", "timeout", "missing", "source_changed", "failed"}
-_tasks: set[asyncio.Task] = set()
 _extraction_slots = asyncio.Semaphore(2)
 
 
@@ -181,30 +178,12 @@ async def extract_content_documents(content_id: int) -> dict:
     }
 
 
-async def run_document_extraction(content_id: int, run_id: str, *, source: str) -> None:
-    try:
-        result = await extract_content_documents(content_id)
-        failed = [r for r in result["documents"] if r["status"] not in _SUCCESS]
-        if failed:
-            await record_task_run_error("document_extract", run_id, "部分 PDF 未能提取正文，请查看文件状态", **result)
-        else:
-            await record_task_run_success("document_extract", run_id, **result)
-        from app.services.post_ingest import PostIngestService
-        if result["text_page_count"]:
-            async with AsyncSessionLocal() as db:
-                content = await db.get(Content, content_id)
-                if content is not None:
-                    await PostIngestService().generate_summary(db, content)
-        await event_bus.publish("content_updated", {"id": content_id})
-        PostIngestService().schedule_embedding_index(content_id, source=source)
-    except Exception as exc:
-        message = str(exc) if isinstance(exc, (ValueError, StaleDataError)) else "PDF 正文提取失败"
-        await record_task_run_error("document_extract", run_id, message, content_id=content_id)
-
-
 async def schedule_document_extraction(content_id: int, *, source: str, trigger: str) -> str:
-    run = await record_task_run_started("document_extract", content_id=content_id, source=source, trigger=trigger)
-    task = asyncio.create_task(run_document_extraction(content_id, run["run_id"], source=source))
-    _tasks.add(task)
-    task.add_done_callback(_tasks.discard)
-    return run["run_id"]
+    from app.core.queue import task_queue
+
+    async with AsyncSessionLocal() as db:
+        task = task_queue.add(db, "document_extract", {
+            "content_id": content_id, "source": source, "trigger": trigger,
+        })
+        await db.commit()
+        return task.payload["run_id"]

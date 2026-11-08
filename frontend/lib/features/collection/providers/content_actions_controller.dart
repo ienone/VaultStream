@@ -22,6 +22,7 @@ class ContentActionResult {
     this.runId,
     this.contentId,
     this.needsAttention = false,
+    this.errorCode,
   });
 
   const ContentActionResult.success(
@@ -37,11 +38,12 @@ class ContentActionResult {
          needsAttention: needsAttention,
        );
 
-  const ContentActionResult.failure(String message)
-    : this._(ok: false, message: message);
+  const ContentActionResult.failure(String message, {String? errorCode})
+    : this._(ok: false, message: message, errorCode: errorCode);
 
   final bool ok;
   final String message;
+  final String? errorCode;
   final String? runId;
   final int? contentId;
   final bool needsAttention;
@@ -90,6 +92,7 @@ class ContentActions extends _$ContentActions {
       }
       return ContentActionResult.failure(
         formatApiErrorMessage(error, fallbackMessage: '操作失败'),
+        errorCode: parseApiErrorInfo(error).code,
       );
     } finally {
       state = {...state}..remove(key);

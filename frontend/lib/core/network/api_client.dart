@@ -60,10 +60,9 @@ String formatApiErrorMessage(
   bool includeRequestId = false,
 }) {
   final info = parseApiErrorInfo(error, fallbackMessage: fallbackMessage);
-  // Only translate documented application codes; exception prose is diagnostic.
+  // Translate fixed product terms; preserve the server's actionable business message.
   final message = switch (info.code) {
     'invalid_api_token' => '访问密钥无效，请重新连接',
-    'parse_queue_unavailable' => '内容已保存，暂时无法开始解析',
     'capture_file_too_large' => '文件超过上传大小限制',
     'capture_file_empty' => '不能上传空文件',
     'capture_too_many_files' => '上传文件数量超过限制',
@@ -71,7 +70,7 @@ String formatApiErrorMessage(
     'discovery_source_disabled' => '请先启用这个订阅源',
     'favorites_platform_disabled' => '请先启用该平台的收藏同步',
     'source_kind_not_supported' || 'unsupported_platform' => '暂不支持这个来源',
-    _ => fallbackMessage,
+    _ => info.message,
   };
   final parts = <String>[message];
 

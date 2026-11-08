@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../theme/design_tokens.dart';
 
@@ -64,18 +64,26 @@ class _AppLicensesPageState extends State<AppLicensesPage> {
                   if (index == 0) {
                     return Padding(
                       padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
-                      child: Text(
-                        names.isEmpty
-                            ? '没有可显示的许可信息'
-                            : [
-                                'VaultStream',
+                      child: names.isEmpty
+                          ? const Text('没有可显示的许可信息')
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'VaultStream',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium,
+                                ),
                                 if (widget.applicationVersion != null)
-                                  widget.applicationVersion!,
-                              ].join(' · '),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                                  Text(
+                                    widget.applicationVersion!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall,
+                                  ),
+                              ],
+                            ),
                     );
                   }
                   final name = names[index - 1];
@@ -91,9 +99,8 @@ class _AppLicensesPageState extends State<AppLicensesPage> {
                     title: Text(name),
                     subtitle: entries.length > 1
                         ? Text(
-                            MaterialLocalizations.of(
-                              context,
-                            ).licensesPackageDetailText(entries.length),
+                            MaterialLocalizations.of(context)
+                                .licensesPackageDetailText(entries.length),
                           )
                         : null,
                     onTap: () => Navigator.of(context).push<void>(

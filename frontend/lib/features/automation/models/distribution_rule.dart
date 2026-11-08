@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+
 import 'render_config.dart';
 
 part 'distribution_rule.freezed.dart';

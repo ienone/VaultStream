@@ -152,7 +152,7 @@ def format_push_text(content: dict, *, rich_text: bool) -> str:
         labeled_title = f"标题：{escape(title)}"
         parts.append(f"<b>{labeled_title}</b>" if rich_text else labeled_title)
     if body:
-        parts.append(f"{escape(body_label)}：{escape(body)}")
+        parts.append(f"{escape(body_label)}：{escape(body)}" if content.get("show_body_label", True) else escape(body))
     statistics = format_push_stats(content)
     if statistics:
         parts.append(escape(statistics))

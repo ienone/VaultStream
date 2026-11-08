@@ -1,6 +1,8 @@
-import 'widgets/list/content_workspace_motion.dart';
+import '../../routing/content_route_extra.dart';
+import '../../routing/page_origin.dart';
 import '../../layout/root_page_actions.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -48,9 +50,7 @@ class CollectionPage extends ConsumerStatefulWidget {
   ConsumerState<CollectionPage> createState() => _CollectionPageState();
 }
 
-class _CollectionPageState extends ConsumerState<CollectionPage>
-    with SingleTickerProviderStateMixin {
-  late final _motion = ContentMorphController(vsync: this);
+class _CollectionPageState extends ConsumerState<CollectionPage> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   String? _lastAppliedRouteFilterSignature;
@@ -99,9 +99,19 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
     }
   }
 
-  void _openContent(ShareCard content) {
+  void _openContent(ShareCard content, BuildContext sourceContext) {
     if (content.id == widget.selectedContentId) return;
-    _motion.navigate(context, content.id, () => _navigateContent(content));
+    if (!CollectionWorkspace.supportsSplit(context)) {
+      context.push(
+        '/collection/${content.id}',
+        extra: ContentRouteExtra(
+          preview: content,
+          origin: PageOrigin(sourceContext),
+        ),
+      );
+      return;
+    }
+    _navigateContent(content);
   }
 
   void _navigateContent(ShareCard content) {
@@ -126,7 +136,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
   void _closeReader() {
     final id = widget.selectedContentId;
     if (id == null) return;
-    _motion.navigate(context, id, _navigateClose, reverse: true);
+    _navigateClose();
   }
 
   void _navigateClose() {
@@ -172,7 +182,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
 
   @override
   void dispose() {
-    _motion.dispose();
     // 离开页面时不清空筛选：从详情返回必须恢复原有查询与结果。
     final entry = _readerHistory;
     _readerHistory = null;
@@ -211,129 +220,129 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
     );
   }
 
-  void _openSearchPage() {
-    final request = ref
-        .read(collectionFilterProvider)
-        .toSearchRequest()
-        .copyWith(query: _searchController.text.trim(), kind: 'all');
-    FocusScope.of(context).unfocus();
-    context.push(request.toUri('/search').toString());
-  }
-
   @override
   Widget build(BuildContext context) {
-    final filter = ref.watch(collectionFilterProvider);
     ref.listen<String>(
       collectionFilterProvider.select((state) => state.searchQuery),
       (_, query) => _syncSearchText(query),
     );
+    final filter = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
-    return ContentWorkspaceMotion(
-      controller: _motion,
-      child: CollectionWorkspace(
-        selectedId: widget.selectedContentId,
-        preview: _preview?.id == widget.selectedContentId ? _preview : null,
-        onClose: _closeReader,
-        list: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = _searchBelowToolbar(constraints.maxWidth);
-            final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-            final columns = widget.selectedContentId == null
-                ? (constraints.maxWidth / (360 * textScale)).floor().clamp(1, 4)
-                : 1;
-            return Scaffold(
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.surfaceContainerLow,
-              appBar: selection.isSelectionMode
-                  ? _buildSelectionAppBar(selection)
-                  : _buildAppBar(filter, constraints.maxWidth),
-              body: Column(
-                children: [
-                  if (compact)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.md,
-                        AppSpacing.sm,
-                        AppSpacing.md,
-                        AppSpacing.sm,
-                      ),
-                      child: CollectionSearchEntry(
-                        controller: _searchController,
-                        onSubmit: _performSearch,
-                        onOpenPage: _openSearchPage,
-                      ),
-                    ),
-                  _ActiveFilterBar(
-                    filter: filter,
-                    resultTotal: collectionAsync.value?.total,
-                  ),
-                  Expanded(
-                    child: collectionAsync.when(
-                      skipLoadingOnRefresh: true,
-                      data: (response) => CollectionList(
-                        items: response.items,
-                        columns: columns,
-                        onOpenContent: _openContent,
-                        activeId: widget.selectedContentId,
-                        scrollController: _scrollController,
-                        isLoadingMore:
-                            collectionAsync.isLoading &&
-                            response.items.isNotEmpty,
-                        onLoadMore: response.hasMore
-                            ? ref.read(collectionProvider.notifier).fetchMore
-                            : null,
-                        onRefresh: _refresh,
-                        isSelectionMode: selection.isSelectionMode,
-                        selectedIds: selection.selectedIds,
-                        selectionEnabled: !selection.isProcessing,
-                        onSelectionChanged: (ids) => ref
-                            .read(batchSelectionProvider.notifier)
-                            .selectAll(ids.toList()),
-                        onToggleSelection: (id) => ref
-                            .read(batchSelectionProvider.notifier)
-                            .toggleSelection(id),
-                        onLongPress: (id) {
-                          // Selection changes the list only; the reader keeps its route and state.
-                          final notifier = ref.read(
-                            batchSelectionProvider.notifier,
-                          );
-                          notifier.toggleSelection(id);
-                        },
-                        emptyState: _buildEmptyState(filter),
-                      ),
-                      loading: () => CollectionSkeleton(columns: columns),
-                      error: (error, _) => Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppSpacing.xl),
-                          child: ContentEmptyState(
-                            icon: Icons.cloud_off_rounded,
-                            message: '无法加载收藏库',
-                            action: FilledButton.tonal(
-                              onPressed: () =>
-                                  ref.invalidate(collectionProvider),
-                              child: const Text('重试'),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              bottomNavigationBar: selection.isSelectionMode
-                  ? const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.all(Radius.circular(16)),
-                        child: BatchActionBar(),
-                      ),
-                    )
-                  : null,
-            );
-          },
+    return CollectionWorkspace(
+      selectedId: widget.selectedContentId,
+      preview: _preview?.id == widget.selectedContentId ? _preview : null,
+      onClose: _closeReader,
+      list: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+        appBar: PreferredSize(
+          preferredSize: Size.fromHeight(
+            WindowMetrics.of(context).toolbarHeight,
+          ),
+          child: AnimatedSwitcher(
+            duration: MediaQuery.disableAnimationsOf(context)
+                ? Duration.zero
+                : AppMotion.contentSwap,
+            switchInCurve: AppMotion.standardCurve,
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.center,
+              children: [
+                for (final child in previous)
+                  ExcludeSemantics(child: IgnorePointer(child: child)),
+                ?current,
+              ],
+            ),
+            child: KeyedSubtree(
+              key: ValueKey(selection.isSelectionMode),
+              child: selection.isSelectionMode
+                  ? _buildSelectionAppBar(selection, collectionAsync.value)
+                  : _buildAppBar(filter),
+            ),
+          ),
         ),
+        body: Column(
+          children: [
+            _ActiveFilterBar(
+              filter: filter,
+              resultTotal: collectionAsync.isReloading
+                  ? null
+                  : collectionAsync.value?.total,
+            ),
+            Expanded(
+              child: collectionAsync.when(
+                skipLoadingOnRefresh: true,
+                data: (response) => CollectionList(
+                  items: response.items,
+
+                  onOpenContent: _openContent,
+                  onDeleted: (id) {
+                    if (mounted && widget.selectedContentId == id) {
+                      _closeReader();
+                    }
+                  },
+                  activeId: widget.selectedContentId,
+                  scrollController: _scrollController,
+                  isLoadingMore:
+                      collectionAsync.isLoading && response.items.isNotEmpty,
+                  onLoadMore: response.hasMore
+                      ? ref.read(collectionProvider.notifier).fetchMore
+                      : null,
+                  onRefresh: _refresh,
+                  isSelectionMode: selection.isSelectionMode,
+                  selectedIds: selection.selectedIds,
+                  selectionEnabled: !selection.isProcessing,
+                  onSelectionChanged: (ids) => ref
+                      .read(batchSelectionProvider.notifier)
+                      .selectAll(ids.toList()),
+                  onToggleSelection: (id) => ref
+                      .read(batchSelectionProvider.notifier)
+                      .toggleSelection(id),
+                  onLongPress: (id) {
+                    // Selection changes the list only; the reader keeps its route and state.
+                    final notifier = ref.read(batchSelectionProvider.notifier);
+                    notifier.toggleSelection(id);
+                  },
+                  emptyState: _buildEmptyState(filter),
+                ),
+                loading: () => LayoutBuilder(
+                  builder: (context, constraints) => CollectionSkeleton(
+                    columns: widget.selectedContentId == null
+                        ? (constraints.maxWidth /
+                                  (300 *
+                                      MediaQuery.textScalerOf(context)
+                                          .scale(16) /
+                                      16))
+                              .floor()
+                              .clamp(1, 4)
+                        : 1,
+                  ),
+                ),
+                error: (error, _) => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: ContentEmptyState(
+                      icon: Icons.cloud_off_rounded,
+                      message: '无法加载收藏库',
+                      action: FilledButton.tonal(
+                        onPressed: () => ref.invalidate(collectionProvider),
+                        child: const Text('重试'),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: selection.isSelectionMode
+            ? const Padding(
+                padding: EdgeInsets.all(8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                  child: BatchActionBar(),
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -346,7 +355,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
         child: ContentEmptyState(
           icon: filtered ? Icons.search_off_rounded : Icons.inbox_outlined,
           message: filtered ? '没有符合条件的内容' : '尚未保存内容',
-          hint: filtered ? null : '点击“保存”添加内容。',
           action: filtered
               ? TextButton(
                   onPressed: () => ref
@@ -362,59 +370,49 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
 
   // --- 顶栏 ---
 
-  bool _searchBelowToolbar(double width) =>
-      width / (MediaQuery.textScalerOf(context).scale(16) / 16) <
-      ResponsiveLayout.expandedBreakpoint;
-
-  PreferredSizeWidget _buildAppBar(CollectionFilterState filter, double width) {
-    final compact = _searchBelowToolbar(width);
-
+  PreferredSizeWidget _buildAppBar(CollectionFilterState filter) {
     return AppBar(
+      automaticallyImplyLeading: false,
       leading: buildRootPageLeading(context),
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       scrolledUnderElevation: 0,
-      toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
-          ? 48
-          : null,
-      title: compact
-          ? const Text('收藏库')
-          : Row(
-              children: [
-                const Text('收藏库'),
-                const SizedBox(width: AppSpacing.lg),
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: width < 840 ? 260 : 360,
-                      child: CollectionSearchEntry(
-                        controller: _searchController,
-                        onSubmit: _performSearch,
-                        onOpenPage: _openSearchPage,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+      toolbarHeight: WindowMetrics.of(context).toolbarHeight,
+      titleSpacing: 12,
+      centerTitle: false,
+      title: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: CollectionSearchEntry(
+                controller: _searchController,
+                onSubmit: _performSearch,
+              ),
             ),
-      actions: [
-        IconButton(
-          tooltip: '筛选',
-          isSelected: filter.hasActiveFilters,
-          icon: const Icon(Icons.tune_rounded),
-          selectedIcon: const Icon(Icons.tune_rounded),
-          onPressed: _openFilters,
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: '筛选',
+              isSelected: filter.hasActiveFilters,
+              icon: const Icon(Icons.tune_rounded),
+              selectedIcon: const Icon(Icons.tune_rounded),
+              onPressed: _openFilters,
+            ),
+          ],
         ),
-        const RootPageActions(),
-      ],
+      ),
+      actions: [const RootPageActions()],
     );
   }
 
-  PreferredSizeWidget _buildSelectionAppBar(BatchSelectionState selection) {
+  PreferredSizeWidget _buildSelectionAppBar(
+    BatchSelectionState selection,
+    ShareCardListResponse? response,
+  ) {
+    final items = response?.items ?? const <ShareCard>[];
+    final canSelectMore = items.any((item) => !selection.isSelected(item.id));
     return AppBar(
-      toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
-          ? 48
-          : null,
+      toolbarHeight: WindowMetrics.of(context).toolbarHeight,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       scrolledUnderElevation: 0,
       leading: IconButton(
@@ -427,17 +425,15 @@ class _CollectionPageState extends ConsumerState<CollectionPage>
       ),
       title: Text('已选择 ${selection.count} 项'),
       actions: [
-        IconButton(
-          tooltip: '全选',
-          icon: const Icon(Icons.select_all_rounded),
-          onPressed: selection.isProcessing
+        TextButton(
+          onPressed: selection.isProcessing || !canSelectMore
               ? null
               : () {
-                  final items = ref.read(collectionProvider).value?.items ?? [];
                   ref
                       .read(batchSelectionProvider.notifier)
                       .selectAll(items.map((e) => e.id).toList());
                 },
+          child: Text(response?.hasMore == true ? '全选已加载项' : '全选'),
         ),
         const SizedBox(width: AppSpacing.xs),
       ],
@@ -544,10 +540,10 @@ class _ActiveFilterBar extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
         AppSpacing.sm,
-        0,
+        AppSpacing.md,
         AppSpacing.sm,
-        AppSpacing.xs,
       ),
       child: Row(
         children: [

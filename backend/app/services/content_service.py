@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import AsyncIterable, List, Optional
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, text
+from sqlalchemy import select, update, and_, or_, func, text
 from sqlalchemy.exc import IntegrityError
 from app.models import (
     Content,
@@ -44,14 +44,6 @@ from app.services.notification_inbox import (
 )
 
 
-class ParseQueueUnavailableError(RuntimeError):
-    """Content was persisted, but its parse task could not be queued."""
-
-    def __init__(self, content_id: int):
-        self.content_id = content_id
-        super().__init__("Content saved but parse task enqueue failed")
-
-
 @dataclass(frozen=True)
 class CaptureFileInput:
     """One streamed file in a user capture request."""
@@ -59,6 +51,10 @@ class CaptureFileInput:
     chunks: AsyncIterable[bytes]
     filename: str
     mime_type: Optional[str] = None
+
+
+class InvalidShareInput(ValueError):
+    """The supplied text contains no supported link or platform identifier."""
 
 
 class ContentService:
@@ -92,13 +88,13 @@ class ContentService:
             client_context=client_context,
         )
 
-    async def ensure_parse_queued(self, content: Content) -> None:
-        """Retry the ingestion handoff without creating another source record."""
+    async def ensure_parse_queued(self, content: Content, *, commit: bool = True) -> None:
+        """内容与待解析任务使用同一个数据库事务。"""
         if content.status not in (ContentStatus.UNPROCESSED, ContentStatus.PARSE_FAILED):
             return
-        enqueued = await task_queue.enqueue({'content_id': content.id, 'action': 'parse'})
-        if not enqueued:
-            raise ParseQueueUnavailableError(content.id)
+        await task_queue.enqueue_parse(self.db, content.id)
+        if commit:
+            await self.db.commit()
 
     async def create_share(
         self, 
@@ -117,7 +113,7 @@ class ContentService:
         raw_url = (url or "").strip()
         extracted_input = extract_primary_url_candidate(raw_url)
         if not is_url_like_input(extracted_input):
-            raise ValueError("No valid URL found in input")
+            raise InvalidShareInput("未识别到链接，请粘贴网址或平台分享内容")
 
         # 1. 规范化
         url_for_detect = normalize_share_url_input(raw_url)
@@ -132,6 +128,9 @@ class ContentService:
             canonical_url = await adapter.clean_url(url_for_detect)
         
         # 4. 去重查询
+        await self.db.execute(update(Content).where(
+            Content.platform == platform, Content.canonical_url == canonical_url,
+        ).values(updated_at=Content.updated_at))
         stmt = select(Content).where(
             and_(Content.platform == platform, Content.canonical_url == canonical_url)
         )
@@ -177,6 +176,7 @@ class ContentService:
         )
 
         try:
+            await self.ensure_parse_queued(content, commit=False)
             await self.db.commit()
         except IntegrityError:
             # 并发竞态：两个请求同时通过去重查询，第二个触发唯一约束冲突
@@ -210,6 +210,7 @@ class ContentService:
                     client_context=client_context,
                 )
             )
+            await self.ensure_parse_queued(content, commit=False)
             await self.db.commit()
             is_new = False
 
@@ -227,7 +228,6 @@ class ContentService:
             ContentStatus.PARSE_FAILED,
         )
         if should_enqueue_parse:
-            await self.ensure_parse_queued(content)
             logger.info(f"New content enqueued: {content.id}")
             
             # 广播新增事件
@@ -299,6 +299,15 @@ class ContentService:
                 client_context=client_context,
             )
         )
+        await PostIngestService().run_for_content(
+            self.db,
+            content,
+            source=source_name or "manual_text",
+            summary=True,
+            embedding=True,
+            distribution=True,
+            commit=False,
+        )
         await self.db.commit()
         await self.db.refresh(content)
         await self._record_capture_receipt(
@@ -308,14 +317,6 @@ class ContentService:
             client_context=client_context,
         )
 
-        await PostIngestService().run_for_content(
-            self.db,
-            content,
-            source=source_name or "manual_text",
-            summary=True,
-            embedding=True,
-            distribution=True,
-        )
         await event_bus.publish(
             "content_created",
             {
@@ -542,6 +543,20 @@ class ContentService:
                 for item in stored_files:
                     if await storage.publish_staged(item["stored"], item["temp_path"]):
                         published_keys.append(item["stored"].key)
+                has_pdf = any(item["mime_type"] == "application/pdf" for item in stored_files)
+                await PostIngestService().run_for_content(
+                    self.db,
+                    content,
+                    source=normalized_source,
+                    summary=bool(normalized_note) and not has_pdf,
+                    embedding=not has_pdf,
+                    distribution=True,
+                    commit=False,
+                )
+                if has_pdf:
+                    task_queue.add(self.db, "document_extract", {
+                        "content_id": content.id, "source": normalized_source, "trigger": "auto",
+                    })
                 await self.db.commit()
             except BaseException:
                 await self.db.rollback()
@@ -561,18 +576,6 @@ class ContentService:
             client_context=client_context,
         )
 
-        has_pdf = any(item["mime_type"] == "application/pdf" for item in stored_files)
-        await PostIngestService().run_for_content(
-            self.db,
-            content,
-            source=normalized_source,
-            summary=bool(normalized_note) and not has_pdf,
-            embedding=not has_pdf,
-            distribution=True,
-        )
-        if has_pdf:
-            from app.services.document_text import schedule_document_extraction
-            await schedule_document_extraction(content.id, source=normalized_source, trigger="auto")
         await event_bus.publish(
             "content_created",
             {
@@ -622,13 +625,10 @@ class ContentService:
                     manual_fields.add(field)
 
         content.manual_edit_fields = sorted(manual_fields)
-
+        if enqueue_parse:
+            await self.ensure_parse_queued(content, commit=False)
         await self.db.commit()
         await self.db.refresh(content)
-
-        if enqueue_parse:
-            await self.ensure_parse_queued(content)
-            logger.info(f"Content status reset to unprocessed, parse re-enqueued: {content.id}")
 
         await event_bus.publish("content_updated", {
             "id": content.id,

@@ -11,6 +11,7 @@ import httpx
 from app.adapters.base import PlatformAdapter
 from app.adapters.utils.anti_risk import merge_response_cookies
 from app.services.config_service import ConfigService
+from app.services.source_reading import source_reading
 
 
 def weibo_error(code: str, message: str):
@@ -38,6 +39,7 @@ class WeiboSession:
     async def _get(self, url: str, *, params=None):
         if not self.cookies.get("SUB"):
             raise weibo_error("auth_required", "未配置微博登录")
+        await source_reading.wait("weibo")
         try:
             async with httpx.AsyncClient(timeout=20, proxy=await ConfigService().get_http_proxy(),
                 headers={"User-Agent": "Mozilla/5.0", "Referer": "https://weibo.com/", "Accept": "application/json"}) as client:
@@ -47,6 +49,7 @@ class WeiboSession:
             if response.status_code in (403, 418):
                 raise weibo_error("verification_required", "微博要求访问验证，请在平台网页处理")
             if response.status_code == 429:
+                await source_reading.http_cooldown("weibo", response.headers.get("Retry-After"))
                 raise weibo_error("rate_limited", "微博请求频率受限")
             if response.status_code != 200:
                 raise weibo_error("upstream_error", f"微博返回 HTTP {response.status_code}")

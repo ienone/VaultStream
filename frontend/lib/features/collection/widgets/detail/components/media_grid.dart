@@ -1,6 +1,9 @@
 import '../../../../../core/widgets/media_image_hero.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
+
 import '../../../../../core/widgets/media_image_button.dart';
+
 import 'package:frontend/core/utils/media_utils.dart';
 import 'package:frontend/core/widgets/network_thumbnail.dart';
 import 'package:frontend/core/widgets/media_overlay_surface.dart';
@@ -84,8 +87,6 @@ class MediaGrid extends StatelessWidget {
                       fallbackUrlsByImage: fallbackUrlsByImage,
                       mediaAssetsByImage: mediaAssetsByImage,
                       contentId: contentId,
-                      contentColor: contentColor,
-                      heroTag: _getHeroTag(index),
                       fit: BoxFit.contain,
                       onPageChanged: onPageChanged,
                     ),
@@ -257,7 +258,11 @@ class MediaGrid extends StatelessWidget {
       child: ClipRRect(
         borderRadius: AppShape.cardBorder,
         child: MediaImageHero(
-          tag: _getHeroTag(index),
+          identity: mediaImageIdentity(
+            contentId: contentId,
+            url: imageUrl,
+            asset: mediaAssetsByImage[imageUrl],
+          ),
           borderRadius: AppShape.cardBorder,
           child: isVideo(imageUrl)
               ? _buildVideoThumbnail(context, imageUrl)
@@ -287,9 +292,5 @@ class MediaGrid extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _getHeroTag(int index) {
-    return index == 0 ? 'content-image-$contentId' : 'image-$index-$contentId';
   }
 }

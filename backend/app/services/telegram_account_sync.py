@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+from io import BytesIO
+from loguru import logger
 from app.utils.content_title import derive_title, needs_title
 
-from datetime import timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 from sqlalchemy import select, func
@@ -12,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from PIL import UnidentifiedImageError
 
 from app.adapters.telegram_account import TelegramAccountReader, assemble_posts
+from app.services.source_reading import source_reading
 from telethon import types, errors
 from app.adapters.storage import get_storage_backend
 from app.core.config import settings
@@ -28,6 +31,13 @@ from app.media.processor import store_media_bytes
 from app.utils.datetime_utils import normalize_datetime_for_db
 
 
+class _AvatarBuffer(BytesIO):
+    def write(self, data):
+        if self.tell() + len(data) > 1024 * 1024:
+            raise ValueError("Telegram 头像超过 1 MiB")
+        return super().write(data)
+
+
 class TelegramAccountSync:
     def __init__(self, client, *, session_factory=AsyncSessionLocal, storage=None):
         self.client = client
@@ -35,6 +45,7 @@ class TelegramAccountSync:
         self.sessions = session_factory
         self.storage = storage or get_storage_backend()
         self.config = ConfigService(session_factory=session_factory)
+        self._author_avatars: dict[int, dict | None] = {}
 
     async def sync(self, *, channels: bool, saved: bool, source_id: int | None = None) -> dict:
         me = await self.client.get_me()
@@ -55,9 +66,11 @@ class TelegramAccountSync:
                 source = await self._channel_source(account_id, channel)
                 if source_id is not None and source.id != source_id:
                     continue
-                if not channel["notifications_enabled"] or not source.enabled:
+                if (not channel["notifications_enabled"] or not source.enabled
+                        or channel["unread_count"] == 0):
                     continue
-                result = await self._sync_peer(account_id, channel["peer_id"], source=source)
+                result = await self._sync_peer(account_id, channel["peer_id"], source=source,
+                                               read_inbox_max_id=channel["read_inbox_max_id"])
                 counts["channels"] += 1
                 for key, value in result.items():
                     counts[key] += value
@@ -86,43 +99,53 @@ class TelegramAccountSync:
             await db.refresh(source)
             return source
 
-    async def _sync_peer(self, account_id: int, peer_id: int, *, source: DiscoverySource | None) -> dict:
+    async def _sync_peer(self, account_id: int, peer_id: int, *, source: DiscoverySource | None,
+                         read_inbox_max_id: int = 0) -> dict:
         cursor_key = f"telegram_saved_cursor_{account_id}"
         async with self.sessions() as db:
             state = await db.get(SystemSetting, cursor_key) if source is None else await db.get(DiscoverySource, source.id)
             if source is not None and (state is None or not state.enabled):
                 return {"created": 0, "updated": 0, "saved": 0}
             value = state.value if source is None and state else state.last_cursor if state else None
-        since = (source.created_at.replace(tzinfo=timezone.utc) - timedelta(days=1)
-                 if source is not None and value is None else None)
-        posts, cursor = await self.reader.read_page(peer_id,
-            after=int(value) if value is not None else (0 if source is None else None), since=since)
+        # Telegram's read boundary is an input only; never acknowledge messages.
+        after = max(int(value or 0), read_inbox_max_id) if source is not None else int(value or 0)
+        posts, cursor = await self.reader.read_page(peer_id, after=after)
         review_key = f"telegram_review_cursor_{account_id}_{peer_id}"
-        review_posts, review_cursor = await self._review_posts(account_id, peer_id, review_key)
-        fresh_ids = {message.id for post in posts for message in post.messages}
-        posts = [post for post in review_posts if not any(m.id in fresh_ids for m in post.messages)] + posts
+        if source is None:
+            # Saved Messages retain edit reconciliation. Discovery must not fetch
+            # previously read posts through this separate history-review path.
+            review_posts, review_cursor = await self._review_posts(account_id, peer_id, review_key)
+            fresh_ids = {message.id for post in posts for message in post.messages}
+            posts = [post for post in review_posts if not any(m.id in fresh_ids for m in post.messages)] + posts
         retention = int(await self.config.get_value_fresh("discovery_retention_days", 7))
         archive_config = await self.config.get_archive_media_config()
         counts = {"created": 0, "updated": 0, "saved": 0}
-        changed = []
+        pipeline = PostIngestService()
         for post in posts:
+            await source_reading.wait("telegram")
             chain = await self.reader.source_chain(post.messages[0])
+            author_peer_id = chain[-1]["peer_id"] if chain else peer_id if source else None
+            avatar = await self._prepare_author_avatar(author_peer_id, archive_config)
             async with self.sessions() as db:
-                content, action, is_saved = await self._ingest(db, account_id, post, source, chain, retention, archive_config)
+                content, action, is_saved = await self._ingest(db, account_id, post, source, chain, retention, archive_config, avatar)
+                if action or is_saved:
+                    await pipeline.run_for_content(
+                        db, content, source="telegram_account", summary=bool(action),
+                        embedding=bool(action), distribution=source is None,
+                        scoring=source is not None, commit=False,
+                    )
                 await db.commit()
                 if action:
                     counts[action] += 1
-                if action or is_saved:
-                    changed.append((content.id, bool(action)))
                 counts["saved"] += int(is_saved)
         # A failed page leaves its cursor unchanged; already committed messages are idempotent.
         async with self.sessions() as db:
-            review_state = await db.get(SystemSetting, review_key)
-            if review_state is None:
-                db.add(SystemSetting(key=review_key, value=review_cursor, category="telegram"))
-            else:
-                review_state.value = review_cursor
             if source is None:
+                review_state = await db.get(SystemSetting, review_key)
+                if review_state is None:
+                    db.add(SystemSetting(key=review_key, value=review_cursor, category="telegram"))
+                else:
+                    review_state.value = review_cursor
                 state = await db.get(SystemSetting, cursor_key)
                 if state is None:
                     db.add(SystemSetting(key=cursor_key, value=cursor or 0, category="telegram"))
@@ -135,21 +158,6 @@ class TelegramAccountSync:
                     state.last_sync_at = utcnow()
                     state.last_error = None
             await db.commit()
-        pipeline = PostIngestService()
-        patrol_error: Exception | None = None
-        if source is not None and changed:
-            try:
-                async with self.sessions() as db:
-                    await pipeline.score_discovery(db)
-            except Exception as error:
-                patrol_error = error
-        for content_id, payload_changed in changed:
-            async with self.sessions() as db:
-                content = await db.get(Content, content_id)
-                if content and not content.deleted_at:
-                    await pipeline.run_for_content(db, content, source="telegram_account", summary=payload_changed, embedding=payload_changed, distribution=source is None)
-        if patrol_error is not None:
-            raise patrol_error
         return counts
 
     async def _review_posts(self, account_id, peer_id, cursor_key):
@@ -167,10 +175,11 @@ class TelegramAccountSync:
             ids = list(await db.scalars(select(TelegramMessage.message_id).where(
                 TelegramMessage.account_id == account_id, TelegramMessage.peer_id == peer_id,
                 TelegramMessage.content_id.in_(content_ids))))
+        await source_reading.wait("telegram")
         messages = await self.client.get_messages(peer_id, ids=ids)
         return assemble_posts([m for m in messages if isinstance(m, types.Message)]), content_ids[-1]
 
-    async def _ingest(self, db, account_id, post, source, chain, retention, archive_config):
+    async def _ingest(self, db, account_id, post, source, chain, retention, archive_config, avatar=None):
         address = post.address
         keys = [(account_id, address.peer_id, m.id) for m in post.messages]
         occurrence = await db.get(TelegramMessage, keys[0])
@@ -239,6 +248,8 @@ class TelegramAccountSync:
                 "source_chain": chain, "reply": post.reply}}
         # Reconcile by Telegram media identity; forwarding and text edits reuse files.
         await self._archive_media(db, content, post, archive_config)
+        if avatar:
+            await self._bind_author_avatar(db, content, avatar)
         await db.flush()
         for key in keys:
             link = await db.get(TelegramMessage, key)
@@ -266,6 +277,80 @@ class TelegramAccountSync:
             content.promoted_at = content.promoted_at or utcnow()
             content.expire_at = None
         return content, action, newly_saved
+
+    async def _prepare_author_avatar(self, peer_id, config):
+        if peer_id is None or not config.enabled or not config.images_enabled or config.image_max_count == 0:
+            return None
+        if peer_id in self._author_avatars:
+            return self._author_avatars[peer_id]
+        self._author_avatars[peer_id] = None
+        try:
+            entity = self.reader.entities.get(peer_id)
+            if entity is None:
+                await source_reading.wait("telegram")
+                async with asyncio.timeout(15):
+                    entity = await self.client.get_entity(peer_id)
+            photo = getattr(entity, "photo", None)
+            if not isinstance(photo, (types.UserProfilePhoto, types.ChatPhoto)):
+                return None
+            identity = f"telegram-avatar:{peer_id}:{photo.photo_id}"
+            # The same channel avatar is shared by many posts. Reuse its stored
+            # variant across sync runs, not just within the current page.
+            async with self.sessions() as db:
+                previous = await db.scalar(select(MediaAsset).options(selectinload(MediaAsset.variants)).where(
+                    MediaAsset.role == MediaRole.AVATAR,
+                    MediaAsset.asset_metadata["source_identity"].as_string() == identity,
+                ).limit(1))
+                if previous:
+                    ready = next((v for v in previous.variants if v.status == MediaVariantStatus.READY
+                                  and v.variant_kind == MediaVariantKind.OPTIMIZED), None)
+                    if ready and await self.storage.exists(key=ready.storage_key):
+                        result = {"identity": identity, "stored_key": ready.storage_key,
+                            "stored_content_type": ready.mime_type, "stored_size": ready.size_bytes,
+                            "stored_sha256": ready.checksum, "stored_width": ready.width,
+                            "stored_height": ready.height}
+                        self._author_avatars[peer_id] = result
+                        return result
+            await source_reading.wait("telegram")
+            with _AvatarBuffer() as buffer:
+                async with asyncio.timeout(15):
+                    await self.client.download_profile_photo(entity, file=buffer, download_big=False)
+                data = buffer.getvalue()
+            if not data:
+                return None
+            info, _ = await store_media_bytes(data, content_type="image/jpeg", kind="image",
+                quality=config.image_webp_quality, storage=self.storage, namespace="vaultstream")
+            result = {**info, "identity": identity}
+            self._author_avatars[peer_id] = result
+            return result
+        except errors.FloodWaitError:
+            raise
+        except (errors.RPCError, ValueError, OSError, TimeoutError) as error:
+            logger.warning("Telegram author avatar failed: {}", type(error).__name__)
+            return None
+
+    async def _bind_author_avatar(self, db, content, avatar):
+        with db.no_autoflush:
+            asset = await db.scalar(select(MediaAsset).options(selectinload(MediaAsset.variants)).where(
+                MediaAsset.content_id == content.id, MediaAsset.role == MediaRole.AVATAR,
+            )) if content.id else None
+        if asset is None:
+            asset = MediaAsset(content=content, media_type=MediaType.IMAGE, role=MediaRole.AVATAR,
+                position=0, variants=[])
+            db.add(asset)
+        asset.asset_metadata = {"source_identity": avatar["identity"]}
+        asset.original_url = None
+        asset.client_fetch_allowed = False
+        asset.archive_status = MediaArchiveStatus.READY
+        asset.last_error = None
+        asset.width, asset.height = avatar.get("stored_width"), avatar.get("stored_height")
+        if not any(v.storage_key == avatar["stored_key"] and v.status == MediaVariantStatus.READY
+                   for v in asset.variants):
+            asset.variants = [MediaVariant(variant_kind=MediaVariantKind.OPTIMIZED,
+                storage_key=avatar["stored_key"], mime_type=avatar["stored_content_type"],
+                size_bytes=avatar["stored_size"], checksum=avatar.get("stored_sha256"),
+                width=asset.width, height=asset.height, status=MediaVariantStatus.READY)]
+        content.author_avatar_url = f"local://{avatar['stored_key']}"
 
     async def _archive_media(self, db, content, post, config):
         with db.no_autoflush:

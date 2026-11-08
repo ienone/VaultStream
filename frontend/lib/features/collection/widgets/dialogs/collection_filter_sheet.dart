@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../theme/design_tokens.dart';
@@ -17,7 +17,7 @@ Future<UnifiedSearchRequest?> editSearchFilters(
       useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
-      showDragHandle: true,
+      showDragHandle: false,
       clipBehavior: Clip.antiAlias,
       sheetAnimationStyle: reducedMotion
           ? AnimationStyle.noAnimation
@@ -31,9 +31,17 @@ Future<UnifiedSearchRequest?> editSearchFilters(
               ? MediaQuery.viewInsetsOf(context).bottom
               : 0,
         ),
-        child: FractionallySizedBox(
-          heightFactor: .92,
-          child: SafeArea(top: false, child: child),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .85,
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [Flexible(child: child)],
+            ),
+          ),
         ),
       ),
     );
@@ -71,7 +79,6 @@ Future<UnifiedSearchRequest?> editSearchFilters(
                   width:
                       440 *
                       MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.25),
-                  height: double.infinity,
                   child: Material(
                     color: Theme.of(context).colorScheme.surfaceContainerLow,
                     shape: const RoundedRectangleBorder(

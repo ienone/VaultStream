@@ -5,8 +5,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from app.core.database import get_db
 from app.core.dependencies import require_api_token
@@ -29,9 +30,11 @@ from app.schemas import (
     QueueStatsResponse,
 )
 from app.schemas.media import MediaAssetManifest, MediaPurpose
-from app.schemas.queue import ManualPushRequest, ManualPushResponse
+from app.schemas.queue import (
+    ManualPushRequest, ManualPushResponse, BatchQueueCancelRequest, BatchQueueCancelResponse,
+)
 from app.services.distribution.queue_operations import (
-    QueueEditConflict, filter_item, lock_item_for_edit, schedule_item,
+    QueueEditConflict, cancel_items, filter_item, lock_item_for_edit, schedule_item,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -217,43 +220,17 @@ async def get_queue_stats(
 
     where_clause = and_(*conditions) if conditions else True
 
-    rows_result = await db.execute(
-        select(
-            ContentQueueItem.content_id,
-            ContentQueueItem.status,
-            ContentQueueItem.next_attempt_at,
-        ).where(where_clause)
-    )
-
-    stats = {"will_push": 0, "filtered": 0, "pushed": 0, "total": 0}
-    for _, status, next_attempt_at in rows_result.all():
-        stats["total"] += 1
-        if status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING) or (status == QueueItemStatus.FAILED and next_attempt_at is not None):
-            stats["will_push"] += 1
-        elif status == QueueItemStatus.SUCCESS:
-            stats["pushed"] += 1
-        else:
-            stats["filtered"] += 1
-
-    now = utcnow()
-    due_result = await db.execute(
-        select(func.count(ContentQueueItem.id)).where(
-            and_(
-                where_clause,
-                ContentQueueItem.status == QueueItemStatus.SCHEDULED,
-                ContentQueueItem.scheduled_at <= now,
-            )
-        )
-    )
-    due_now = int(due_result.scalar() or 0)
-
-    return QueueStatsResponse(
-        will_push=stats["will_push"],
-        filtered=stats["filtered"],
-        pushed=stats["pushed"],
-        total=stats["total"],
-        due_now=due_now,
-    )
+    result = await db.execute(select(
+        func.count().label("total"),
+        func.count(case((and_(*_build_status_conditions("will_push")), 1))).label("will_push"),
+        func.count(case((and_(*_build_status_conditions("filtered")), 1))).label("filtered"),
+        func.count(case((ContentQueueItem.status == QueueItemStatus.SUCCESS, 1))).label("pushed"),
+        func.count(case((and_(
+            ContentQueueItem.status == QueueItemStatus.SCHEDULED,
+            ContentQueueItem.scheduled_at <= utcnow(),
+        ), 1))).label("due_now"),
+    ).select_from(ContentQueueItem).where(where_clause))
+    return QueueStatsResponse(**result.mappings().one())
 
 
 @router.get("/items", response_model=ContentQueueItemListResponse)
@@ -295,6 +272,8 @@ async def list_queue_items(
     )
     result = await db.execute(
         select(ContentQueueItem, Content)
+        .options(load_only(Content.id, Content.title, Content.tags, Content.is_nsfw,
+                           Content.cover_url, Content.author_name, Content.platform))
         .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
         .where(where_clause)
         .order_by(*ordering)
@@ -371,7 +350,6 @@ async def push_queue_item_now(
 
     if item.last_error_type == "approval_required":
         await _lock_queue_item_for_edit(db, item)
-        item.approved_by = "manual"
         await db.commit()
     worker = get_queue_worker()
     try:
@@ -507,6 +485,24 @@ async def retry_queue_item(
         "timestamp": utcnow().isoformat(),
     })
     return await _queue_item_response_with_media(db, item, content, http_request)
+
+
+@router.post("/cancel", response_model=BatchQueueCancelResponse)
+async def cancel_queue_items(
+    payload: BatchQueueCancelRequest,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(require_api_token),
+):
+    """Cancel the selected queue items in one transaction and publish once."""
+    now = utcnow()
+    try:
+        ids = await cancel_items(db, payload.item_ids, at=now)
+    except QueueEditConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await event_bus.publish("queue_updated", {
+        "action": "cancel_items", "queue_item_ids": ids, "timestamp": now.isoformat(),
+    })
+    return {"canceled_ids": ids}
 
 
 @router.post("/items/{item_id}/cancel", response_model=QueueCancelResponse)

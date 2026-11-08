@@ -1,9 +1,11 @@
-import 'package:flutter/material.dart';
+import '../../../../core/utils/toast.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../../core/layout/responsive_layout.dart';
-import '../../../../core/widgets/predictive_back_dialog.dart';
 import '../../../../theme/design_tokens.dart';
 import '../../models/capture_draft.dart';
 import '../../providers/content_actions_controller.dart';
@@ -35,19 +37,18 @@ class AddContentDialog extends ConsumerStatefulWidget {
       return showDialog<ContentActionResult>(
         context: context,
         animationStyle: animation,
-        builder: (context) => PredictiveBackDialog(
-          child: Dialog(
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppShape.sheet),
+        barrierDismissible: true,
+        builder: (context) => Dialog(
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppShape.sheet),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: AppPane.formMaxWidth,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.9,
             ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: AppPane.formMaxWidth,
-                maxHeight: MediaQuery.sizeOf(context).height * 0.9,
-              ),
-              child: AddContentDialog(draft: draft, dialogSurface: true),
-            ),
+            child: AddContentDialog(draft: draft, dialogSurface: true),
           ),
         ),
       );
@@ -57,6 +58,8 @@ class AddContentDialog extends ConsumerStatefulWidget {
       useRootNavigator: true,
       sheetAnimationStyle: animation,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
       constraints: const BoxConstraints(maxWidth: AppPane.formMaxWidth),
@@ -80,17 +83,15 @@ class AddContentDialog extends ConsumerStatefulWidget {
     final result = await show(context);
     if (result == null || !context.mounted) return;
 
-    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        action: result.contentId == null
-            ? null
-            : SnackBarAction(
-                label: '查看',
-                onPressed: () => router.push('/collection/${result.contentId}'),
-              ),
-      ),
+    Toast.show(
+      context,
+      result.message,
+      action: result.contentId == null
+          ? null
+          : SnackBarAction(
+              label: '查看',
+              onPressed: () => router.push('/collection/${result.contentId}'),
+            ),
     );
   }
 
@@ -109,6 +110,7 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
   bool _isNsfw = false;
   bool _isLoading = false;
   String? _errorMessage;
+  String? _urlError;
   Size? _viewportSize;
 
   @override
@@ -132,24 +134,15 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    final primaryInput = switch (_kind) {
-      CaptureKind.link => _urlController.text.trim(),
-      CaptureKind.text => _textController.text.trim(),
-      CaptureKind.file =>
-        _selectedFiles.isEmpty ? '' : _selectedFiles.first.name,
-    };
-    if (primaryInput.isEmpty) {
-      setState(
-        () => _errorMessage = switch (_kind) {
-          CaptureKind.link => '请输入有效的 URL',
-          CaptureKind.text => '请输入要保存的文本',
-          CaptureKind.file => '请选择要归档的文件',
-        },
-      );
-      return;
-    }
+  String get _primaryInput => switch (_kind) {
+    CaptureKind.link => _urlController.text.trim(),
+    CaptureKind.text => _textController.text.trim(),
+    CaptureKind.file => _selectedFiles.isEmpty ? '' : _selectedFiles.first.name,
+  };
 
+  Future<void> _submit() async {
+    final primaryInput = _primaryInput;
+    if (_isLoading || primaryInput.isEmpty) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -201,7 +194,11 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
     } else {
       setState(() {
         _isLoading = false;
-        _errorMessage = result.message;
+        if (result.errorCode == 'invalid_capture_url') {
+          _urlError = result.message;
+        } else {
+          _errorMessage = result.message;
+        }
       });
     }
   }
@@ -211,318 +208,309 @@ class _AddContentDialogState extends ConsumerState<AddContentDialog> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (_viewportSize != constraints.biggest) {
-          _viewportSize = constraints.biggest;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
-            final focusContext = FocusManager.instance.primaryFocus?.context;
-            if (focusContext != null &&
-                identical(
-                  focusContext
-                      .findAncestorStateOfType<_AddContentDialogState>(),
-                  this,
-                )) {
-              BuildContext fieldContext = focusContext;
-              focusContext.visitAncestorElements((element) {
-                if (element.widget is TextField) {
-                  fieldContext = element;
-                  return false;
-                }
-                return true;
-              });
-              // Include the label and outline, not just EditableText's caret.
-              Scrollable.ensureVisible(fieldContext, alignment: 0.15);
-            }
-          });
-        }
-        return Material(
-          color: colorScheme.surface,
-          borderRadius: widget.dialogSurface
-              ? BorderRadius.circular(AppShape.sheet)
-              : AppShape.sheetTopBorder,
-          clipBehavior: Clip.antiAlias,
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(
-                left: 24,
-                right: 24,
-                top: 16,
-                bottom: 24,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!widget.dialogSurface) ...[
-                    Center(
-                      child: Container(
-                        width: 32,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: colorScheme.onSurfaceVariant.withValues(
-                            alpha: 0.4,
-                          ),
-                          borderRadius: BorderRadius.circular(AppShape.pill),
-                        ),
+    return PopScope(
+      canPop: !_isLoading,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (_viewportSize != constraints.biggest) {
+            _viewportSize = constraints.biggest;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+              final focusContext = FocusManager.instance.primaryFocus?.context;
+              if (focusContext != null &&
+                  identical(
+                    focusContext
+                        .findAncestorStateOfType<_AddContentDialogState>(),
+                    this,
+                  )) {
+                BuildContext fieldContext = focusContext;
+                focusContext.visitAncestorElements((element) {
+                  if (element.widget is TextField) {
+                    fieldContext = element;
+                    return false;
+                  }
+                  return true;
+                });
+                // Include the label and outline, not just EditableText's caret.
+                Scrollable.ensureVisible(fieldContext, alignment: 0.15);
+              }
+            });
+          }
+          return Material(
+            color: colorScheme.surface,
+            borderRadius: widget.dialogSurface
+                ? BorderRadius.circular(AppShape.sheet)
+                : AppShape.sheetTopBorder,
+            clipBehavior: Clip.antiAlias,
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: 16,
+                  bottom: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '保存内容',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 20),
-                  ],
 
-                  Text(
-                    '保存内容',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<CaptureKind>(
+                        segments: const [
+                          ButtonSegment(
+                            value: CaptureKind.link,
+                            icon: Icon(Icons.link_rounded),
+                            label: Text('链接'),
+                          ),
+                          ButtonSegment(
+                            value: CaptureKind.text,
+                            icon: Icon(Icons.notes_rounded),
+                            label: Text('文本'),
+                          ),
+                          ButtonSegment(
+                            value: CaptureKind.file,
+                            icon: Icon(Icons.upload_file_rounded),
+                            label: Text('文件'),
+                          ),
+                        ],
+                        selected: {_kind},
+                        onSelectionChanged: _isLoading
+                            ? null
+                            : (selection) => setState(() {
+                                _kind = selection.first;
+                                _errorMessage = null;
+                              }),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                  SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<CaptureKind>(
-                      segments: const [
-                        ButtonSegment(
-                          value: CaptureKind.link,
-                          icon: Icon(Icons.link_rounded),
-                          label: Text('链接'),
+                    if (_kind == CaptureKind.link) ...[
+                      TextField(
+                        key: const ValueKey(CaptureKind.link),
+                        controller: _urlController,
+                        onChanged: (_) => setState(() {
+                          _urlError = null;
+                          _errorMessage = null;
+                        }),
+                        decoration: InputDecoration(
+                          errorText: _urlError,
+                          errorMaxLines: 2,
+                          labelText: 'URL',
+                          hintText: 'https://...',
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.link_rounded),
+                          isDense: true,
                         ),
-                        ButtonSegment(
-                          value: CaptureKind.text,
-                          icon: Icon(Icons.notes_rounded),
-                          label: Text('文本'),
+                        autofocus: true,
+                        keyboardType: TextInputType.url,
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 12),
+                    ] else if (_kind == CaptureKind.text) ...[
+                      TextField(
+                        key: const ValueKey(CaptureKind.text),
+                        controller: _textController,
+                        onChanged: (_) => setState(() => _errorMessage = null),
+                        decoration: const InputDecoration(
+                          labelText: '原始文本',
+                          border: OutlineInputBorder(),
+                          alignLabelWithHint: true,
                         ),
-                        ButtonSegment(
-                          value: CaptureKind.file,
-                          icon: Icon(Icons.upload_file_rounded),
-                          label: Text('文件'),
+                        autofocus: true,
+                        minLines: constraints.maxHeight < 320 ? 1 : 4,
+                        maxLines: constraints.maxHeight < 320 ? 2 : 8,
+                        enabled: !_isLoading,
+                      ),
+                      const SizedBox(height: 12),
+                    ] else ...[
+                      OutlinedButton.icon(
+                        onPressed: _isLoading
+                            ? null
+                            : () async {
+                                final files = await openFiles();
+                                if (files.isNotEmpty && mounted) {
+                                  setState(() {
+                                    final existingPaths = _selectedFiles
+                                        .map((file) => file.path)
+                                        .toSet();
+                                    _selectedFiles.addAll(
+                                      files.where(
+                                        (file) =>
+                                            !existingPaths.contains(file.path),
+                                      ),
+                                    );
+                                    _errorMessage = null;
+                                  });
+                                }
+                              },
+                        icon: const Icon(Icons.folder_open_rounded),
+                        label: Text(_selectedFiles.isEmpty ? '选择文件' : '继续添加文件'),
+                      ),
+                      if (_selectedFiles.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        if (_selectedFiles.length > 1) ...[
+                          Text(
+                            '${_selectedFiles.length} 个文件将保存为一条内容',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final file in _selectedFiles)
+                              Tooltip(
+                                message: file.name,
+                                child: Chip(
+                                  label: Text(
+                                    file.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  deleteButtonTooltipMessage:
+                                      '移除文件 ${file.name}',
+
+                                  onDeleted: _isLoading
+                                      ? null
+                                      : () => setState(
+                                          () => _selectedFiles.remove(file),
+                                        ),
+                                ),
+                              ),
+                          ],
                         ),
                       ],
-                      selected: {_kind},
-                      onSelectionChanged: _isLoading
-                          ? null
-                          : (selection) => setState(() {
-                              _kind = selection.first;
-                              _errorMessage = null;
-                            }),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  if (_kind == CaptureKind.link) ...[
-                    TextField(
-                      controller: _urlController,
-                      decoration: const InputDecoration(
-                        labelText: 'URL',
-                        hintText: 'https://...',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.link_rounded),
-                        isDense: true,
-                      ),
-                      autofocus: true,
-                      keyboardType: TextInputType.url,
-                      enabled: !_isLoading,
-                    ),
-                    const SizedBox(height: 12),
-                  ] else if (_kind == CaptureKind.text) ...[
-                    TextField(
-                      controller: _textController,
-                      decoration: const InputDecoration(
-                        labelText: '原始文本',
-                        hintText: '粘贴摘录、笔记或稍后要整理的内容',
-                        border: OutlineInputBorder(),
-                        alignLabelWithHint: true,
-                      ),
-                      autofocus: true,
-                      minLines: constraints.maxHeight < 320 ? 1 : 4,
-                      maxLines: constraints.maxHeight < 320 ? 2 : 8,
-                      enabled: !_isLoading,
-                    ),
-                    const SizedBox(height: 12),
-                  ] else ...[
-                    OutlinedButton.icon(
-                      onPressed: _isLoading
-                          ? null
-                          : () async {
-                              final files = await openFiles();
-                              if (files.isNotEmpty && mounted) {
-                                setState(() {
-                                  final existingPaths = _selectedFiles
-                                      .map((file) => file.path)
-                                      .toSet();
-                                  _selectedFiles.addAll(
-                                    files.where(
-                                      (file) =>
-                                          !existingPaths.contains(file.path),
-                                    ),
-                                  );
-                                  _errorMessage = null;
-                                });
-                              }
-                            },
-                      icon: const Icon(Icons.folder_open_rounded),
-                      label: Text(_selectedFiles.isEmpty ? '选择文件' : '继续添加文件'),
-                    ),
-                    if (_selectedFiles.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        _selectedFiles.length == 1
-                            ? '将保存原始文件，可从内容详情重新打开。'
-                            : '这 ${_selectedFiles.length} 个文件会作为同一条内容归档。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final file in _selectedFiles)
-                            Tooltip(
-                              message: file.name,
-                              child: Chip(
-                                label: Text(
-                                  file.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                deleteButtonTooltipMessage: '移除文件 ${file.name}',
-
-                                onDeleted: _isLoading
-                                    ? null
-                                    : () => setState(
-                                        () => _selectedFiles.remove(file),
-                                      ),
-                              ),
-                            ),
-                        ],
-                      ),
+                      const SizedBox(height: 12),
                     ],
-                    const SizedBox(height: 12),
-                  ],
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                  ExpansionTile(
-                    title: Text(_isNsfw ? '附加信息 · 敏感内容' : '附加信息（可选）'),
-                    tilePadding: EdgeInsets.zero,
-                    initiallyExpanded:
-                        _noteController.text.isNotEmpty ||
-                        _titleController.text.isNotEmpty,
-                    maintainState: true,
-                    children: [
-                      if (_kind != CaptureKind.link) ...[
+                    ExpansionTile(
+                      title: const Text('更多选项'),
+                      backgroundColor: Colors.transparent,
+                      collapsedBackgroundColor: Colors.transparent,
+                      subtitle: _isNsfw ? const Text('已标记为敏感内容') : null,
+                      tilePadding: EdgeInsets.zero,
+                      initiallyExpanded:
+                          _noteController.text.isNotEmpty ||
+                          _titleController.text.isNotEmpty,
+                      maintainState: true,
+                      children: [
+                        if (_kind != CaptureKind.link) ...[
+                          TextField(
+                            controller: _titleController,
+                            decoration: const InputDecoration(
+                              labelText: '标题',
+                              border: OutlineInputBorder(),
+                            ),
+                            enabled: !_isLoading,
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         TextField(
-                          controller: _titleController,
+                          controller: _noteController,
                           decoration: const InputDecoration(
-                            labelText: '标题',
+                            labelText: '保存说明',
+                            border: OutlineInputBorder(),
+                            alignLabelWithHint: true,
+                          ),
+                          minLines: 2,
+                          maxLines: 4,
+                          enabled: !_isLoading,
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _tagsController,
+                          decoration: const InputDecoration(
+                            labelText: '标签',
+                            hintText: '用空格或逗号分隔',
                             border: OutlineInputBorder(),
                           ),
                           enabled: !_isLoading,
                         ),
-                        const SizedBox(height: 12),
+                        SwitchListTile(
+                          title: const Text('标记为敏感内容'),
+                          value: _isNsfw,
+                          onChanged: _isLoading
+                              ? null
+                              : (value) => setState(() => _isNsfw = value),
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ],
-                      TextField(
-                        controller: _noteController,
-                        decoration: const InputDecoration(
-                          labelText: '保存说明',
-                          border: OutlineInputBorder(),
-                          alignLabelWithHint: true,
-                        ),
-                        minLines: 2,
-                        maxLines: 4,
-                        enabled: !_isLoading,
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _tagsController,
-                        decoration: const InputDecoration(
-                          labelText: '标签',
-                          hintText: '用空格或逗号分隔',
-                          border: OutlineInputBorder(),
-                        ),
-                        enabled: !_isLoading,
-                      ),
-                      SwitchListTile(
-                        title: const Text('标记为敏感内容'),
-                        subtitle: const Text('浏览时默认隐藏'),
-                        value: _isNsfw,
-                        onChanged: _isLoading
-                            ? null
-                            : (value) => setState(() => _isNsfw = value),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ],
-                  ),
+                    ),
 
-                  // 错误信息
-                  if (_errorMessage != null) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: colorScheme.errorContainer,
-                        borderRadius: AppShape.cardMediaBorder,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.error_outline,
-                            color: colorScheme.error,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: TextStyle(
-                                color: colorScheme.onErrorContainer,
+                    // 错误信息
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.errorContainer,
+                          borderRadius: AppShape.cardMediaBorder,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              color: colorScheme.error,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _errorMessage!,
+                                style: TextStyle(
+                                  color: colorScheme.onErrorContainer,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-
-                  // 操作按钮
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isLoading
-                              ? null
-                              : () => Navigator.of(context).pop(),
-                          child: const Text('取消'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: FilledButton(
-                          onPressed: _isLoading ? null : _submit,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('保存'),
+                          ],
                         ),
                       ),
                     ],
-                  ),
-                ],
+                    const SizedBox(height: 20),
+
+                    // 操作按钮
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: FilledButton(
+                            onPressed: _isLoading || _primaryInput.isEmpty
+                                ? null
+                                : _submit,
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('保存'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

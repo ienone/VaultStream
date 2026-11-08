@@ -12,6 +12,7 @@ import re
 import httpx
 from typing import Optional, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
+from app.services.source_reading import source_reading
 from app.core.logging import logger
 from app.adapters.errors import NonRetryableAdapterError
 from app.utils.url_utils import normalize_bilibili_url
@@ -67,7 +68,7 @@ class BilibiliAdapter(PlatformAdapter):
         ],
     }
     
-    def __init__(self, cookies: Optional[Dict[str, str]] = None):
+    def __init__(self, cookies: Optional[Dict[str, str]] = None, *, include_video_media: bool = True):
         """
         初始化B站适配器
         
@@ -75,6 +76,7 @@ class BilibiliAdapter(PlatformAdapter):
             cookies: B站cookies（可选，用于访问需要登录的内容）
         """
         self.cookies = cookies or {}
+        self.include_video_media = include_video_media
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': 'https://www.bilibili.com',
@@ -175,6 +177,8 @@ class BilibiliAdapter(PlatformAdapter):
         Raises:
             NonRetryableAdapterError: 不支持的URL类型
         """
+        if self.include_video_media:
+            await source_reading.wait("bilibili")
         url = normalize_bilibili_url(url)
 
         # 先净化再识别：确保通用b23.tv短链也能解析
@@ -187,7 +191,7 @@ class BilibiliAdapter(PlatformAdapter):
         
         # 根据内容类型路由到相应的parser
         if content_type == BilibiliContentType.VIDEO.value:
-            return await parse_video(clean_url, self.headers, self.cookies)
+            return await parse_video(clean_url, self.headers, self.cookies, include_media=self.include_video_media)
         
         elif content_type == BilibiliContentType.ARTICLE.value:
             return await parse_article(clean_url, self.headers, self.cookies)

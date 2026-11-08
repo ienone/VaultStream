@@ -204,7 +204,7 @@ class DistributionQueueWorker:
                 await event_bus.publish("queue_updated", {"action": "delivery_recovered"})
         policy = await AutomationPolicyService().distribution_worker_poll()
         if not policy.allowed:
-            logger.bind(worker=worker_name, policy=policy.as_dict()).info(
+            logger.bind(worker=worker_name, policy=policy.as_dict()).debug(
                 "Distribution worker poll skipped by automation policy"
             )
             return {

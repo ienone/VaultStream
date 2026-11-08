@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 0.1.0+1
 
 environment:
-  sdk: ^3.10.4
+  sdk: ^3.13.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -37,10 +37,12 @@ dependencies:
   riverpod_annotation: ^4.0.0
   dio: ^5.9.0
   go_router: ^17.5.0
-  dynamic_color: ^2.0.2
-  material_ui: ^1.2.0
+  dynamic_color: ^2.1.0
+  material_ui: ^1.8.0
+  cupertino_ui: ^1.0.0
+  material_3_expressive: ^1.2.0
   web: ^1.1.1
-  json_annotation: ^4.9.0
+  json_annotation: ^4.12.0
   freezed_annotation: ^3.1.0
   intl: ^0.20.2
   url_launcher: ^6.3.2
@@ -51,10 +53,10 @@ dependencies:
   flutter_markdown_plus: ^1.0.7
   markdown: ^7.3.0
   shared_preferences: ^2.5.4
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^10.3.4
   video_player: ^2.10.1
   flutter_math_fork: ^0.7.4
-  google_fonts: ^7.0.0
+  google_fonts: ^9.0.0
   http: ^1.4.0
   receive_sharing_intent: ^1.8.1
   timeago: ^3.7.0
@@ -63,6 +65,9 @@ dependencies:
   pdfrx: ^2.6.1
   audio_service: ^0.18.19
   audio_session: ^0.2.4
+  scroll_to_index: ^3.0.1
+  re_highlight: ^0.0.3
+  cupertino_icons: ^2.0.0
 
 dev_dependencies:
 
@@ -74,7 +79,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.10.5
   riverpod_generator: ^4.0.0+1
-  freezed: ^3.2.3
+  freezed: ^4.0.3
   json_serializable: ^6.11.2
   flutter_launcher_icons: ^0.14.3
 
@@ -89,7 +94,13 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  fonts:
+    - family: NotoSansSC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Regular.otf
+
   assets:
+    - assets/fonts/NotoSansSC-LICENSE.txt
     - assets/fonts/google_fonts/
 
   # To add more assets to your application, add entries like this:

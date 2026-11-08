@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:pdfrx/pdfrx.dart';
+
 import '../../../../theme/design_tokens.dart';
-import '../../../../core/widgets/predictive_back_dialog.dart';
 
 class DocumentPdfOutline extends StatefulWidget {
   const DocumentPdfOutline({
@@ -46,86 +46,56 @@ class _DocumentPdfOutlineState extends State<DocumentPdfOutline> {
       animationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
-      builder: (context) => PredictiveBackDialog(
-        child: Dialog(
-          insetPadding: const EdgeInsets.all(AppSpacing.md),
-          clipBehavior: Clip.antiAlias,
-          child: SizedBox(
-            width: AppPane.readableMaxWidth,
-            height: (MediaQuery.sizeOf(context).height - 32).clamp(0, 640),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '目录',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: '关闭目录',
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ],
-                  ),
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(AppSpacing.md),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: AppPane.readableMaxWidth,
+            maxHeight: (MediaQuery.sizeOf(context).height - 48).clamp(0, 640),
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            itemCount: entries.length,
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              final target = entry.node.dest?.pageNumber;
+              final valid =
+                  target != null &&
+                  target >= 1 &&
+                  target <= widget.document.pages.length;
+              return ListTile(
+                shape: const RoundedRectangleBorder(
+                  borderRadius: AppShape.cardBorder,
                 ),
-                Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.xs,
-                    ),
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) {
-                      final entry = entries[index];
-                      final target = entry.node.dest?.pageNumber;
-                      final valid =
-                          target != null &&
-                          target >= 1 &&
-                          target <= widget.document.pages.length;
-                      return ListTile(
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: AppShape.cardBorder,
-                        ),
-                        contentPadding: EdgeInsetsDirectional.only(
-                          start: 8 + entry.depth.clamp(0, 4) * 12.0,
-                          end: 8,
-                        ),
-                        title: Text(
-                          entry.node.title,
-                          style: entry.depth == 0
-                              ? Theme.of(context).textTheme.titleSmall
-                              : Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        subtitle: valid
-                            ? Text(
-                                '第 $target 页',
-                                style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                              )
-                            : target != null
-                            ? const Text('此目录项的页码不可用')
-                            : null,
-                        selectedTileColor: Theme.of(
-                          context,
-                        ).colorScheme.secondaryContainer,
-                        selected: valid && target == widget.pageNumber,
-                        onTap: valid
-                            ? () => Navigator.pop(context, target)
-                            : null,
-                      );
-                    },
-                  ),
+                contentPadding: EdgeInsetsDirectional.only(
+                  start: 8 + entry.depth.clamp(0, 4) * 12.0,
+                  end: 8,
                 ),
-              ],
-            ),
+                title: Text(
+                  entry.node.title,
+                  style: entry.depth == 0
+                      ? Theme.of(context).textTheme.titleSmall
+                      : Theme.of(context).textTheme.bodyMedium,
+                ),
+                subtitle: valid
+                    ? Text(
+                        '第 $target 页',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    : target != null
+                    ? const Text('此目录项的页码不可用')
+                    : null,
+                selectedTileColor: Theme.of(context)
+                    .colorScheme
+                    .secondaryContainer,
+                selected: valid && target == widget.pageNumber,
+                onTap: valid ? () => Navigator.pop(context, target) : null,
+              );
+            },
           ),
         ),
       ),

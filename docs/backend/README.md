@@ -6,7 +6,7 @@ active
 
 后端位于 `backend/app/`，核心栈为 FastAPI、SQLAlchemy async、SQLite、后台任务、平台适配器、媒体处理和推送分发。
 
-本目录记录当前实现；目标边界见[产品与架构整体方案](../plans/2026-09-14-product-architecture-review.plan.md#backend)。解析任务已收敛为一次执行、超时失败；分发未知结果的自动重发保护和事件证据 TTL 保护继续保留，人工核对流程已移除。[持续处理完整性问题](../issues/2026-09-14-continuous-processing-integrity.md)记录当前取舍与尚未完成的耐久交接边界。
+本目录记录当前实现；目标边界见[产品与架构整体方案](../plans/2026-09-14-product-architecture-review.plan.md#backend)。解析与后处理使用持久任务，业务数据和待执行任务原子提交；已领取任务一次执行、超时失败。分发保留未知结果的自动重发保护，事件证据保留 TTL 保护。[持续处理完整性问题](../issues/2026-09-14-continuous-processing-integrity.md)记录中断处理和来源证据的边界。
 
 ## 基础入口
 

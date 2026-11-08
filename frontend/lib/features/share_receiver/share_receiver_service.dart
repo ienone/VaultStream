@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -11,11 +12,8 @@ class SharedContent {
   final List<SharedMediaFile> mediaFiles;
   final DateTime receivedAt;
 
-  SharedContent({
-    this.text,
-    this.mediaFiles = const [],
-    DateTime? receivedAt,
-  }) : receivedAt = receivedAt ?? DateTime.now();
+  SharedContent({this.text, this.mediaFiles = const [], DateTime? receivedAt})
+    : receivedAt = receivedAt ?? DateTime.now();
 
   /// 提取 URL (从分享文本中)
   String? get extractedUrl {
@@ -94,17 +92,15 @@ class ShareReceiverService {
     final mediaFiles = <SharedMediaFile>[];
 
     for (final file in files) {
-      if (file.type == SharedMediaType.text || file.type == SharedMediaType.url) {
+      if (file.type == SharedMediaType.text ||
+          file.type == SharedMediaType.url) {
         sharedText = file.path;
       } else {
         mediaFiles.add(file);
       }
     }
 
-    final content = SharedContent(
-      text: sharedText,
-      mediaFiles: mediaFiles,
-    );
+    final content = SharedContent(text: sharedText, mediaFiles: mediaFiles);
 
     if (!content.isEmpty) {
       _ref.read(shareReceiverStateProvider.notifier).setSharedContent(content);

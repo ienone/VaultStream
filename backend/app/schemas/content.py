@@ -76,14 +76,6 @@ class ContentDeleteResponse(BaseModel):
     content_id: int
 
 
-class ContentRetryResponse(BaseModel):
-    """同步解析重试已完成并返回内容的最新状态。"""
-
-    success: Literal[True]
-    content_id: int
-    status: ContentStatus
-
-
 class ContentSummaryActionResponse(BaseModel):
     """摘要生成已同步完成，且本次运行已写入任务账本。"""
 
@@ -299,6 +291,7 @@ class ShareCard(BaseModel):
     content_type: Optional[str] = None
     effective_layout_type: Optional[str] = None
     title: Optional[str] = None
+    excerpt: Optional[str] = Field(None, description="正文纯文本预览，最多 280 字及省略号；不修改原始标题或正文")
     author_name: Optional[str] = None
     author_id: Optional[str] = None
     author_avatar_url: Optional[str] = None

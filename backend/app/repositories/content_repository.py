@@ -155,7 +155,6 @@ class ContentRepository:
         stmt = (
             select(Content)
             .options(
-                defer(Content.body),
                 defer(Content.rich_payload),
                 defer(Content.archive_metadata),
                 defer(Content.context_data),

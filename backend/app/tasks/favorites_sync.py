@@ -24,6 +24,7 @@ from app.services.background_task_state import (
 from app.services.content_service import ContentService
 from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
+from app.services.source_reading import source_reading, SourceCoolingDown
 
 
 class FavoritesSyncTask:
@@ -34,12 +35,6 @@ class FavoritesSyncTask:
     _FAILED_ITEMS_RECORD_LIMIT = 50
     _DEFAULT_DUPLICATE_STRATEGY = "merge"
     _DUPLICATE_STRATEGIES = {"merge", "skip"}
-    _DEFAULT_RATES = {
-        "zhihu": 5.0,
-        "xiaohongshu": 3.0,
-        "twitter": 5.0,
-    }
-
     def __init__(
         self,
         config_service: ConfigService | None = None,
@@ -60,9 +55,6 @@ class FavoritesSyncTask:
 
     def get_fetcher_cls(self, platform: str) -> Optional[type[BaseFavoritesFetcher]]:
         return self._fetchers.get(platform)
-
-    def default_rate_for(self, platform: str) -> float:
-        return float(self._DEFAULT_RATES.get(platform, 5.0))
 
     def is_running(self) -> bool:
         return bool(self._task and not self._task.done())
@@ -296,7 +288,6 @@ class FavoritesSyncTask:
         )
         platform_state = await self._config_service.get_favorites_sync_platform_state(
             platform,
-            default_rate_per_minute=self.default_rate_for(platform),
             fresh=True,
         )
 
@@ -442,7 +433,6 @@ class FavoritesSyncTask:
         retry_run_id: str | None = None,
         retry_mode: str | None = None,
         include_item_note: bool = False,
-        delay: float = 0,
     ) -> dict[str, Any]:
         """Import favorites through the canonical ContentService ingestion path."""
         svc = ContentService(session)
@@ -497,8 +487,7 @@ class FavoritesSyncTask:
                     ).limit(1))).scalar_one_or_none() is not None
                 if existing is not None and (duplicate_strategy == "skip" or same_source):
                     if existing.status in (ContentStatus.UNPROCESSED, ContentStatus.PARSE_FAILED):
-                        # Saving the content and queueing its parse are separate
-                        # effects. A failed handoff must remain retryable.
+                        await source_reading.wait(platform, lane="enqueue")
                         await svc.ensure_parse_queued(existing)
                         imported += 1
                         item_results.append({**base_result, "status": "success", "content_id": existing.id})
@@ -528,6 +517,7 @@ class FavoritesSyncTask:
                 if include_item_note:
                     create_kwargs["note"] = item.title
                 create_kwargs["client_context"] = client_context
+                await source_reading.wait(platform, lane="enqueue")
                 content = await svc.create_share(**create_kwargs)
                 imported += 1
                 success_result = {
@@ -562,14 +552,13 @@ class FavoritesSyncTask:
                 item_results.append(failed_item)
                 if len(failed_items) < self._FAILED_ITEMS_RECORD_LIMIT:
                     failed_items.append(failed_item)
-                logger.bind(
-                    event="favorites_import_failed",
-                    platform=platform,
-                    item_url=url,
-                ).exception("Favorites import failed: {}", exc)
+                if not isinstance(exc, SourceCoolingDown):
+                    logger.bind(
+                        event="favorites_import_failed",
+                        platform=platform,
+                        item_url=url,
+                    ).exception("Favorites import failed: {}", exc)
 
-            if delay > 0:
-                await asyncio.sleep(delay)
 
         return {
             "imported": imported,
@@ -672,11 +661,9 @@ class FavoritesSyncTask:
         )
         platform_state = await self._config_service.get_favorites_sync_platform_state(
             platform,
-            default_rate_per_minute=self.default_rate_for(platform),
             fresh=True,
         )
         duplicate_strategy = config.duplicate_strategy
-        delay = 60.0 / max(platform_state.rate_per_minute, 0.1)
 
         try:
             items, next_cursor = await fetcher.fetch_favorites(
@@ -716,7 +703,6 @@ class FavoritesSyncTask:
                 items=items,
                 source_name=f"favorites_sync:{platform}",
                 duplicate_strategy=duplicate_strategy,
-                delay=delay,
             )
 
         if import_result["failed"] == 0:

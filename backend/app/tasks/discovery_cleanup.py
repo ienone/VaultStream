@@ -67,10 +67,7 @@ class DiscoveryCleanupTask:
         while True:
             try:
                 deleted = await self._cleanup_expired()
-                async with AsyncSessionLocal() as db:
-                    await db.execute(update(Content).where(Content.id == -1).values(id=-1))
-                    files, size = await cleanup_unreferenced_media(db)
-                    await db.commit()
+                files, size = await cleanup_unreferenced_media()
                 if files:
                     logger.info("Discovery media cleanup: removed={} bytes={}", files, size)
                 await record_task_run_success("discovery_cleanup", deleted_count=deleted,

@@ -11,6 +11,7 @@
 import re
 import httpx
 from typing import Optional, Dict, Any
+from app.services.source_reading import source_reading
 from app.core.logging import logger
 from app.adapters.base import PlatformAdapter, ParsedContent
 from app.adapters.errors import NonRetryableAdapterError
@@ -165,6 +166,7 @@ class WeiboAdapter(PlatformAdapter):
         Raises:
             NonRetryableAdapterError: 无效的微博URL
         """
+        await source_reading.wait("weibo")
         # 先还原URL（如果是mapp链接）
         if "mapp.api.weibo.cn" in url:
             url = await self.clean_url(url)

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/widgets/adaptive_form_dialog.dart';
@@ -80,24 +80,13 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
     style: Theme.of(context).textTheme.bodyLarge,
   );
 
-  Widget _sourceDisclosure() => ExpansionTile(
-    title: const Text('新解析版本'),
-    tilePadding: EdgeInsets.zero,
-    shape: const RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-    collapsedShape: const RoundedRectangleBorder(
-      borderRadius: AppShape.cardBorder,
-    ),
-    clipBehavior: Clip.antiAlias,
-    expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-    childrenPadding: const EdgeInsets.only(bottom: AppSpacing.md),
-    maintainState: true,
-    expansionAnimationStyle: MediaQuery.disableAnimationsOf(context)
-        ? AnimationStyle.noAnimation
-        : const AnimationStyle(
-            duration: AppMotion.contentSwap,
-            curve: AppMotion.standardCurve,
-          ),
-    children: [_source(context)],
+  Widget _sourceSection() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('新解析版本', style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: AppSpacing.sm),
+      _source(context),
+    ],
   );
 
   Widget _input() {
@@ -140,9 +129,7 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
         ? Scaffold(
             appBar: AppBar(
               title: Text('合并${widget.label}'),
-              toolbarHeight: WindowMetrics.of(context).heightClass.isCompact
-                  ? 48
-                  : null,
+              toolbarHeight: WindowMetrics.of(context).toolbarHeight,
               leading: IconButton(
                 tooltip: '返回',
                 icon: const BackButtonIcon(),
@@ -186,9 +173,9 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
                                   children: [
                                     Text(
                                       '新解析版本',
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium,
                                     ),
                                     const SizedBox(height: AppSpacing.sm),
                                     _source(context),
@@ -210,7 +197,7 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _sourceDisclosure(),
+                            _sourceSection(),
                             const SizedBox(height: AppSpacing.md),
                             editor,
                           ],
@@ -229,7 +216,7 @@ class _ParseCandidateMergeEditorState extends State<ParseCandidateMergeEditor> {
               children: [
                 editor,
                 const SizedBox(height: AppSpacing.sm),
-                _sourceDisclosure(),
+                _sourceSection(),
               ],
             ),
             actions: OverflowBar(

@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import '../core/widgets/predictive_back_drawer.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:go_router/go_router.dart';
@@ -7,8 +9,10 @@ import '../core/layout/responsive_layout.dart';
 import '../features/share_receiver/share_receiver_service.dart';
 import '../features/player/global_player_widgets.dart';
 import '../features/collection/models/capture_draft.dart';
+import '../features/collection/providers/batch_selection_provider.dart';
 import '../features/collection/widgets/dialogs/add_content_dialog.dart';
 import '../core/utils/toast.dart';
+import '../routing/navigation_scope.dart';
 import 'navigation_sidebar.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -22,6 +26,7 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   bool _isShowingSheet = false;
+  bool _drawerOpen = false;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -108,10 +113,21 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
+    final uri = GoRouterState.of(context).uri;
+    final editingInWorkspace =
+        (uri.path == '/sources' && uri.queryParameters.containsKey('edit')) ||
+        uri.path.startsWith('/automation/distribution/rules/');
+    final selectingCollection =
+        uri.path == '/collection' &&
+        ref.watch(batchSelectionProvider.select((s) => s.isSelectionMode));
     return PopScope(
       canPop: widget.navigationShell.currentIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        if (selectingCollection) {
+          ref.read(batchSelectionProvider.notifier).exitSelectionMode();
+          return;
+        }
         if (widget.navigationShell.currentIndex != 0) {
           widget.navigationShell.goBranch(0);
         }
@@ -127,28 +143,39 @@ class _AppShellState extends ConsumerState<AppShell> {
             openDrawer: () => _scaffoldKey.currentState!.openDrawer(),
             child: Scaffold(
               key: _scaffoldKey,
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.surfaceContainerLowest,
+              onDrawerChanged: (open) => setState(() => _drawerOpen = open),
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerLowest,
               drawer: useRail
                   ? null
-                  : Drawer(
-                      width: NavigationSidebar.compactWidth,
-                      child: NavigationSidebar(
-                        selectedIndex: widget.navigationShell.currentIndex,
-                        onDestinationSelected: _onDestinationSelected,
-                        closeDrawer: () =>
-                            _scaffoldKey.currentState!.closeDrawer(),
+                  : PredictiveBackDrawer(
+                      isOpen: () =>
+                          _scaffoldKey.currentState?.isDrawerOpen ?? false,
+                      close: () => _scaffoldKey.currentState!.closeDrawer(),
+                      child: Drawer(
+                        width: 280,
+                        child: NavigationSidebar(
+                          selectedIndex: widget.navigationShell.currentIndex,
+                          onDestinationSelected: _onDestinationSelected,
+                          closeDrawer: () =>
+                              _scaffoldKey.currentState!.closeDrawer(),
+                        ),
                       ),
                     ),
               body: Row(
                 children: [
                   if (useRail)
-                    SizedBox(
-                      width: NavigationSidebar.compactWidth,
-                      child: NavigationSidebar(
-                        selectedIndex: widget.navigationShell.currentIndex,
-                        onDestinationSelected: _onDestinationSelected,
+                    SafeArea(
+                      top: false,
+                      bottom: false,
+                      right: false,
+                      child: SizedBox(
+                        width: NavigationSidebar.compactWidth,
+                        child: NavigationSidebar(
+                          selectedIndex: widget.navigationShell.currentIndex,
+                          onDestinationSelected: _onDestinationSelected,
+                        ),
                       ),
                     ),
                   Expanded(
@@ -170,7 +197,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                               // from the accessibility tree.
                               child: Semantics(
                                 container: true,
-                                child: widget.navigationShell,
+                                child: AppNavigationScope(
+                                  active: !_drawerOpen,
+                                  child: widget.navigationShell,
+                                ),
                               ),
                             ),
                             Offstage(
@@ -186,32 +216,38 @@ class _AppShellState extends ConsumerState<AppShell> {
                 ],
               ),
               bottomNavigationBar:
-                  useRail || MediaQuery.viewInsetsOf(context).bottom > 0
+                  editingInWorkspace ||
+                      selectingCollection ||
+                      useRail ||
+                      widget.navigationShell.currentIndex >= 4 ||
+                      MediaQuery.viewInsetsOf(context).bottom > 0
                   ? null
-                  : SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            for (final entry in const [
-                              ('动态', Icons.dynamic_feed_outlined),
-                              ('收藏库', Icons.perm_media_outlined),
-                              ('自动化', Icons.account_tree_outlined),
-                            ].indexed)
-                              Expanded(
-                                child: AppNavigationDestination(
-                                  label: entry.$2.$1,
-                                  icon: entry.$2.$2,
-                                  selected:
-                                      widget.navigationShell.currentIndex ==
-                                      entry.$1,
-                                  onTap: () => _onDestinationSelected(entry.$1),
-                                ),
-                              ),
-                          ],
+                  : NavigationBar(
+                      selectedIndex: widget.navigationShell.currentIndex,
+                      labelBehavior:
+                          NavigationDestinationLabelBehavior.onlyShowSelected,
+                      onDestinationSelected: _onDestinationSelected,
+                      destinations: const [
+                        NavigationDestination(
+                          icon: Icon(Icons.dynamic_feed_outlined),
+                          selectedIcon: Icon(Icons.dynamic_feed_rounded),
+                          label: '动态',
                         ),
-                      ),
+                        NavigationDestination(
+                          icon: Icon(Icons.perm_media_outlined),
+                          selectedIcon: Icon(Icons.perm_media_rounded),
+                          label: '收藏库',
+                        ),
+                        NavigationDestination(
+                          icon: Icon(Icons.rss_feed_rounded),
+                          label: '来源',
+                        ),
+                        NavigationDestination(
+                          icon: Icon(Icons.outbox_outlined),
+                          selectedIcon: Icon(Icons.outbox_rounded),
+                          label: '推送',
+                        ),
+                      ],
                     ),
             ),
           );

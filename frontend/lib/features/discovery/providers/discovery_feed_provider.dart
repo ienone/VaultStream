@@ -1,6 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/sse_service.dart';
 import '../models/discovery_models.dart';
 
 part 'discovery_feed_provider.g.dart';
@@ -12,15 +13,30 @@ class DiscoveryFeed extends _$DiscoveryFeed {
   static const int _pageSize = 20;
   bool _isLoadingMore = false;
   int _queryVersion = 0;
+  int _loadedPages = 1;
   DiscoveryFeedView _view = DiscoveryFeedView.recent;
 
   DiscoveryFeedView get view => _view;
 
   @override
-  FutureOr<DiscoveryItemListResponse> build() {
+  Future<DiscoveryItemListResponse> build() async {
+    refreshOnEvents(
+      ref,
+      (event) =>
+          event.type == 'background_task_updated' &&
+          event.data['task'] == 'discovery_sync' &&
+          event.data['status'] == 'success',
+    );
     _queryVersion += 1;
     _isLoadingMore = false;
-    return _fetch(page: 1);
+    final version = _queryVersion;
+    var result = await _fetch(page: 1);
+    for (var page = 2; page <= _loadedPages && result.hasMore; page++) {
+      if (!ref.mounted || version != _queryVersion) return result;
+      final next = await _fetch(page: page);
+      result = next.copyWith(items: [...result.items, ...next.items]);
+    }
+    return result;
   }
 
   Future<DiscoveryItemListResponse> _fetch({required int page}) async {
@@ -44,6 +60,7 @@ class DiscoveryFeed extends _$DiscoveryFeed {
   }
 
   Future<void> refresh() async {
+    _loadedPages = 1;
     ref.invalidateSelf();
     await future;
   }
@@ -63,6 +80,7 @@ class DiscoveryFeed extends _$DiscoveryFeed {
     try {
       final next = await _fetch(page: current.page + 1);
       if (!ref.mounted || version != _queryVersion) return;
+      _loadedPages = next.page;
       final items = state.value?.items ?? const <DiscoveryItem>[];
       final knownIds = items.map((item) => item.id).toSet();
       state = AsyncData(

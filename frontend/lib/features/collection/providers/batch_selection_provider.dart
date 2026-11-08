@@ -1,5 +1,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import 'content_actions_controller.dart';
+import 'collection_provider.dart';
 
 part 'batch_selection_provider.g.dart';
 
@@ -7,6 +9,23 @@ part 'batch_selection_provider.g.dart';
 class BatchSelection extends _$BatchSelection {
   @override
   BatchSelectionState build() {
+    ref.listen(collectionProvider, (_, next) {
+      if (next.isLoading ||
+          next.hasError ||
+          state.isProcessing ||
+          state.selectedIds.isEmpty) {
+        return;
+      }
+      final visible = next.value?.items.map((item) => item.id).toSet();
+      if (visible == null) return;
+      final retained = state.selectedIds.intersection(visible);
+      if (retained.length != state.selectedIds.length) {
+        state = state.copyWith(
+          selectedIds: retained,
+          isSelectionMode: retained.isNotEmpty,
+        );
+      }
+    });
     return const BatchSelectionState();
   }
 
@@ -18,12 +37,18 @@ class BatchSelection extends _$BatchSelection {
     } else {
       newIds.add(id);
     }
-    state = state.copyWith(selectedIds: newIds, isSelectionMode: true);
+    state = state.copyWith(
+      selectedIds: newIds,
+      isSelectionMode: newIds.isNotEmpty,
+    );
   }
 
   void selectAll(List<int> ids) {
     if (state.isProcessing) return;
-    state = state.copyWith(selectedIds: ids.toSet(), isSelectionMode: true);
+    state = state.copyWith(
+      selectedIds: ids.toSet(),
+      isSelectionMode: ids.isNotEmpty,
+    );
   }
 
   void clearSelection() {

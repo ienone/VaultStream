@@ -10,6 +10,8 @@ OneBot 11 消息段格式参考: https://docs.ncatbot.xyz/guide/message_segment/
 from __future__ import annotations
 
 import base64
+import json
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Dict, Any, List, Optional
@@ -88,6 +90,25 @@ class NapcatPushService(BasePushService):
         response.raise_for_status()
         data = response.json()
         if isinstance(data, dict) and data.get("status") not in (None, "ok"):
+            # This NapCat version can return an error with the uploaded resource ID
+            # after the card actually reached QQ. Read back that exact resource;
+            # never resend and never infer success from a nearby message.
+            if endpoint == "/send_private_forward_msg":
+                match = re.search(r"发送转发消息（res_id：([^\s]+) 失败", str(data.get("message") or data.get("wording") or ""))
+                if match:
+                    history_response = await client.post("/get_friend_msg_history", json={"user_id": payload["user_id"], "count": 20})
+                    history_response.raise_for_status()
+                    history = history_response.json()
+                    if history.get("retcode") == 0:
+                        for row in history["data"]["messages"]:
+                            if str(row["sender"]["user_id"]) != self._bot_uin:
+                                continue
+                            for segment in row["message"]:
+                                if segment["type"] != "json":
+                                    continue
+                                card = json.loads(segment["data"]["data"])
+                                if card.get("app") == "com.tencent.multimsg" and card.get("meta", {}).get("detail", {}).get("resid") == match[1]:
+                                    return {**history, "data": row}
             raise RuntimeError(f"Napcat API error: {data}")
         return data
 
@@ -157,9 +178,6 @@ class NapcatPushService(BasePushService):
         self,
         contents: List[Dict[str, Any]],
         target_id: str,
-        *,
-        use_author_name: bool = True,
-        summary: Optional[str] = None,
     ) -> Optional[str]:
         """Send a merged forward message containing multiple content items.
 
@@ -169,10 +187,12 @@ class NapcatPushService(BasePushService):
 
         await self._get_client()
 
+        if len(contents) > MAX_FORWARD_NODES:
+            raise ValueError("Forward messages must be split into at most 99 nodes")
+        login = await self._post("/get_login_info", {})
+        name = str(login["data"]["nickname"])
         nodes: List[Dict[str, Any]] = []
-        for content in contents[:MAX_FORWARD_NODES]:
-            name = content.get("author_name") if use_author_name else "VaultStream"
-            name = name or "VaultStream"
+        for content in contents:
             node_segments = self._build_message_segments(content)
             node = {
                 "type": "node",
@@ -185,8 +205,7 @@ class NapcatPushService(BasePushService):
             nodes.append(node)
 
         payload: Dict[str, Any] = {"messages": nodes}
-        if summary:
-            payload["summary"] = summary
+        payload["source"] = name
 
         if is_private:
             payload["user_id"] = int(target_id)

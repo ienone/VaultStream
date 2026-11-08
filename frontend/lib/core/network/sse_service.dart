@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../providers/local_settings_provider.dart';
 
 part 'sse_service.g.dart';
@@ -102,6 +104,7 @@ class SseService extends _$SseService {
   int _reconnectAttempts = 0;
   String? _lastEventId;
   bool _disposed = false;
+  bool _hasConnected = false;
 
   final _eventBus = SseEventBus();
 
@@ -113,6 +116,7 @@ class SseService extends _$SseService {
           previous?.baseUrl != next.baseUrl) {
         _reconnectAttempts = 0;
         _lastEventId = null;
+        _hasConnected = false;
         _connect();
       }
     });
@@ -298,7 +302,13 @@ class SseService extends _$SseService {
     if (eventType == _SseConfig.eventConnected) {
       _reconnectAttempts = 0;
       _eventBus.updateState(SseConnectionState.connected);
-      _eventBus.addEvent(SseEvent(type: eventType, data: const {}));
+      _eventBus.addEvent(
+        SseEvent(
+          type: _hasConnected ? 'reconnected' : eventType,
+          data: const {},
+        ),
+      );
+      _hasConnected = true;
       return;
     }
 
@@ -362,7 +372,7 @@ void refreshOnEvents(Ref ref, bool Function(SseEvent) matches) {
   ref.watch(sseServiceProvider.notifier);
   Timer? pending;
   final subscription = SseEventBus().eventStream.listen((event) {
-    if (event.type != 'connected' && !matches(event)) return;
+    if (event.type != 'reconnected' && !matches(event)) return;
     pending ??= Timer(const Duration(milliseconds: 250), () {
       pending = null;
       if (ref.mounted) ref.invalidateSelf();

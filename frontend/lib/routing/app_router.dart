@@ -1,7 +1,12 @@
-import 'dart:async';
-import 'navigation_scope.dart';
+import 'content_route_extra.dart';
+import 'page_origin.dart';
 
-import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'navigation_scope.dart';
+import 'overlay_back_observer.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -18,12 +23,10 @@ import '../features/automation/distribution_rule_page.dart';
 import '../features/automation/providers/rule_editor_key_provider.dart';
 import '../features/settings/settings_page.dart';
 import '../features/agent/agent_page.dart';
-import '../features/accounts/account_center_page.dart';
+import '../features/sources/sources_page.dart';
 import '../features/accounts/account_detail_page.dart';
 import '../features/notifications/notification_center_page.dart';
 import '../features/events/event_detail_page.dart';
-import '../features/search/search_page.dart';
-import '../features/search/search_models.dart';
 import '../features/player/player_page.dart';
 import '../features/player/global_playback_controller.dart';
 import '../features/player/global_player_widgets.dart';
@@ -31,6 +34,7 @@ import '../features/player/playback_route_observer.dart';
 import '../features/auth/presentation/connect_page.dart';
 import '../layout/app_shell.dart';
 import '../core/providers/local_settings_provider.dart';
+import '../core/layout/app_list_detail_workspace.dart';
 
 part 'app_router.g.dart';
 
@@ -44,6 +48,12 @@ GoRouter goRouter(Ref ref) {
   GoRouter.optionURLReflectsImperativeAPIs = true;
 
   final listenable = ValueNotifier<int>(0);
+  final backObservers = <OverlayBackObserver>[];
+  OverlayBackObserver backObserver() {
+    final observer = OverlayBackObserver();
+    backObservers.add(observer);
+    return observer;
+  }
 
   // 当连接配置发生改变时，通知路由重新验证
   ref.listen(localSettingsProvider, (previous, next) {
@@ -62,12 +72,20 @@ GoRouter goRouter(Ref ref) {
     // Authentication loss must always remove private pages. Switching to another
     // stateful branch keeps this form mounted and does not discard its draft.
     if (ref.read(localSettingsProvider).apiToken.isEmpty) return true;
-    final destination = GoRouter.of(
-      context,
-    ).routeInformationProvider.value.uri.path;
+    final destination = GoRouter.of(context)
+        .routeInformationProvider
+        .value
+        .uri
+        .path;
     if (destination == '/home' ||
         destination == '/collection' ||
-        destination == '/notifications') {
+        destination == '/notifications' ||
+        destination == '/sources' ||
+        destination == '/accounts' ||
+        destination == '/sources/sync' ||
+        destination == '/sources/chats' ||
+        destination == '/agent' ||
+        destination == '/settings') {
       return true;
     }
     return await ref
@@ -86,6 +104,7 @@ GoRouter goRouter(Ref ref) {
   final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     observers: [
+      backObserver(),
       if (kIsWeb) ref.read(playbackRouteObserverProvider),
       _PlaybackNavigationObserver((settled) async {
         if (ref.read(localSettingsProvider).apiToken.isEmpty ||
@@ -131,6 +150,7 @@ GoRouter goRouter(Ref ref) {
         ),
       ),
       ShellRoute(
+        observers: [backObserver()],
         builder: (context, state, child) {
           final location = state.uri.path;
           if (location == '/connect') {
@@ -140,6 +160,11 @@ GoRouter goRouter(Ref ref) {
               location == '/home' ||
               location == '/collection' ||
               location == '/notifications' ||
+              location == '/sources' ||
+              location.startsWith('/sources/') ||
+              location.startsWith('/accounts') ||
+              location == '/agent' ||
+              location == '/settings' ||
               location.startsWith('/automation') ||
               location.startsWith('/collection/');
           return AppNavigationScope(
@@ -153,33 +178,6 @@ GoRouter goRouter(Ref ref) {
           GoRoute(
             path: '/connect',
             builder: (context, state) => const ConnectPage(),
-          ),
-          GoRoute(
-            path: '/settings',
-            builder: (context, state) =>
-                SettingsPage(initialTab: state.uri.queryParameters['tab']),
-          ),
-          GoRoute(
-            path: '/agent',
-            builder: (context, state) => AgentPage(
-              initialSessionId: state.uri.queryParameters['session_id'],
-              initialPrompt: state.uri.queryParameters['prompt'],
-            ),
-          ),
-          GoRoute(
-            path: '/search',
-            builder: (context, state) => SearchPage(
-              initialRequest: UnifiedSearchRequest.fromUri(state.uri),
-            ),
-          ),
-          GoRoute(
-            path: '/accounts',
-            builder: (context, state) => const AccountCenterPage(),
-          ),
-          GoRoute(
-            path: '/accounts/:platform',
-            builder: (context, state) =>
-                AccountDetailPage(platform: state.pathParameters['platform']!),
           ),
           StatefulShellRoute.indexedStack(
             // builder用于构建StatefulShellRoute的UI
@@ -196,15 +194,21 @@ GoRouter goRouter(Ref ref) {
               // StatefulShellBranch 表示一个带有状态的主导航分支。
               // 主导航只承载高频任务入口：动态、收藏库、自动化。
               StatefulShellBranch(
+                observers: [backObserver()],
                 // routes参数定义该分支下的路由列表
                 routes: [
                   GoRoute(
                     path: '/home',
-                    builder: (context, state) => const DashboardPage(),
+                    builder: (context, state) => DashboardPage(
+                      selectedContentId: int.tryParse(
+                        state.uri.queryParameters['item'] ?? '',
+                      ),
+                    ),
                   ),
                 ],
               ),
               StatefulShellBranch(
+                observers: [backObserver()],
                 routes: [
                   GoRoute(
                     path: '/collection',
@@ -232,10 +236,16 @@ GoRouter goRouter(Ref ref) {
                             state.uri.queryParameters['media_asset'] ?? '',
                           );
                           final extra = state.extra;
-                          final preview = extra is ShareCard && extra.id == id
-                              ? extra
+                          final card = extra is ContentRouteExtra
+                              ? extra.preview
+                              : extra;
+                          final preview = card is ShareCard && card.id == id
+                              ? card
                               : null;
-                          return MaterialPage<void>(
+                          return OriginMaterialPage<void>(
+                            origin: extra is ContentRouteExtra
+                                ? extra.origin
+                                : null,
                             key: state.pageKey,
                             child: ContentDetailPage(
                               contentId: id,
@@ -283,108 +293,175 @@ GoRouter goRouter(Ref ref) {
                 ],
               ),
               StatefulShellBranch(
+                observers: [backObserver()],
                 routes: [
-                  GoRoute(
-                    path: '/automation',
-                    builder: (context, state) => AutomationPage(
-                      initialTab: state.uri.queryParameters['tab'],
+                  ShellRoute(
+                    observers: [backObserver()],
+                    builder: (context, state, child) => SourcesPage(
+                      tab:
+                          state.uri.queryParameters['from'] == 'sync' &&
+                              const {
+                                'telegram',
+                                'qq',
+                              }.contains(state.pathParameters['platform'])
+                          ? SourcesSection.sync
+                          : state.uri.path.startsWith('/accounts')
+                          ? SourcesSection.accounts
+                          : state.uri.path == '/sources/sync'
+                          ? SourcesSection.sync
+                          : state.uri.path == '/sources/chats'
+                          ? SourcesSection.monitoring
+                          : SourcesSection.subscriptions,
                       highlightRunId: state.uri.queryParameters['run'],
+                      editor: state.uri.queryParameters['edit'],
+                      platform: state.pathParameters['platform'],
+                      accountDetail: child,
                     ),
                     routes: [
                       GoRoute(
-                        path: 'sync',
-                        builder: (context, state) => AutomationPage(
-                          initialTab: 'sync',
-                          highlightRunId: state.uri.queryParameters['run'],
-                        ),
+                        path: '/sources',
+                        pageBuilder: (context, state) =>
+                            const NoTransitionPage(child: SizedBox.shrink()),
                       ),
-                      ShellRoute(
-                        builder: (context, state, child) {
-                          final ruleId = int.tryParse(
-                            state.pathParameters['ruleId'] ?? '',
-                          );
-                          final creating = state.uri.path.endsWith(
-                            '/rules/new',
-                          );
-                          final configuring = state.uri.path.contains('/rules');
-                          return AutomationPage(
-                            initialTab: configuring
-                                ? 'rules'
-                                : state.uri.path.endsWith('/history')
-                                ? 'history'
-                                : 'distribution',
-                            ruleId: ruleId,
-                            creatingRule: creating,
-                            editorRouteKey: ruleId != null || creating
-                                ? ValueKey(
-                                    'distribution-rule-${ruleId ?? 'new'}',
-                                  )
-                                : null,
-                            configuration: child,
-                          );
-                        },
+                      GoRoute(
+                        path: '/accounts',
+                        pageBuilder: (context, state) =>
+                            const NoTransitionPage(child: SizedBox.shrink()),
                         routes: [
                           GoRoute(
-                            path: 'distribution',
+                            path: ':platform',
                             pageBuilder: (context, state) => NoTransitionPage(
-                              key: state.pageKey,
-                              child: const SizedBox.shrink(),
-                            ),
-                            routes: [
-                              GoRoute(
-                                path: 'history',
-                                pageBuilder: (context, state) =>
-                                    NoTransitionPage(
-                                      key: state.pageKey,
-                                      child: const SizedBox.shrink(),
-                                    ),
-                              ),
-                              GoRoute(
-                                path: 'rules',
-                                pageBuilder: (context, state) =>
-                                    NoTransitionPage(
-                                      key: state.pageKey,
-                                      child: const SizedBox.shrink(),
-                                    ),
-                              ),
-                              GoRoute(
-                                path: 'rules/new',
-                                onExit: confirmRuleExit,
-                                pageBuilder: (context, state) =>
-                                    NoTransitionPage(
-                                      key: state.pageKey,
-                                      child: const DistributionRulePage(
-                                        routeKey: ValueKey(
-                                          'distribution-rule-new',
+                              child:
+                                  const {
+                                    'telegram',
+                                    'qq',
+                                  }.contains(state.pathParameters['platform'])
+                                  ? WorkspaceBackTarget(
+                                      child: AccountDetailPage(
+                                        platform:
+                                            state.pathParameters['platform']!,
+                                        onClose: () => context.go(
+                                          state.uri.queryParameters['from'] ==
+                                                  'sync'
+                                              ? '/sources/sync'
+                                              : '/accounts',
                                         ),
                                       ),
-                                    ),
-                              ),
-                              GoRoute(
-                                path: 'rules/:ruleId',
-                                onExit: confirmRuleExit,
-                                pageBuilder: (context, state) => NoTransitionPage(
-                                  key: ValueKey(
-                                    'distribution-rule-${state.pathParameters['ruleId']}',
-                                  ),
-                                  child: DistributionRulePage(
-                                    routeKey: ValueKey(
-                                      'distribution-rule-${state.pathParameters['ruleId']}',
-                                    ),
-                                    ruleId: int.parse(
-                                      state.pathParameters['ruleId']!,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
                           ),
                         ],
                       ),
                       GoRoute(
-                        path: 'processing',
-                        builder: (context, state) =>
-                            const AutomationPage(initialTab: 'processing'),
+                        path: '/sources/chats',
+                        pageBuilder: (context, state) =>
+                            const NoTransitionPage(child: SizedBox.shrink()),
+                      ),
+                      GoRoute(
+                        path: '/sources/sync',
+                        pageBuilder: (context, state) =>
+                            const NoTransitionPage(child: SizedBox.shrink()),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                observers: [backObserver()],
+                routes: [
+                  ShellRoute(
+                    observers: [backObserver()],
+                    builder: (context, state, child) {
+                      final ruleId = int.tryParse(
+                        state.pathParameters['ruleId'] ?? '',
+                      );
+                      final creating = state.uri.path.endsWith('/rules/new');
+                      final configuring = state.uri.path.contains('/rules');
+                      final targets = state.uri.path.endsWith('/targets');
+                      return DistributionPage(
+                        initialTab: targets
+                            ? 'targets'
+                            : configuring
+                            ? 'rules'
+                            : state.uri.path.endsWith('/history')
+                            ? 'history'
+                            : 'distribution',
+                        ruleId: ruleId,
+                        selectedContentId: int.tryParse(
+                          state.uri.queryParameters['item'] ?? '',
+                        ),
+                        filterRuleId: int.tryParse(
+                          state.uri.queryParameters['rule'] ?? '',
+                        ),
+                        creatingRule: creating,
+                        editorRouteKey: ruleId != null || creating
+                            ? ValueKey('distribution-rule-${ruleId ?? 'new'}')
+                            : null,
+                        configuration: child,
+                      );
+                    },
+                    routes: [
+                      GoRoute(
+                        path: '/automation/distribution',
+                        pageBuilder: (context, state) => NoTransitionPage(
+                          key: state.pageKey,
+                          child: const SizedBox.shrink(),
+                        ),
+                        routes: [
+                          GoRoute(
+                            path: 'targets',
+                            pageBuilder: (context, state) => NoTransitionPage(
+                              key: state.pageKey,
+                              child: const SizedBox.shrink(),
+                            ),
+                          ),
+                          GoRoute(
+                            path: 'history',
+                            pageBuilder: (context, state) => NoTransitionPage(
+                              key: state.pageKey,
+                              child: const SizedBox.shrink(),
+                            ),
+                          ),
+                          GoRoute(
+                            path: 'rules',
+                            pageBuilder: (context, state) => NoTransitionPage(
+                              key: state.pageKey,
+                              child: const SizedBox.shrink(),
+                            ),
+                          ),
+                          GoRoute(
+                            path: 'rules/new',
+                            onExit: confirmRuleExit,
+                            pageBuilder: (context, state) => NoTransitionPage(
+                              key: state.pageKey,
+                              child: WorkspaceBackTarget(
+                                child: const DistributionRulePage(
+                                  routeKey: ValueKey('distribution-rule-new'),
+                                ),
+                              ),
+                            ),
+                          ),
+                          GoRoute(
+                            path: 'rules/:ruleId',
+                            onExit: confirmRuleExit,
+                            pageBuilder: (context, state) => NoTransitionPage(
+                              key: ValueKey(
+                                'distribution-rule-${state.pathParameters['ruleId']}',
+                              ),
+                              child: WorkspaceBackTarget(
+                                child: DistributionRulePage(
+                                  routeKey: ValueKey(
+                                    'distribution-rule-${state.pathParameters['ruleId']}',
+                                  ),
+                                  ruleId: int.parse(
+                                    state.pathParameters['ruleId']!,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -392,10 +469,34 @@ GoRouter goRouter(Ref ref) {
               ),
               // Tool workspace inside the same sidebar; not a bottom-bar destination.
               StatefulShellBranch(
+                observers: [backObserver()],
                 routes: [
                   GoRoute(
                     path: '/notifications',
                     builder: (context, state) => const NotificationCenterPage(),
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                observers: [backObserver()],
+                routes: [
+                  GoRoute(
+                    path: '/agent',
+                    builder: (context, state) => AgentPage(
+                      initialSessionId: state.uri.queryParameters['session_id'],
+                      initialPrompt: state.uri.queryParameters['prompt'],
+                    ),
+                  ),
+                ],
+              ),
+              StatefulShellBranch(
+                observers: [backObserver()],
+                routes: [
+                  GoRoute(
+                    path: '/settings',
+                    builder: (context, state) => SettingsPage(
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
                   ),
                 ],
               ),
@@ -407,6 +508,9 @@ GoRouter goRouter(Ref ref) {
   );
   ref.onDispose(() {
     router.dispose();
+    for (final observer in backObservers) {
+      observer.dispose();
+    }
     listenable.dispose();
   });
   return router;

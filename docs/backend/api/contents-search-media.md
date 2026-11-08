@@ -15,12 +15,12 @@ active
 ## 捕获与内容
 
 - `POST /api/v1/shares` 接收分享链接并创建或合并内容。`tags` 与 `tags_text` 会在服务端统一拆分、去空和去重。
-- `/shares` 成功响应包含可直接进入详情的内容 `id`。若内容和来源已经保存但解析任务入队失败，响应为 `503 parse_queue_unavailable` 并带 `content_id`；这是捕获成功后的待处理状态，不是数据回滚。
+- `/shares` 成功响应包含可直接进入详情的内容 `id`。内容、来源与待解析任务在同一数据库事务提交；重复链接复用内容和待处理任务。
 - `POST /api/v1/captures/text` 接收原始文本、可选标题、标签和来源。正文直接保存为 `parse_success` 的 `universal/note` 内容，不调用网页适配器；标题留空时使用正文第一条非空行。摘要和语义索引仍是后处理结果，不得覆盖或冒充原文。
 - `POST /api/v1/captures/file` 接收 `multipart/form-data` 原始文件，以及可选标题、标签、说明和 NSFW 标记。服务端边接收边计算 SHA-256，写入仓库配置的本地 storage，并以统一 `MediaAsset` / 原始 `MediaVariant` 暴露签名访问；图片、视频、音频和文档使用明确的内容类型，不经过网页适配器。空文件返回 `400 capture_file_empty`，超过 `CAPTURE_UPLOAD_MAX_BYTES`（默认 512 MiB）返回 `413 capture_file_too_large`。
 - `POST /api/v1/captures/files` 接收同一次分享中的 1–32 个 `uploads`。所有文件归入同一个内容对象并按顺序建立独立 `MediaAsset`；多张图片形成 gallery，其他混合文件形成带附件的 document。单个文件仍受 `CAPTURE_UPLOAD_MAX_BYTES` 限制；来源说明和 `client_context_json` 写入同一条 `ContentSource`，无效上下文返回稳定错误码。
 - `GET /api/v1/contents` 提供分页、平台、状态、标签、作者、日期、关键词和 NSFW 筛选。
-- `GET /api/v1/contents/{content_id}` 返回单条内容详情。若 `rich_payload.chunks[]` 含显式章节/转写时间点，响应会额外返回经过媒体归属、类型和时长校验的 `media_segments`；调用方不应自行解析原始 payload 猜测可播放位置。
+- `GET /api/v1/contents/{content_id}` 返回单条内容详情。编辑器传入 `for_edit=true` 时，正文与封面返回存储的可编辑引用；阅读视图使用媒体访问地址。若 `rich_payload.chunks[]` 含显式章节/转写时间点，响应会额外返回经过媒体归属、类型和时长校验的 `media_segments`；调用方不应自行解析原始 payload 猜测可播放位置。
 - `media_segments[].excerpt` 是至多 280 字的预览，`full_text` 是同一已校验切片的完整原文，供逐字稿展开阅读。两者均不代表模型校正后的事实；无原文时为空字符串。
 - `GET, POST /api/v1/contents/{content_id}/media-bookmarks` 按明确 `media_asset_id` 列出或创建用户时间点书签；`PATCH, DELETE /api/v1/contents/{content_id}/media-bookmarks/{bookmark_id}` 编辑可选笔记或删除书签。服务端验证内容存在、资产归属、audio/video 类型、非负秒数和已知媒体时长；同一资产的同一毫秒位置只保留一个书签。
 - `PATCH /api/v1/contents/{content_id}` 更新允许人工维护的内容字段。只有值实际变化的标题、正文、作者、封面、标签和模板会记为人工修订；`layout_type_override=null` 会恢复自动模板并解除对应保护。
@@ -29,9 +29,10 @@ active
 
 内容列表、详情与卡片接口不是三套独立事实源。新增字段时应先确认内容 schema，再决定列表或卡片是否暴露其子集。
 
+卡片与统一检索内容结果提供 `excerpt`：从已存正文去除 HTML/Markdown 标记后截取最多 280 字，超长附省略号；没有正文时为空。它是原文预览，不使用 AI 摘要代替正文，也不修改原始 `title` 或数据库内容。卡片接口保留原始可空标题，调用方可在缺少标题时直接展示摘录。
+
 ## 后处理动作
 
-- `POST /api/v1/contents/{content_id}/retry` 同步重新解析一次，成功时返回内容最新状态；不再接受执行预算 `max_retries`，也不是后台受理 contract。
 - `POST /api/v1/contents/{content_id}/re-parse` 创建可观察 run 并调度后台重新解析，`ContentReparseAcceptedResponse` 的 `processing` 只表示已受理。人工修订字段不会被解析器静默覆盖；差异写入详情的 `parse_candidate.fields`，并保留最新候选时间。
 - `POST /api/v1/contents/{content_id}/generate-summary` 在响应前完成摘要生成并结算 run，返回摘要与 `run_id`。
 - `POST /api/v1/contents/{content_id}/patrol-score` 在响应前完成评分并结算 run，仅适用于发现流内容；非发现流内容返回业务错误。

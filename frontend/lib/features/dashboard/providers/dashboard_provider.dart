@@ -1,17 +1,11 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
 import '../models/stats.dart';
 
 part 'dashboard_provider.g.dart';
-
-@riverpod
-Future<DashboardStats> dashboardStats(Ref ref) async {
-  final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/dashboard/stats');
-  return DashboardStats.fromJson(response.data);
-}
 
 @riverpod
 Future<QueueOverviewStats> queueStats(Ref ref) async {
@@ -20,15 +14,8 @@ Future<QueueOverviewStats> queueStats(Ref ref) async {
   return QueueOverviewStats.fromJson(response.data);
 }
 
-@riverpod
-Future<SystemHealth> systemHealth(Ref ref) async {
-  final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/health');
-  return SystemHealth.fromJson(response.data);
-}
-
 final backgroundTaskDiagnosticsProvider =
-    FutureProvider<BackgroundTaskDiagnostics>((ref) async {
+    FutureProvider.autoDispose<BackgroundTaskDiagnostics>((ref) async {
       refreshOnEvents(
         ref,
         (event) => _diagnosticsEventTypes.contains(event.type),
@@ -47,8 +34,8 @@ const _diagnosticsEventTypes = {
   'distribution_push_success',
 };
 
-final backgroundTaskRunProvider =
-    FutureProvider.family<BackgroundTaskRun, String>((ref, runId) async {
+final backgroundTaskRunProvider = FutureProvider.autoDispose
+    .family<BackgroundTaskRun, String>((ref, runId) async {
       refreshOnEvents(
         ref,
         (event) =>

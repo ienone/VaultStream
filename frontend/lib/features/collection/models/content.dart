@@ -30,6 +30,7 @@ abstract class ShareCard with _$ShareCard {
     @JsonKey(name: 'content_type') String? contentType,
     @JsonKey(name: 'effective_layout_type') String? layoutType,
     String? title,
+    String? excerpt,
     @JsonKey(name: 'author_name') String? authorName,
     @JsonKey(name: 'author_id') String? authorId,
     @JsonKey(name: 'author_avatar_url') String? authorAvatarUrl,

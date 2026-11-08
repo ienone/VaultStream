@@ -18,7 +18,7 @@ class SearchHistory extends _$SearchHistory {
     if (queryTrimmed.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
-    final currentList = state.value ?? [];
+    final currentList = prefs.getStringList(_key) ?? [];
 
     // Remove if exists to move to top
     final newList = List<String>.from(currentList)..remove(queryTrimmed);
@@ -30,22 +30,22 @@ class SearchHistory extends _$SearchHistory {
     }
 
     await prefs.setStringList(_key, newList);
-    state = AsyncValue.data(newList);
+    if (ref.mounted) state = AsyncValue.data(newList);
   }
 
   Future<void> remove(String query) async {
     final prefs = await SharedPreferences.getInstance();
-    final currentList = state.value ?? [];
+    final currentList = prefs.getStringList(_key) ?? [];
 
     final newList = List<String>.from(currentList)..remove(query);
 
     await prefs.setStringList(_key, newList);
-    state = AsyncValue.data(newList);
+    if (ref.mounted) state = AsyncValue.data(newList);
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
-    state = const AsyncValue.data([]);
+    if (ref.mounted) state = const AsyncValue.data([]);
   }
 }

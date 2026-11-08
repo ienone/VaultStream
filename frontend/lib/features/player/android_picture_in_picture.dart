@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -35,8 +35,20 @@ class PictureInPictureController
         await ref.read(globalPlaybackProvider.notifier).pause();
       }
     });
+    // The media service can start this engine before MainActivity exists.
+    // Its PiP channel is available once the activity has resumed.
+    final lifecycle = AppLifecycleListener(
+      onResume: () => unawaited(_readSupport()),
+    );
+    ref.onDispose(lifecycle.dispose);
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      await _readSupport();
+    }
+  }
+
+  Future<void> _readSupport() async {
     final supported = await _channel.invokeMethod<bool>('isSupported') ?? false;
-    state = (supported: supported, active: false);
+    state = (supported: supported, active: state.active);
   }
 
   Future<void> updateTarget(

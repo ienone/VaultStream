@@ -67,7 +67,7 @@ jobs:
       - name: Install dependencies
         run: |
           flutter pub get
-          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+          dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
 
       - name: Run code generation
         run: dart run build_runner build --delete-conflicting-outputs

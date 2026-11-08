@@ -1,7 +1,10 @@
+import '../../core/widgets/app_filter_menu.dart';
 import '../../routing/app_navigation.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/widgets/discard_changes_dialog.dart';
 
 import '../../core/widgets/adaptive_form_dialog.dart';
@@ -9,6 +12,7 @@ import '../../core/widgets/browser_leave_guard.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
 import '../../core/widgets/platform_badge.dart';
+import '../../core/widgets/metadata_wrap.dart';
 import '../../theme/design_tokens.dart';
 import 'models/knowledge_event.dart';
 import 'providers/knowledge_event_provider.dart';
@@ -211,9 +215,7 @@ class _TimelineEntry extends ConsumerWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                title == null || title.isEmpty
-                                    ? '无标题内容'
-                                    : title,
+                                title == null || title.isEmpty ? '查看内容' : title,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ),
@@ -338,11 +340,10 @@ class _EventHeader extends StatelessWidget {
           Text(description),
         ],
         const SizedBox(height: AppSpacing.sm),
-        Text(
-          '${_statusLabel(event.status)} · ${event.memberCount} 条关联内容',
-          style: Theme.of(
-            context,
-          ).textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
+        MetadataWrap(
+          items: [_statusLabel(event.status), '${event.memberCount} 条关联内容'],
+          style: Theme.of(context).textTheme.labelLarge
+              ?.copyWith(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: AppSpacing.md),
         Wrap(
@@ -553,23 +554,15 @@ class _EventEditDialogState extends ConsumerState<_EventEditDialog> {
     String value,
     Map<String, String> options,
     ValueChanged<String> onChanged,
-  ) => DropdownButtonFormField<String>(
-    initialValue: value,
-    isExpanded: true,
-    itemHeight: null,
-    menuMaxHeight: 400,
-    borderRadius: AppShape.cardBorder,
-    dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-    decoration: InputDecoration(labelText: label),
-    items: [
-      for (final item in options.entries)
-        DropdownMenuItem(value: item.key, child: Text(item.value)),
-    ],
-    onChanged: _saving
-        ? null
-        : (value) {
-            if (value != null) onChanged(value);
-          },
+  ) => Semantics(
+    label: label,
+    child: AppFilterMenu(
+      label: label,
+      value: value,
+      options: options,
+      enabled: !_saving,
+      onSelected: onChanged,
+    ),
   );
 
   @override

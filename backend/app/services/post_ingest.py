@@ -5,8 +5,11 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.logging import logger
-from app.models import Content
+from app.models import Content, Task, TaskStatus
+from app.core.database import AsyncSessionLocal
+from app.core.queue import task_queue
+from app.core.events import event_bus
+from sqlalchemy import select, update
 from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import coerce_bool
 from app.services import settings_service
@@ -16,27 +19,30 @@ class PostIngestService:
     """Shared post-ingest hooks for parsed, discovered, and imported content."""
 
     async def run_for_content(
-        self,
-        session: AsyncSession,
-        content: Content,
-        *,
-        source: str,
-        summary: bool = True,
-        embedding: bool = True,
-        distribution: bool = True,
+        self, session: AsyncSession, content: Content, *, source: str,
+        summary: bool = True, embedding: bool = True, distribution: bool = True,
+        scoring: bool = False,
+        commit: bool = True,
     ) -> None:
-        content_id = content.id
-        if summary:
-            await self.generate_summary(session, content)
-        try:
-            if distribution:
-                await self.auto_approve_and_enqueue(session, content)
-        finally:
-            if embedding:
-                # Index after these writes, including when an independent hook fails.
-                self.schedule_embedding_index(content_id, source=source)
+        # Serialize pending-job coalescing with content writes. Running work is
+        # not coalesced: a newly changed body needs its own subsequent processing.
+        await session.execute(update(Content).where(Content.id == content.id).values(updated_at=Content.updated_at))
+        for kind, enabled, priority in (("content_scoring", scoring, 3),
+                                        ("content_summary", summary, 2),
+                                        ("content_distribution", distribution, 1),
+                                        ("content_embedding", embedding, 0)):
+            if not enabled:
+                continue
+            pending = await session.scalar(select(Task.id).where(
+                Task.task_type == kind, Task.status == TaskStatus.PENDING,
+                Task.payload["content_id"].as_integer() == content.id,
+            ).limit(1))
+            if pending is None:
+                task_queue.add(session, kind, {"content_id": content.id, "source": source, "trigger": "auto", "priority": priority})
+        if commit:
+            await session.commit()
 
-    async def generate_summary(self, session: AsyncSession, content: Content) -> None:
+    async def generate_summary(self, session: AsyncSession, content: Content) -> dict:
         enable_auto_summary = coerce_bool(
             await settings_service.get_setting_value(
                 "enable_auto_summary", settings.enable_auto_summary,
@@ -44,58 +50,92 @@ class PostIngestService:
             default=settings.enable_auto_summary,
         )
         if not enable_auto_summary:
-            return
+            return {"skipped": True, "reason": "automatic_summary_disabled"}
 
-        try:
-            from app.services.content_summary_service import generate_summary_for_content
+        from app.services.content_summary_service import generate_summary_for_content
 
-            await generate_summary_for_content(session, content.id)
-        except Exception as e:
-            logger.warning("摘要生成/处理失败: {}", e)
-            # Summary failures roll back the session and expire this instance.
-            # Reload before later hooks read its fields or classify the content.
-            await session.refresh(content)
+        result = await generate_summary_for_content(session, content.id)
+        return {"summary_present": bool(result.summary)}
 
-    def schedule_embedding_index(
-        self,
-        content_id: int,
-        *,
-        source: str = "post_ingest",
-    ) -> asyncio.Task[None]:
-        async def _run():
-            from app.services.embedding_service import EmbeddingService, EmbeddingIndexError
-            try:
-                decision = await AutomationPolicyService().automatic_semantic_indexing()
-                if decision.allowed:
-                    await EmbeddingService().index_content(content_id)
-            except EmbeddingIndexError:
-                # Each failed unit already has a persisted failure_reason.
-                pass
-            except Exception as error:
-                logger.bind(component="embedding", content_id=content_id).warning(
-                    "搜索索引失败: {}", error,
-                )
-
-        return asyncio.create_task(_run())
-
-    async def score_discovery(self, session: AsyncSession) -> None:
-        decision = await AutomationPolicyService().discovery_scoring()
-        if not decision.allowed:
-            return
-
-        from app.services.patrol_service import PatrolService
-
-        await PatrolService().score_pending(session)
+    async def schedule_embedding_index(self, content_id: int, *, source: str = "post_ingest") -> None:
+        async with AsyncSessionLocal() as db:
+            content = await db.get(Content, content_id)
+            if content is not None and content.deleted_at is None:
+                await self.run_for_content(db, content, source=source, summary=False, distribution=False)
 
     async def auto_approve_and_enqueue(self, session: AsyncSession, content: Content) -> None:
-        try:
-            from app.services.distribution_topics import tag_distribution_topics
-            await tag_distribution_topics(session, content)
-        except Exception:
-            logger.exception("分发主题分类失败: content_id={}", content.id)
-        try:
-            from app.services.distribution import DistributionService
+        from app.services.distribution_topics import tag_distribution_topics
+        from app.services.distribution import DistributionService
 
-            await DistributionService(session).auto_approve_if_eligible(content)
-        except Exception as e:
-            logger.warning("自动审批检查失败: {}", e, exc_info=True)
+        await tag_distribution_topics(session, content)
+        await DistributionService(session).auto_approve_if_eligible(content)
+
+
+async def process_content_task(task: Task) -> None:
+    """一次执行一个后处理阶段；失败不回退正文，也不重放其他阶段。"""
+    from app.services.background_task_state import record_task_run_started, record_task_run_success, record_task_run_error
+
+    data = task.payload
+    content_id = data["content_id"]
+    run_name = data["run_name"]
+    run_id = data["run_id"]
+    await record_task_run_started(run_name, run_id=run_id, content_id=content_id, task_db_id=task.id)
+
+    async def execute() -> dict:
+        async with AsyncSessionLocal() as db:
+            content = await db.get(Content, content_id)
+            if content is None or content.deleted_at is not None:
+                return {"skipped": True, "reason": "content_deleted"}
+            pipeline = PostIngestService()
+            if task.task_type == "content_scoring":
+                from app.models import DiscoveryState
+                from app.core.time_utils import utcnow
+                from app.services.patrol_service import PatrolService
+                decision = await AutomationPolicyService().discovery_scoring()
+                if not decision.allowed:
+                    return {"skipped": True, "reason": decision.code}
+                if content.discovery_state != DiscoveryState.INGESTED or (content.expire_at and content.expire_at < utcnow()):
+                    return {"skipped": True, "reason": "not_pending_discovery"}
+                profile = await settings_service.get_setting_value("discovery_interest_profile", "")
+                if not await PatrolService().score_item(content, str(profile or ""), db=db):
+                    raise ValueError("内容评分失败，请检查模型配置后重试")
+            elif task.task_type == "content_summary":
+                return await pipeline.generate_summary(db, content)
+            elif task.task_type == "content_distribution":
+                await pipeline.auto_approve_and_enqueue(db, content)
+            elif task.task_type == "content_embedding":
+                decision = await AutomationPolicyService().automatic_semantic_indexing()
+                if not decision.allowed:
+                    return {"skipped": True, "reason": decision.code}
+                from app.services.embedding_service import EmbeddingService
+                await db.rollback()
+                return {"indexed": await EmbeddingService().index_content(content_id)}
+            elif task.task_type == "document_extract":
+                from app.services.document_text import extract_content_documents, _SUCCESS
+                await db.rollback()
+                result = await extract_content_documents(content_id)
+                content = await db.get(Content, content_id)
+                if content is not None and content.deleted_at is None:
+                    await pipeline.run_for_content(
+                        db, content, source=data["source"],
+                        summary=bool(result["text_page_count"]), distribution=False,
+                    )
+                if any(item["status"] not in _SUCCESS for item in result["documents"]):
+                    raise ValueError("部分 PDF 未能提取正文，请查看文件状态")
+                return result
+        return {}
+
+    try:
+        result = await asyncio.wait_for(execute(), timeout=task_queue.EXECUTION_TIMEOUT.total_seconds())
+        if not await task_queue.mark_complete(task):
+            raise RuntimeError("content task already settled")
+        await record_task_run_success(run_name, run_id, content_id=content_id, **{
+            key: value for key, value in result.items() if key != "content_id"
+        })
+    except (Exception, asyncio.CancelledError) as error:
+        await task_queue.mark_failed(task, reason=str(error) or "Task cancelled")
+        await record_task_run_error(run_name, run_id, str(error) or "Task cancelled", content_id=content_id)
+        if isinstance(error, asyncio.CancelledError):
+            raise
+    finally:
+        await event_bus.publish("content_updated", {"id": content_id})

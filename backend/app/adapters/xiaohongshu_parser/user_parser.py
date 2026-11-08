@@ -3,6 +3,7 @@
 
 负责解析小红书用户主页
 """
+from app.adapters.xiaohongshu_parser.transport import reading_hooks
 from typing import Dict, Any, Optional
 from app.adapters.base import ParsedContent, LAYOUT_GALLERY
 from app.adapters.errors import (
@@ -104,17 +105,19 @@ async def fetch_user_via_api(user_id, xhs_client, cookies, headers, xsec_token=N
         raise AuthRequiredAdapterError("需要配置小红书Cookie")
     
     # 生成签名
-    sign_headers = xhs_client.sign_headers_get(
-        uri=API_USER_INFO,
-        cookies=cookies,
-        params=params,
-        session=session,
-    )
-    
-    request_headers = {**headers, **sign_headers}
+    hooks = reading_hooks()
+
+    async def sign_request(request):
+        request.headers.update(xhs_client.sign_headers_get(
+            uri=API_USER_INFO, cookies=cookies, params=params, session=session,
+        ))
+
+    hooks["request"].append(sign_request)
+    request_headers = headers
+
     api_url = f"{API_BASE}{API_USER_INFO}"
     
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(event_hooks=hooks, timeout=15.0) as client:
         try:
             response = await client.get(
                 api_url,
@@ -166,7 +169,7 @@ async def parse_user(
         if xsec_token:
             request_url += f"?xsec_token={quote(xsec_token, safe='')}"
         try:
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            async with httpx.AsyncClient(event_hooks=reading_hooks(), timeout=15, follow_redirects=True) as client:
                 response = await client.get(request_url, headers=navigation_headers(headers))
             if response.status_code in (404, 410) or '/404' in str(response.url):
                 raise NonRetryableAdapterError("小红书用户主页不可访问")

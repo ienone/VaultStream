@@ -17,9 +17,11 @@ from app.adapters.zhihu_parser import (
 )
 from app.adapters.zhihu_parser.base import preprocess_zhihu_html, extract_images
 from app.adapters.zhihu_parser.models import ZhihuAuthor
+from app.adapters.zhihu_parser.pin_parser import parse_pin_data
 from app.adapters.zhihu_parser.public_reader import parse_public_reader
 from app.adapters.zhihu_parser.browser_reader import read_public_page
 from app.adapters.utils.cookie_utils import normalize_cookie_header_value
+from app.services.source_reading import source_reading, SourceCoolingDown
 from app.core.config import settings
 from app.core.safe_fetch import safe_client_get
 from app.services.config_service import ConfigService
@@ -73,6 +75,7 @@ class ZhihuAdapter(PlatformAdapter):
 
     # API Include 参数配置 (参考 fxzhihu 项目优化)
     API_INCLUDE_PARAMS = {
+        "pin": "topics",
         # Answer: 元数据丰富，但匿名请求可能要求登录
         "answer": "content,excerpt,voteup_count,comment_count,created_time,updated_time,thanks_count,relationship.is_author,is_thanked,voting",
         
@@ -94,6 +97,7 @@ class ZhihuAdapter(PlatformAdapter):
     
     # API端点模板
     API_ENDPOINTS = {
+        "pin": "https://www.zhihu.com/api/v4/pins/{id}",
         "answer": "https://www.zhihu.com/api/v4/answers/{id}",
         # 使用 zhuanlan.zhihu.com/api 端点（api.zhihu.com 被风控40362）
         "article": "https://zhuanlan.zhihu.com/api/articles/{id}",
@@ -239,7 +243,7 @@ class ZhihuAdapter(PlatformAdapter):
 
         headers = {**self.API_HEADERS, **extra_headers}
 
-        async with httpx.AsyncClient(
+        async with httpx.AsyncClient(event_hooks=source_reading.http_hooks("zhihu"),
             headers=headers,
             cookies=request_cookies,
             follow_redirects=True,
@@ -248,6 +252,9 @@ class ZhihuAdapter(PlatformAdapter):
         ) as client:
             try:
                 response = await client.get(api_url)
+                if response.status_code == 429:
+                    await source_reading.http_cooldown("zhihu", response.headers.get("Retry-After"))
+                    raise RetryableAdapterError("知乎请求频率受限，请等待冷却后重试")
                 
                 if response.status_code == 404:
                     return {"_error": "not_found"}
@@ -309,6 +316,8 @@ class ZhihuAdapter(PlatformAdapter):
                 
                 return data
                 
+            except (RetryableAdapterError, SourceCoolingDown):
+                raise
             except httpx.RequestError as e:
                 logger.warning(f"API请求异常: {e}")
                 return None
@@ -317,6 +326,33 @@ class ZhihuAdapter(PlatformAdapter):
                 return None
 
     # ==================== API解析方法 ====================
+
+    async def _parse_pin_via_api(self, pin_id: str, url: str) -> Optional[ParsedContent]:
+        data = await self._api_request("pin", pin_id, use_cookies=bool(self.cookies))
+        if not data:
+            return None
+        if data.get("_error") == "auth_required":
+            raise AuthRequiredAdapterError("知乎当前入口要求登录")
+        if data.get("_error") == "not_found":
+            raise NonRetryableAdapterError("知乎内容不存在")
+        if "_error" in data:
+            return None
+        if str(data.get("id")) != pin_id or data.get("is_deleted"):
+            raise NonRetryableAdapterError("知乎 API 未返回有效目标想法")
+        if not data.get("content") and not data.get("content_html"):
+            return None
+        # API snake_case and page camelCase are normalized at the boundary.
+        def page_keys(value):
+            if isinstance(value, list):
+                return [page_keys(item) for item in value]
+            if isinstance(value, dict):
+                return {re.sub(r"_([a-z])", lambda m: m[1].upper(), key): page_keys(item)
+                        for key, item in value.items()}
+            return value
+        result = parse_pin_data(page_keys(data), url)
+        if result:
+            result.archive_metadata["raw_api_response"] = data
+        return result
 
     async def _parse_answer_via_api(self, answer_id: str, url: str) -> Optional[ParsedContent]:
         """通过API解析回答"""
@@ -773,7 +809,7 @@ class ZhihuAdapter(PlatformAdapter):
         reader_url = f"https://www.zhihu.com/tardis/zm/{reader_type}/{content_id}"
         proxy = await self._get_proxy_url()
         try:
-            async with httpx.AsyncClient(timeout=15.0, proxy=proxy) as client:
+            async with httpx.AsyncClient(event_hooks=source_reading.http_hooks("zhihu"), timeout=15.0, proxy=proxy) as client:
                 response = await safe_client_get(
                     client, reader_url,
                     headers={"User-Agent": self._UA, "Accept": "text/html,application/xhtml+xml"},
@@ -797,7 +833,7 @@ class ZhihuAdapter(PlatformAdapter):
         # Public reader succeeds without login or browser startup. With a saved
         # account, retain the richer API metadata; a stale account cannot block
         # the independent anonymous reader.
-        public_reader_type = content_type in {"answer", "article"} and content_id
+        public_reader_type = content_type == "article" and content_id
         if public_reader_type and not self.cookies:
             result = await self._parse_public_reader(clean_url, content_type, content_id)
             if result:
@@ -806,14 +842,15 @@ class ZhihuAdapter(PlatformAdapter):
         # 其余类型及已保存账号优先尝试现有 API。
         # Article: 带cookie时API可用，先试API再回退HTML
         # Question: 带cookie时API成功率较高，先试API再回退HTML
-        # Pin: 仅支持HTML
+        # Pin: API 与浏览器数据共用结构化解析器。
         
-        api_preferred_types = {"answer", "user_profile", "column", "collection", "article", "question"}
+        api_preferred_types = {"pin", "answer", "user_profile", "column", "collection", "article", "question"}
         
-        browser_types = {"article", "question", "user_profile"}
+        browser_types = {"article", "question", "user_profile", "pin", "answer"}
         if (content_id and content_type in api_preferred_types
-                and (self.cookies or content_type not in browser_types)):
+                and (self.cookies or content_type == "pin" or content_type not in browser_types)):
             api_parsers = {
+                "pin": self._parse_pin_via_api,
                 "answer": self._parse_answer_via_api,
                 "user_profile": self._parse_user_via_api,
                 "column": self._parse_column_via_api,
@@ -832,7 +869,12 @@ class ZhihuAdapter(PlatformAdapter):
                 return result
 
         if content_id and content_type in browser_types:
-            result = await read_public_page(content_type, content_id, await self._get_proxy_url())
+            await source_reading.wait("zhihu")
+            result = await read_public_page(
+                content_type, content_id, await self._get_proxy_url(),
+                source_url=clean_url,
+                cookies=self.cookies if content_type in {"pin", "answer"} else None,
+            )
             return result
 
         # HTML解析回退
@@ -851,7 +893,7 @@ class ZhihuAdapter(PlatformAdapter):
             )
             request_cookies = None
 
-        async with httpx.AsyncClient(
+        async with httpx.AsyncClient(event_hooks=source_reading.http_hooks("zhihu"),
             headers=headers,
             cookies=request_cookies,
             follow_redirects=True,

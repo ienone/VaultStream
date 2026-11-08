@@ -1,21 +1,28 @@
 import '../../../../../core/widgets/media_image_hero.dart';
+
 import 'dart:math' as math;
-import 'dart:ui';
+import 'dart:ui' show lerpDouble;
+
+import '../../../../../core/motion/shared_transition.dart';
+import '../../../../../core/motion/shared_transition_surface.dart';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+
 import '../../../../../core/media/media_manifest_client.dart';
 import '../../../../../core/media/media_source_session.dart';
 import '../../../../../core/network/api_client.dart';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+
 import '../../../../../core/media/media_asset.dart';
 import '../../../../../core/widgets/network_thumbnail.dart';
 import '../../../../../core/widgets/media_overlay_surface.dart';
 import '../../../../../core/utils/toast.dart';
 import '../../../../../theme/design_tokens.dart';
-import '../../../../../theme/app_theme.dart';
 
 class FullScreenGallery extends ConsumerStatefulWidget {
   final List<String> images;
@@ -23,8 +30,8 @@ class FullScreenGallery extends ConsumerStatefulWidget {
   final Map<String, List<String>> fallbackUrlsByImage;
   final Map<String, MediaAsset> mediaAssetsByImage;
   final int contentId;
-  final Color? contentColor;
-  final String? customHeroTag;
+  final List<MediaImageIdentity> identities;
+  final SharedTransitionSession transition;
   final Function(int)? onPageChanged;
 
   const FullScreenGallery({
@@ -34,8 +41,8 @@ class FullScreenGallery extends ConsumerStatefulWidget {
     this.fallbackUrlsByImage = const {},
     this.mediaAssetsByImage = const {},
     required this.contentId,
-    this.contentColor,
-    this.customHeroTag,
+    required this.identities,
+    required this.transition,
     this.onPageChanged,
   });
 
@@ -46,16 +53,19 @@ class FullScreenGallery extends ConsumerStatefulWidget {
 class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
     with TickerProviderStateMixin {
   late int _currentIndex;
+  late int _requestedIndex;
   late PageController _controller;
   final FocusNode _keyboardFocus = FocusNode(debugLabel: 'fullscreen-gallery');
   final GlobalKey _viewportKey = GlobalKey();
-  Offset _dragOffset = Offset.zero;
+  final _dragOffset = ValueNotifier(Offset.zero);
   Offset _dragOrigin = Offset.zero;
   Offset _dragStartOffset = Offset.zero;
   bool _dragging = false;
-  bool _closing = false;
+  final _dismissal = ValueNotifier(0.0);
   final Map<int, int> _rotationTurns = {};
   final Map<int, TransformationController> _transformControllers = {};
+  final Map<int, GlobalKey> _imageKeys = {};
+  Size? _viewportSize;
   bool _isZoomed = false;
   bool _saving = false;
   Offset _doubleTapPosition = Offset.zero;
@@ -145,16 +155,18 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex;
+    _currentIndex = _requestedIndex = widget.initialIndex;
+    widget.transition.prepareClose = _stopMotion;
+    _dragOffset.addListener(() {
+      _dismissal.value = (_dragOffset.value.distance / 300).clamp(0.0, 1.0);
+    });
     _controller = PageController(initialPage: widget.initialIndex);
     _dragReturn =
         AnimationController(vsync: this, duration: AppMotion.contentSwap)
           ..addListener(() {
-            setState(() {
-              _dragOffset =
-                  _dragReturnStart *
-                  (1 - AppMotion.standardCurve.transform(_dragReturn.value));
-            });
+            _dragOffset.value =
+                _dragReturnStart *
+                (1 - AppMotion.standardCurve.transform(_dragReturn.value));
           });
     _zoomMotion = AnimationController(vsync: this, duration: AppMotion.standard)
       ..addListener(() {
@@ -168,8 +180,50 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = MediaQuery.sizeOf(context);
+    final previous = _viewportSize;
+    _viewportSize = next;
+    if (previous == null || previous == next || previous.isEmpty) return;
+    _dragReturn.stop();
+    _dragOffset.value = Offset.zero;
+    _zoomMotion.stop();
+    for (final entry in _transformControllers.entries) {
+      final controller = entry.value;
+      final scale = controller.value.getMaxScaleOnAxis();
+      if (scale <= 1.01) continue;
+      final image = _imageKeys[entry.key]?.currentContext?.findRenderObject();
+      final asset = widget.mediaAssetsByImage[widget.images[entry.key]];
+      final intrinsic =
+          image is RenderBox && image.hasSize && !image.size.isEmpty
+          ? image.size
+          : Size(
+              (asset?.width ?? previous.width).toDouble(),
+              (asset?.height ?? previous.height).toDouble(),
+            );
+      final rotated = (_rotationTurns[entry.key] ?? 0).isOdd
+          ? Size(intrinsic.height, intrinsic.width)
+          : intrinsic;
+      final before = applyBoxFit(BoxFit.contain, rotated, previous).destination;
+      final after = applyBoxFit(BoxFit.contain, rotated, next).destination;
+      final focal =
+          controller.toScene(previous.center(Offset.zero)) -
+          previous.center(Offset.zero);
+      final scene =
+          next.center(Offset.zero) + focal * (after.width / before.width);
+      final translation = next.center(Offset.zero) - scene * scale;
+      controller.value = Matrix4.diagonal3Values(scale, scale, 1)
+        ..setTranslationRaw(translation.dx, translation.dy, 0);
+    }
+  }
+
+  @override
   void dispose() {
     _dragReturn.dispose();
+    _dragOffset.dispose();
+    _dismissal.dispose();
+    widget.transition.prepareClose = null;
     _zoomMotion.dispose();
     for (final controller in _transformControllers.values) {
       controller.dispose();
@@ -220,24 +274,14 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   void _returnFromDrag() {
-    if (_dragOffset == Offset.zero) return;
+    if (_dragOffset.value == Offset.zero) return;
     _dragReturn.stop();
     if (MediaQuery.disableAnimationsOf(context)) {
-      setState(() => _dragOffset = Offset.zero);
+      _dragOffset.value = Offset.zero;
       return;
     }
-    _dragReturnStart = _dragOffset;
+    _dragReturnStart = _dragOffset.value;
     _dragReturn.forward(from: 0);
-  }
-
-  String _getHeroTag(int index) {
-    if (index == widget.initialIndex && widget.customHeroTag != null) {
-      return widget.customHeroTag!;
-    }
-    // 注意：这里的通用 Tag 必须与 RichContent.dart 或 MediaGalleryItem.dart 中的生成逻辑严格对齐
-    return index == 0
-        ? 'content-image-${widget.contentId}'
-        : 'image-$index-${widget.contentId}';
   }
 
   @override
@@ -247,48 +291,35 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
           _changePage(-1),
       const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
           _changePage(1),
-      const SingleActivator(LogicalKeyboardKey.escape): () => _close(),
+      const SingleActivator(LogicalKeyboardKey.escape): _close,
     },
     child: Focus(
       focusNode: _keyboardFocus,
       autofocus: true,
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (!didPop) _close();
-        },
-        child: HeroMode(
-          enabled: !MediaQuery.disableAnimationsOf(context),
-          child: AnnotatedRegion<SystemUiOverlayStyle>(
-            value: SystemUiOverlayStyle.light,
-            child: Theme(
-              data: AppTheme.dark(
-                ColorScheme.fromSeed(
-                  seedColor:
-                      widget.contentColor ??
-                      Theme.of(context).colorScheme.primary,
-                  brightness: Brightness.dark,
-                ),
-              ),
-              child: Builder(builder: _buildGallery),
-            ),
-          ),
-        ),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: Theme.of(context).brightness == Brightness.dark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
+        child: Builder(builder: _buildGallery),
       ),
     ),
   );
 
-  void _close() {
-    if (_closing) return;
-    _closing = true;
+  void _close() => widget.transition.close();
+
+  void _stopMotion() {
     _dragReturn.stop();
     _zoomMotion.stop();
-    Navigator.of(context).pop();
+    if (_controller.hasClients) {
+      _controller.position.jumpTo(_controller.position.pixels);
+    }
   }
 
   void _changePage(int delta) {
-    final target = _currentIndex + delta;
+    if (widget.transition.closing) return;
+    final target = _requestedIndex + delta;
     if (target < 0 || target >= widget.images.length) return;
+    _requestedIndex = target;
     if (MediaQuery.disableAnimationsOf(context)) {
       _controller.jumpToPage(target);
       return;
@@ -301,9 +332,6 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
   }
 
   Widget _buildGallery(BuildContext context) {
-    final progress = ModalRoute.of(context)!.animation!;
-    final dragOpacity = (1 - (_dragOffset.distance / 300)).clamp(0.0, 1.0);
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -313,134 +341,137 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
             child: GestureDetector(
               excludeFromSemantics: true,
               onTap: () => _close(),
-              child: AnimatedBuilder(
-                animation: progress,
-                builder: (context, _) {
-                  final amount =
-                      Curves.easeOutCubic.transform(progress.value) *
-                      dragOpacity;
-                  return BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: 16 * amount,
-                      sigmaY: 16 * amount,
-                    ),
-                    child: ColoredBox(
-                      color: Theme.of(
-                        this.context,
-                      ).colorScheme.surface.withValues(alpha: 0.2 * amount),
-                    ),
-                  );
-                },
+              child: SharedTransitionSurface(
+                session: widget.transition,
+                dismissal: _dismissal,
+                backdrop: true,
+                child: const SizedBox.expand(),
               ),
             ),
           ),
           // Images
-          Transform.translate(
-            offset: _dragOffset,
-            child: Transform.scale(
-              scale: 1 - (1 - dragOpacity) * .18,
-              child: PageView.builder(
-                key: _viewportKey,
-                controller: _controller,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: widget.images.length,
-                onPageChanged: (i) {
-                  _zoomMotion.stop();
-                  setState(() {
-                    _currentIndex = i;
-                    _isZoomed =
-                        (_transformControllers[i]?.value.getMaxScaleOnAxis() ??
-                            1.0) >
-                        1.01;
-                  });
-                  _keyboardFocus.requestFocus();
-                  widget.onPageChanged?.call(i);
-                },
-                itemBuilder: (context, index) {
-                  final transformController = _getTransformController(index);
-                  return GestureDetector(
-                    excludeFromSemantics: true,
-                    onTap: () => _close(),
-                    onDoubleTapDown: (details) {
-                      _doubleTapPosition = details.localPosition;
+          ValueListenableBuilder<Offset>(
+            valueListenable: _dragOffset,
+            builder: (context, offset, child) => Transform.translate(
+              offset: offset,
+              child: Transform.scale(
+                scale: 1 - (offset.distance / 300).clamp(0.0, 1.0) * .18,
+                child: child,
+              ),
+            ),
+            child: PageView.builder(
+              key: _viewportKey,
+              controller: _controller,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: widget.images.length,
+              onPageChanged: (i) {
+                _zoomMotion.stop();
+                setState(() {
+                  _currentIndex = i;
+                  _isZoomed =
+                      (_transformControllers[i]?.value.getMaxScaleOnAxis() ??
+                          1.0) >
+                      1.01;
+                });
+                _keyboardFocus.requestFocus();
+                widget.onPageChanged?.call(i);
+                widget.transition.select(widget.identities[i]);
+              },
+              itemBuilder: (context, index) {
+                final transformController = _getTransformController(index);
+                return GestureDetector(
+                  excludeFromSemantics: true,
+                  onTap: () => _close(),
+                  onDoubleTapDown: (details) {
+                    _doubleTapPosition = details.localPosition;
+                  },
+                  onDoubleTap: () => _handleDoubleTap(index),
+                  child: InteractiveViewer(
+                    onInteractionStart: (details) {
+                      _zoomMotion.stop();
+                      _dragReturn.stop();
+                      _dragging = !_isZoomed;
+                      _dragOrigin = details.focalPoint;
+                      _dragStartOffset = _dragOffset.value;
                     },
-                    onDoubleTap: () => _handleDoubleTap(index),
-                    child: InteractiveViewer(
-                      onInteractionStart: (details) {
-                        _zoomMotion.stop();
-                        _dragReturn.stop();
-                        _dragging = !_isZoomed;
-                        _dragOrigin = details.focalPoint;
-                        _dragStartOffset = _dragOffset;
-                      },
-                      onInteractionUpdate: (details) {
-                        if (details.pointerCount > 1 || details.scale > 1.01) {
-                          _dragging = false;
-                          _returnFromDrag();
-                        } else if (_dragging) {
-                          setState(
-                            () => _dragOffset =
-                                _dragStartOffset +
-                                details.focalPoint -
-                                _dragOrigin,
-                          );
-                        }
-                      },
-                      onInteractionEnd: (details) {
-                        if (_dragging &&
-                            (_dragOffset.distance > 90 ||
-                                (_dragOffset.distance > 24 &&
-                                    details.velocity.pixelsPerSecond.distance >
-                                        850))) {
-                          _close();
-                        } else {
-                          _returnFromDrag();
-                        }
+                    onInteractionUpdate: (details) {
+                      if (details.pointerCount > 1 || details.scale > 1.01) {
                         _dragging = false;
-                      },
-                      transformationController: transformController,
-                      minScale: 1.0,
-                      maxScale: 4.0,
-                      panEnabled: _isZoomed,
-                      scaleEnabled: true,
-                      child: Center(
-                        child: _RotatingGalleryImage(
-                          quarterTurns: _rotationTurns[index] ?? 0,
-                          child: MediaImageHero(
-                            tag: _getHeroTag(index),
-                            child: NetworkThumbnail(
-                              imageUrl: widget.images[index],
-                              mediaAsset: widget
-                                  .mediaAssetsByImage[widget.images[index]],
-                              purpose: MediaPurpose.detail,
-                              fallbackUrls:
-                                  widget.fallbackUrlsByImage[widget
-                                      .images[index]] ??
-                                  const [],
-                              fit: BoxFit.contain,
-                              errorIcon: Icons.broken_image,
+                        _returnFromDrag();
+                      } else if (_dragging) {
+                        _dragOffset.value =
+                            _dragStartOffset + details.focalPoint - _dragOrigin;
+                      }
+                    },
+                    onInteractionEnd: (details) {
+                      final velocity = details.velocity.pixelsPerSecond;
+                      final offset = _dragOffset.value;
+                      final movingOutward =
+                          offset.dx * velocity.dx + offset.dy * velocity.dy >=
+                          0;
+                      if (_dragging &&
+                          movingOutward &&
+                          (offset.distance > 90 ||
+                              (offset.distance > 24 &&
+                                  velocity.distance > 850))) {
+                        _close();
+                      } else {
+                        _returnFromDrag();
+                      }
+                      _dragging = false;
+                    },
+                    transformationController: transformController,
+                    minScale: 1.0,
+                    maxScale: 4.0,
+                    panEnabled: _isZoomed,
+                    scaleEnabled: true,
+                    child: Center(
+                      child: _RotatingGalleryImage(
+                        quarterTurns: _rotationTurns[index] ?? 0,
+                        child: HeroMode(
+                          enabled: index == _currentIndex,
+                          child: _GalleryImageBounds(
+                            asset:
+                                widget.mediaAssetsByImage[widget.images[index]],
+                            child: MediaImageHero(
+                              key: _imageKeys.putIfAbsent(index, GlobalKey.new),
+                              identity: widget.identities[index],
+                              session: widget.transition,
+                              child: NetworkThumbnail(
+                                imageUrl: widget.images[index],
+                                mediaAsset: widget
+                                    .mediaAssetsByImage[widget.images[index]],
+                                purpose: MediaPurpose.detail,
+                                fallbackUrls:
+                                    widget.fallbackUrlsByImage[widget
+                                        .images[index]] ??
+                                    const [],
+                                fit: BoxFit.contain,
+                                errorIcon: Icons.broken_image,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
           ),
 
           Positioned(
-            top: 0,
+            bottom: 0,
             left: 0,
             right: 0,
             child: SafeArea(
-              bottom: false,
+              top: false,
               minimum: const EdgeInsets.all(AppSpacing.sm),
               child: Align(
-                alignment: Alignment.topCenter,
-                child: FadeTransition(
-                  opacity: progress,
+                alignment: Alignment.bottomCenter,
+                child: SharedTransitionSurface(
+                  session: widget.transition,
+                  dismissal: _dismissal,
                   child: MediaOverlaySurface(
                     child: Padding(
                       padding: const EdgeInsets.all(AppSpacing.xxs),
@@ -462,7 +493,11 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(color: Colors.white),
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimaryContainer,
+                                    ),
                               ),
                             ),
                           ),
@@ -506,8 +541,9 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
 
   Widget _pageButton(BuildContext context, {required bool previous}) =>
       Positioned.fill(
-        child: FadeTransition(
-          opacity: ModalRoute.of(context)!.animation!,
+        child: SharedTransitionSurface(
+          session: widget.transition,
+          dismissal: _dismissal,
           child: SafeArea(
             minimum: const EdgeInsets.all(AppSpacing.md),
             child: Align(
@@ -529,6 +565,35 @@ class _FullScreenGalleryState extends ConsumerState<FullScreenGallery>
           ),
         ),
       );
+}
+
+/// Keeps the image endpoint stable while its full-resolution pixels load.
+class _GalleryImageBounds extends StatelessWidget {
+  const _GalleryImageBounds({required this.asset, required this.child});
+
+  final MediaAsset? asset;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = asset?.width;
+    final height = asset?.height;
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return child;
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = applyBoxFit(
+          BoxFit.contain,
+          Size(width.toDouble(), height.toDouble()),
+          constraints.biggest,
+        ).destination;
+        return Center(
+          child: SizedBox.fromSize(size: size, child: child),
+        );
+      },
+    );
+  }
 }
 
 /// Fits the rotating canvas throughout the turn, including non-square viewports.

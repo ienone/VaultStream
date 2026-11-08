@@ -201,6 +201,7 @@ def _capture_context(update: Update, source_message) -> dict:
         "channel": "telegram_bot",
         "user_id": str(update.effective_user.id),
         "request_text": str(update.message.text or update.message.caption or ""),
+        "save_instruction": str(update.message.text or update.message.caption or "")[:1000],
         "chat_id": str(chat.id) if chat is not None else None,
         "message_id": getattr(source_message, "message_id", None),
         "replied_message": source_message is not update.message,

@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # 使用官方 Python 轻量镜像
 FROM python:3.11-slim
 
@@ -20,7 +19,9 @@ ENV APP_ENV=prod
 ENV DEBUG=False
 
 # 安装系统依赖 (包含 ffmpeg 用于媒体处理)
-RUN apt-get update \
+ARG DEBIAN_MIRROR=http://deb.debian.org
+RUN sed -i "s|http://deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
        ffmpeg \
     && apt-get clean \
@@ -30,9 +31,10 @@ RUN apt-get update \
 COPY requirements.txt constraints.txt ./
 
 # 安装锁定依赖，复用下载缓存；保留登录和解析实际使用的浏览器。
+ARG PIP_INDEX_URL=https://pypi.org/simple
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --disable-pip-version-check --no-compile -r requirements.txt \
-    && playwright install --with-deps webkit chromium
+    pip install --index-url "$PIP_INDEX_URL" --disable-pip-version-check --no-compile -r requirements.txt \
+    && playwright install --with-deps chromium
 
 # 复制项目代码
 COPY app /app/app
@@ -44,7 +46,7 @@ COPY migrations /app/migrations
 RUN groupadd --system vaultstream \
     && useradd --system --gid vaultstream --home-dir /app --shell /usr/sbin/nologin vaultstream \
     && mkdir -p /app/data/media /app/logs \
-    && chown -R vaultstream:vaultstream /app /ms-playwright
+    && chown -R vaultstream:vaultstream /app/data /app/logs
 
 # 暴露端口
 EXPOSE 8000

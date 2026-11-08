@@ -384,12 +384,9 @@ class BrowserAuthService:
             for name, value in self._parse_cookies(normalized).items()
         ]
 
+        proxy = await self._config_service.get_http_proxy()
         async def _browser_task() -> dict[str, str]:
-            browser = browser_manager.get_browser()
-            context = await browser.new_context(
-                user_agent=self._cookie_headers("")["user-agent"],
-                viewport={"width": 1280, "height": 720},
-            )
+            context = await browser_manager.new_context(proxy=proxy)
             try:
                 await context.add_cookies(cookies)
                 page = await context.new_page()

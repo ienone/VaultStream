@@ -465,7 +465,7 @@ async def parse_dynamic(
             author_url=author_url,
             cover_url=pics[0] if pics else None,
             media_urls=pics,
-            published_at=datetime.fromtimestamp(module_author.get('pub_ts')) if module_author.get('pub_ts') else None,
+            published_at=datetime.fromtimestamp(int(module_author['pub_ts'])) if module_author.get('pub_ts') else None,
             archive_metadata=archive_metadata,
             stats=stats
         )

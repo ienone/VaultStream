@@ -66,6 +66,10 @@ active
 
 ## 配置与策略
 
+- 收藏列表、正文解析、Telegram 原生同步和公开频道统一使用 `services/source_reading.py`。同一平台的并发读取共用等待队列；入库/重试入队另有同速队列，不消耗网络读取额度，也不会跳过速率控制。分页仍一次返回多项，正文按篇处理。
+- `favorites_sync_rate_<platform>` 是唯一的平台速率配置，单位为每分钟开始读取/入队的篇数或列表页数；知乎、小红书、Telegram 默认 3，其他默认 5。每次等待后重新读取配置，非法、非有限或非正值使用默认值。耗时长的附件可能超过目标间隔。
+- HTTP 429 立即结束当前请求并保存共享冷却：优先使用 `Retry-After` 秒数或 HTTP 日期，缺失/无效时采用本地 5 分钟冷却策略；Telegram 使用服务端 FloodWait 秒数。冷却保存在 `source_read_cooldown_until_<platform>`，重启后继续生效。小红书要求验证时结束本批，并进入 5 分钟冷却，不在同一批内自动重复验证请求。
+- 轮询周期独立于读取速率：收藏仍使用 `favorites_sync_interval_minutes`（默认 360），Telegram 使用 `telegram_sync_interval_minutes`（默认 5）。同步开关、分页、游标和取消规则不变。锁和连续读取间隔适用于当前单 API 进程；冷却期限持久化，多进程的读取间隔仍需额外协调。
 - 平台 enabled、同步范围、重复策略、取消收藏策略和手动触发策略来自系统配置。
 - 定时入口检查 scheduler policy；单平台手动、run retry、item retry 和 batch retry 在创建执行性 run 或导入前检查 `favorites_platform_manual`。默认禁用返回统一 `409`；已有 `force`/允许禁用平台手动同步配置只沿原 contract 生效。
 - `scope=all` 每次只读取当前启用平台，不从历史 run 恢复已禁用平台。

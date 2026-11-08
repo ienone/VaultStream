@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:frontend/core/utils/media_utils.dart';
+
 import '../../../../../core/constants/platform_constants.dart';
 import '../../../../../theme/design_tokens.dart';
 import '../../../models/content.dart';
@@ -156,6 +157,24 @@ class UnifiedStats extends StatelessWidget {
           );
         }
       }
+    } else if (detail.isZhihuQuestion) {
+      for (final (key, label, icon) in [
+        ('visit_count', '浏览', Icons.remove_red_eye_outlined),
+        ('answer_count', '回答', Icons.question_answer_outlined),
+        ('follower_count', '关注问题', Icons.people_outline),
+        ('comment_count', '问题评论', Icons.chat_bubble_outline),
+      ]) {
+        final value = stats[key];
+        if (value is num && value > 0) {
+          items.add(
+            UnifiedStatItem(
+              icon: icon,
+              label: label,
+              value: formatCount(value),
+            ),
+          );
+        }
+      }
     } else if (isColumn) {
       // 专栏统计
       if ((stats['followers'] as num? ?? 0) > 0) {
@@ -300,27 +319,6 @@ class UnifiedStats extends StatelessWidget {
               icon: Icons.repeat_rounded,
               label: isWeibo ? '转发' : '分享',
               value: formatCount(detail.shareCount),
-            ),
-          );
-        }
-      }
-
-      if (detail.isZhihuQuestion) {
-        if (stats['follower_count'] != null) {
-          items.add(
-            UnifiedStatItem(
-              icon: Icons.person_add_alt,
-              label: '关注',
-              value: formatCount(stats['follower_count']),
-            ),
-          );
-        }
-        if (stats['answer_count'] != null) {
-          items.add(
-            UnifiedStatItem(
-              icon: Icons.question_answer_outlined,
-              label: '回答',
-              value: formatCount(stats['answer_count']),
             ),
           );
         }

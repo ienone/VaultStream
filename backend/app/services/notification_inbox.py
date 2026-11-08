@@ -11,8 +11,9 @@ from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.models import BackgroundTaskRun, Content, NotificationMessage
+from app.services.background_task_state import task_content_join
 from app.services.config_service import ConfigService
-from app.services.task_run_presentation import build_task_run_presentation, TASK_ERROR_STATUSES, TASK_SUCCESS_STATUSES
+from app.services.task_run_presentation import build_task_run_presentation, task_content_subject, TASK_ERROR_STATUSES, TASK_SUCCESS_STATUSES
 
 NotificationState = Literal["active", "unread", "read", "muted", "snoozed", "all"]
 
@@ -409,16 +410,10 @@ async def record_notification(
 
 
 def _notification_query():
-    return select(NotificationMessage, BackgroundTaskRun, Content.title).outerjoin(
+    return select(NotificationMessage, BackgroundTaskRun, Content.title, Content.url).outerjoin(
         BackgroundTaskRun, (NotificationMessage.source_type == "background_task_run")
         & (BackgroundTaskRun.run_id == NotificationMessage.source_id),
-    ).outerjoin(
-        Content,
-        Content.id == func.coalesce(
-            BackgroundTaskRun.result["content_id"].as_integer(),
-            BackgroundTaskRun.run_metadata["content_id"].as_integer(),
-        ),
-    )
+    ).outerjoin(Content, task_content_join())
 
 
 async def list_notifications(
@@ -460,8 +455,8 @@ async def list_notifications(
         )
     return {
         "items": [
-            serialize_notification(row, now=now, task_run=run, content_title=content_title)
-            for row, run, content_title in rows
+            serialize_notification(row, now=now, task_run=run, content_title=content_title, content_url=content_url)
+            for row, run, content_title, content_url in rows
         ],
         "total": total,
         "unread_count": unread_count,
@@ -513,9 +508,9 @@ async def apply_notification_action(
         )).one_or_none()
     if joined is None:
         return None
-    row, run, content_title = joined
+    row, run, content_title, content_url = joined
     serialized = serialize_notification(
-        row, now=now, task_run=run, content_title=content_title,
+        row, now=now, task_run=run, content_title=content_title, content_url=content_url,
     )
     await _publish_notification_update(_notification_event_payload(serialized))
     return serialized
@@ -542,6 +537,7 @@ def serialize_notification(
     now: datetime | None = None,
     task_run: BackgroundTaskRun | None = None,
     content_title: str | None = None,
+    content_url: str | None = None,
 ) -> dict[str, Any]:
     reference = now or utcnow()
     is_snoozed = row.snoozed_until is not None and row.snoozed_until > reference
@@ -560,7 +556,7 @@ def serialize_notification(
             title += "失败"
         elif task_run.status in TASK_SUCCESS_STATUSES:
             title += "已完成"
-        subject = (content_title or "").strip()
+        subject = task_content_subject(content_title, content_url)
         body = (subject or None) if failed else " · ".join(
             part for part in (subject, presentation["summary"]) if part
         )

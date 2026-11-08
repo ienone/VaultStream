@@ -1,14 +1,4 @@
-"""
-共享浏览器管理器（独立异步循环，WebKit 常驻、Chromium 按需启动）
-
-解决 Windows FastAPI 并发缺陷的终极方案：
-  - Windows Uvicorn 默认在主线程使用 SelectorEventLoop，导致 async_playwright 闪退。
-  - 改用 sync_playwright 跨线程又会导致 greenlet thread mismatch 并发崩溃。
-方案：
-  在后台线程启动一个独立的 `asyncio.ProactorEventLoop` 永久循环。
-  所有 async Playwright 操作通过 `submit_coro` 安全扔进去执行并跨线程返回 future。
-  业务层代码保持 100% async / await 风格，无缝协作。
-"""
+"""共享 Chromium，在独立事件循环中管理浏览器与隔离会话。"""
 
 import asyncio
 import sys
@@ -16,12 +6,8 @@ import threading
 from typing import Optional, Any, Coroutine
 
 from loguru import logger
-from playwright.async_api import async_playwright, Browser
+from playwright.async_api import async_playwright, Browser, BrowserContext
 
-_WEBKIT_UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
-)
 _AUTH_VIEWPORT = {"width": 1280, "height": 800}
 _FETCH_VIEWPORT = {"width": 1280, "height": 900}
 _SHUTDOWN_JOIN_TIMEOUT_SECONDS = 5.0
@@ -34,8 +20,7 @@ class PlaywrightBrowserManager:
 
         self._playwright = None
         self._browser: Optional[Browser] = None
-        self._chromium_browser: Optional[Browser] = None
-        self._chromium_lock: Optional[asyncio.Lock] = None
+        self._browser_lock: Optional[asyncio.Lock] = None
 
         self._started = False
         self._initializing = False  # 防止并发重入导致递归
@@ -98,7 +83,7 @@ class PlaywrightBrowserManager:
                 await asyncio.wrap_future(future)
 
                 self._started = True
-                logger.info("PlaywrightBrowserManager: WebKit 后台循环预热完成")
+                logger.info("PlaywrightBrowserManager: 后台循环已启动")
             except Exception:
                 raise
             finally:
@@ -106,9 +91,6 @@ class PlaywrightBrowserManager:
 
     async def _init_browser(self):
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.webkit.launch(
-            headless=True
-        )
 
     async def shutdown(self):
         if not self._started or self._pw_loop is None or self._pw_thread is None:
@@ -131,17 +113,11 @@ class PlaywrightBrowserManager:
         self._pw_thread = None
         self._playwright = None
         self._browser = None
-        self._chromium_browser = None
-        self._chromium_lock = None
+        self._browser_lock = None
         self._loop_ready.clear()
         logger.info("PlaywrightBrowserManager: 浏览器与后台循环已关闭")
 
     async def _close_browser(self):
-        if self._chromium_browser:
-            try:
-                await self._chromium_browser.close()
-            except Exception:
-                pass
         if self._browser:
             try:
                 await self._browser.close()
@@ -171,25 +147,33 @@ class PlaywrightBrowserManager:
         future = asyncio.run_coroutine_threadsafe(coro, self._pw_loop)
         return await asyncio.wrap_future(future)
         
-    def get_browser(self) -> Browser:
-        """获取真实的 Browser 实例。注意它仅能在 Submit 的协程中使用。"""
-        if not self._started or not self._browser:
-            raise RuntimeError("浏览器尚未就绪")
-        return self._browser
-
-    async def get_chromium_browser(self) -> Browser:
-        """Lazy public-page browser; call only inside submit_coro's loop."""
+    async def get_browser(self) -> Browser:
+        """仅在 submit_coro 的事件循环中获取同一个 Chromium。"""
         if not self._started or not self._playwright:
             raise RuntimeError("浏览器尚未就绪")
-        if self._chromium_lock is None:
-            self._chromium_lock = asyncio.Lock()
-        async with self._chromium_lock:
-            if not self._chromium_browser or not self._chromium_browser.is_connected():
-                self._chromium_browser = await self._playwright.chromium.launch(
+        if self._browser_lock is None:
+            self._browser_lock = asyncio.Lock()
+        async with self._browser_lock:
+            if not self._browser or not self._browser.is_connected():
+                self._browser = await self._playwright.chromium.launch(
                     headless=True,
                     args=["--disable-blink-features=AutomationControlled"],
                 )
-            return self._chromium_browser
+            return self._browser
+
+    async def new_context(self, *, proxy: str | None, viewport: dict | None = None) -> BrowserContext:
+        """每次操作使用独立 Cookie、存储与代理；调用方负责关闭会话。"""
+        browser = await self.get_browser()
+        version = browser.version.split(".")[0]
+        return await browser.new_context(
+            viewport=viewport or self.fetch_viewport,
+            user_agent=self.ua,
+            extra_http_headers={"sec-ch-ua": (
+                f'"Chromium";v="{version}", "Not_A Brand";v="8", "Google Chrome";v="{version}"'
+            )},
+            service_workers="block",
+            **({"proxy": {"server": proxy}} if proxy else {}),
+        )
 
     # 公开配置
     @property
@@ -202,7 +186,9 @@ class PlaywrightBrowserManager:
 
     @property
     def ua(self):
-        return _WEBKIT_UA
+        version = self._browser.version.split(".")[0] if self._browser else "145"
+        return ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                f"(KHTML, like Gecko) Chrome/{version}.0.0.0 Safari/537.36")
 
 
 browser_manager = PlaywrightBrowserManager()

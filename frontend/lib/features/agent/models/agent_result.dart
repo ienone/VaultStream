@@ -129,7 +129,7 @@ class AgentCitation {
       mediaAssetId: json['media_asset_id']?.toString() ?? '',
       title: kind == AgentCitationKind.documentPage
           ? json['filename'] as String
-          : json['title']?.toString() ?? '无标题',
+          : json['title']?.toString() ?? '',
       pageNumber: json['page_number'] as int?,
       contentTitle: json['content_title']?.toString(),
       startSeconds: (json['start_seconds'] as num?)?.toDouble(),
@@ -195,7 +195,7 @@ class AgentCitation {
   String get displayLabel {
     switch (kind) {
       case AgentCitationKind.documentPage:
-        return '$title · 第 $pageNumber 页';
+        return pageNumber == null ? title : '$title（第 $pageNumber 页）';
       case AgentCitationKind.content:
         return contentId.isEmpty ? title : '#$contentId $title';
       case AgentCitationKind.event:
@@ -277,8 +277,8 @@ List<AgentCitation> citationsFromToolResult(Map<String, dynamic> event) {
         'title': result['title'],
         'source_text': result['body'],
       }),
-      for (final segment in (result['segments'] as List)
-          .whereType<Map<String, dynamic>>())
+      for (final segment
+          in (result['segments'] as List).whereType<Map<String, dynamic>>())
         AgentCitation.fromJson({
           'content_id': result['content_id'],
           'content_title': result['title'],

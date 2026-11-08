@@ -27,13 +27,13 @@ active
 
 ## 实现逻辑
 
-内容创建入口会先规范化 URL、按 `(platform, canonical_url)` 去重并记录 `ContentSource`，再将解析任务写入 SQLite Task 队列。应用内粘贴和系统分享分别记录 `manual_paste` 与 `system_share` 来源，但共享同一 `/shares` contract 和前端写控制层。队列写入失败时，已提交的内容和来源保持为可重试状态，HTTP 返回 `503`、`parse_queue_unavailable` 与 `content_id`；调用方应表达“已保存、解析待处理”，不能把整个捕获动作误报为失败。重复提交同一 URL 复用原内容并再次尝试入队。解析成功后触发摘要、语义索引、媒体归档、审批/分发等后处理。详情返回前会通过 presenter 转换 `local://` 媒体 URL，并补充有效布局类型。
+内容创建入口规范化 URL，按 `(platform, canonical_url)` 去重，并在同一事务保存内容、`ContentSource` 与待解析 Task；并发提交同一 URL 复用内容和待处理任务。应用内粘贴与系统分享共享 `/shares` contract。重新解析统一通过 `/contents/{id}/re-parse` 入队，返回 run ID；手动请求可提升同内容待解析任务，自动解析暂停不阻止明确的手动操作。解析完成时，正文、媒体事实、后处理任务与解析 Task 终态一起提交。详情通过 presenter 转换 `local://` 媒体 URL，并补充有效布局类型。
 
 原始文本通过 `POST /captures/text` 直接保存为 `universal/note` 内容：正文是权威原文，状态从 `parse_success` 开始，不伪造外部 URL，也不进入网页解析队列；随后仍复用摘要、语义索引和自动分发后处理。每次文本捕获创建独立内容，不按正文猜测去重。
 
 原始文件通过 `POST /captures/file` 或 `POST /captures/files` 流式写入内容寻址 storage，并创建 ready 的 `MediaAsset` 与 original archive `MediaVariant`。同一次系统分享的多个文件保留在一个内容对象中：多张图片使用 gallery，混合附件使用 document，并按分享顺序保存资产。单文件标题默认取净化后的文件名；多文件使用数量标题，用户说明保存在正文中，分享时间等来源上下文保存在 `ContentSource`。上传链路不等待 OCR 或转码，也不伪造已提取正文。
 
-Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、文件、音视频或语音时，Bot 先通过 Telegram 文件接口取得原件，再以单项 multipart 调用 `/captures/files`，保留 `telegram_bot` 来源和消息上下文。私聊中严格匹配保存前缀的自然语言请求复用同一处理器；疑问句、其他普通聊天和群聊文本不自动归档。Bot 不自行写内容、媒体表或 storage，也不把已监控 chat 的 discovery 缓冲混入用户主动归档。
+Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、文件、音视频或语音时，Bot 先通过 Telegram 文件接口取得原件，再以单项 multipart 调用 `/captures/files`，保留 `telegram_bot` 来源和消息上下文。自然语言收藏由 Agent loop 选择保存工具并提供当前外层授权原文；疑问句、其他普通聊天和群聊文本不自动归档。Bot 不自行写内容、媒体表或 storage，也不把已监控 chat 的 discovery 缓冲混入用户主动归档。
 
 平台解析器统一输出 `ParsedContent`，写入边界位于 `tasks/parsing.py`：
 
@@ -42,6 +42,7 @@ Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、
 - 平台话题写入 `source_tags`；引用内容、投票等可展示结构写入 `rich_payload`；原始响应和归档处理输入写入私有 `archive_metadata`。
 - 头像可以进入私有归档供本地化，但不得作为正文 `media_urls` 或无媒体内容的封面。
 - 生产解析与 `/platform-health/parse-test` 共用 `services/platform_parsing.py` 创建适配器，均读取数据库中扫码登录保存的完整平台 Cookie；Bilibili 仅在数据库未配置时回退到旧环境变量分片。
+- QQ 链接预览通过同一适配器 `parse()` 入口解析；创建时设置 `include_video_media=False`，B 站仍提取正文、封面和统计，但不请求视频媒体地址。调用方不读取包装适配器内部的 headers/cookies。
 - 知乎回答/文章、问题/用户主页及带访问 token 的小红书笔记和部分主页支持独立匿名读取；知乎网页使用按需启动的 Chromium，Tardis 可读内容不启动浏览器。已有 Cookie 供账号路径使用，不是所有公开内容的前置要求。公开解析不自动刷新知乎指纹。
 - 通用网页先使用明确的文章结构直接提取，无法确定时才调用模型；HTML 获取不重复发起相同 GET。
 
@@ -99,9 +100,7 @@ PDF 上传提交原件后调度 document_extract；提取期间不占用上传�
 
 `url` 保留入库身份；`clean_url` 只返回有效的 HTTP(S) 外部原文链接，没有原文时为空。推送和书签展示不得把内部身份作为原文链接。
 
-自动摘要开关按统一 `coerce_bool` 读取，`off`、`0`、`no` 和带空白的 `false` 均按关闭处理。摘要模型失败回滚后，后处理显式刷新内容对象再继续索引和分发，避免 SQLAlchemy 过期字段读取引发 `MissingGreenlet`、意外阻断独立阶段；不自动重试摘要模型。
-
-语义索引在本次巡逻、主题分类和审批写入后才异步调度，避免它们更新内容版本后使已调用模型的索引结果被版本门禁撤销。解析入口的审批已并入同一后处理；独立后处理抛错时仍调度一次索引并保留原异常，不绕过失败阶段继续分发。
+自动摘要开关按统一 `coerce_bool` 读取。评分、摘要、分发规则匹配与索引分别使用持久 Task，同内容串行执行；某阶段失败不回退正文或重放其他阶段。内容版本检查保留，人工编辑仍写入解析候选。文件捕获将 PDF 提取任务与文件元数据一起提交；来源同步在推进游标前提交后处理任务。
 
 ### 缺失标题提取（2026-09-30）
 

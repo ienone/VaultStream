@@ -15,10 +15,10 @@ import httpx
 from app.adapters.base import PlatformAdapter
 from app.adapters.favorites.base import BaseFavoritesFetcher, FavoriteItem
 from app.adapters.favorites.errors import FavoritesFetchError
+from app.services.source_reading import source_reading
 from app.adapters.utils.anti_risk import (
     exponential_backoff,
     merge_response_cookies,
-    truncated_gaussian_delay,
 )
 from app.adapters.zhihu import ZhihuAdapter
 from app.core.logging import logger
@@ -124,13 +124,7 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
         ) as client:
             for attempt in range(self._MAX_RETRY):
                 try:
-                    await asyncio.sleep(
-                        truncated_gaussian_delay(
-                            base_delay=1.0,
-                            mean=0.5,
-                            sigma=0.2,
-                        )
-                    )
+                    await source_reading.wait("zhihu")
 
                     headers = {
                         **ZhihuAdapter.API_HEADERS,
@@ -191,7 +185,13 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                             auth_required=True,
                         )
 
-                    if resp.status_code == 429 or resp.status_code >= 500:
+                    if resp.status_code == 429:
+                        await source_reading.http_cooldown("zhihu", resp.headers.get("Retry-After"))
+                        raise FavoritesFetchError(
+                            code="rate_limited", message="Zhihu API rate limited",
+                            hint="请求频率受限，请等待冷却后重试", retryable=True,
+                        )
+                    if resp.status_code >= 500:
                         wait = exponential_backoff(attempt)
                         logger.warning(
                             "[zhihu favorites] status={}, retry in {:.1f}s",
@@ -201,13 +201,6 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                         if attempt < self._MAX_RETRY - 1:
                             await asyncio.sleep(wait)
                             continue
-                        if resp.status_code == 429:
-                            raise FavoritesFetchError(
-                                code="rate_limited",
-                                message="Zhihu API rate limited",
-                                hint="请求过于频繁，请稍后重试或降低同步速率",
-                                retryable=True,
-                            )
                         raise FavoritesFetchError(
                             code="upstream_error",
                             message=f"Zhihu API returned {resp.status_code}",

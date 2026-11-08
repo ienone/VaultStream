@@ -1,35 +1,17 @@
-# QQ 群链接预览
+# QQ 链接解析与呈现
 
 ## 文档状态
 
 active
 
-Koishi 调用 `POST /api/v1/bot/qq/{config_id}/preview`，使用现有 API Token 鉴权。请求包含 `group_id`、`user_id`、`message_id`、`urls`（1–20 条）和 `reserve_send`（默认 true）。只允许启用的 QQ BotConfig 与 `qq_bot_agent.group_ids` 中的群，默认群为 `1070760473`；已有 BotChat 的 enabled 开关同样生效。
+小 i 在 QQ 私聊及群 1081948298 提取受支持平台链接和 JSON 分享卡片，只触发现有 Agent loop，不提前解析或按关键词决定收藏。模型调用 vaultstream_parse，选择真实当前/引用/本会话材料中的链接和 full、summary、text；普通分享默认 full，不收藏。管理员当前明确收藏才调用保存工具，save_instruction 必须逐字来自当前外层消息。程序继续核验真实身份、会话范围、材料归属和写入开关，不新增意图分类模型。
 
-后端返回 `duplicate` 和逐项 `items`。每项 `status` 为 `parsed`、`unsupported` 或 `failed`，携带实际解析得到的 `title/body/author/url/platform/content_type/media_urls`。`text` 复用正式推送的短内容格式，长正文是节选，没有伪造 AI 摘要；`image_url` 至多一张正文图片或封面，不使用头像补图。缺失字段为 null。预览直接使用本次 ParsedContent，不创建 Content、任务、归档、摘要或分发，不查收藏库。
+`POST /api/v1/bot/qq/{config_id}/preview` 使用 API Token。请求：bot_id、chat_id、private、user_id、message_id、request_text、urls（1–20）、format（默认 full）、allow_cleaning（默认 false）、parse_instruction（默认空）。仅管理员当前明确解析、parse_instruction 是外层原话时可用清洗兜底；否则专用解析器失败不会自动清洗。主 Bot 身份、私聊目标与发送者一致、群白名单及 enabled 开关必须满足。
 
-只有 `send_allowed=true` 的项可回群。Koishi 应将 `text` 和可选的 `image_url` 组成一条消息，不为每个媒体单独发消息。服务端已通过 `qq_policy.reserve_group_send` 为每项占用一次额度，与自动推送共用小时限频；发送失败也消耗额度。`reserve_send=false` 用于只读验收，不领取消息、不预留额度，所有项的 `send_allowed` 均为 false。
+响应为 duplicate 和 items，每项含 url、status、text、message_id；status 为 sent、unsupported、failed、delivery_unknown、rate_limited。发送由后端 NapCat 完成，小 i 不重复发送正文；工具回传只保留回执，实际正文记录于当前会话。消息指纹持久去重，发送未知不自动重试；群发送共用小时频率限制。
 
-消息通过 SystemSetting 中按 Bot/群隔离的运行记录去重，每群最多保留 500 个、24 小时内的消息 ID 指纹，不保留 URL 或正文。先领取后解析，重复返回 `duplicate=true, items=[]`。服务中断或发送结果未知时不自动重发；这只保证重报抑制，不表示 QQ 已送达。群号必须同时加入 Koishi `groupIds` 与后端 `qq_bot_agent.group_ids`。旧 HTTP 入口无条件忽略群消息，不再依赖逐群关闭监控开关来保证不入库；部署时仍清理旧开关，避免配置误导。
+full 保留解析取得的正文及图片，长段落按 1500 字符分节点而非截断；text 保留正文、不附媒体；summary 使用约 500 字符节选及最多一张图。B站视频、番剧、直播是单条封面与简介，简介最多 500 字；其他平台混合视频和图片时保留实际图片，不发送视频。文章保留段落和配图分组；首次正文节点有标签，续段不重复，标题/作者/统计/原链接集中于首节点。
 
-## 专用解析范围
+一节点直接图文发送，多节点合并转发，每包最多 99 节点，不静默切掉后续节点。封面 source 与节点昵称使用真实 Bot 名字，不生成内容标题摘要。私聊转发遇到 NapCat 已上传资源但未返回回执的特定错误时，只用错误中的 res_id 回读同一私聊、同一 Bot 的完全匹配卡片；找不到则保留结果未知，绝不重发。
 
-能力识别位于 `services/parse_capabilities.py`，严格检查 URL 的真实 hostname、路径及对象 ID，不按整条 URL 的字符串猜平台。
-
-- 微博：状态、用户主页，以及可还原为这些对象的官方 APP 分享链接。
-- X：单条 status 链接（含图片、视频定位后缀）。
-- 小红书：笔记和用户主页；官方 xhslink 短链安全还原，保留访问 token，并重新检查目标域名和内容类型。
-- 知乎：回答、文章、问题、想法、用户、专栏和收藏夹。
-- Telegram：公开频道中的单条消息；私有 `/c/`、邀请和频道首页不处理。
-
-Bilibili（含 b23）无条件排除，其余排除项仍读取 `qq_chat_policies.excluded_parse_platforms`。不调用 universal，也不探测任意短链。抖音（包括 v.douyin.com 短链）没有专用解析器，直接跳过。RSS/Atom feed 不当作文章预览：现有 RSS parse 取的是源的最新条目，不一定是用户分享的目标。
-
-微博、X、小红书和知乎适配器使用 `public_only=true`：不读取数据库或环境变量中的个人 Cookie，不把管理员可见但群成员不可公开读取的内容带入群。匿名访问被平台拒绝时返回 failed，不借用账号补读。专用解析器存在仅表示有解析实现，不保证平台匿名访问永远可用。
-
-单项解析最长 45 秒、最多 4 项并行，调用方为 20 条的完整批次保留 300 秒 HTTP 超时。不支持的链接不回群；失败结果使用固定失败说明，不回传平台内部响应或访问凭据。
-
-## 显式转存
-
-管理员可以在群聊向小i提出自然语言转存请求，由独立的 `vaultstream_save` 工具调用 `/bot/qq/{config_id}/group-capture`。请求复用 QQ 原消息、引用、转发和附件材料并增加 group_id；响应仅含 run_id、status、message、saved_content_ids、duplicate。群聊与私聊隔离运行，群入口工具白名单只有 capture_content，回执不暴露私人收藏正文。
-
-全局 chat_capture_enabled 只控制转存，不影响公开预览。普通链接解析与管理员明确转存是两条独立操作，即使同条管理员消息已得到解析回复，也会继续交给聊天模型处理其转存请求。
+解析不创建 Content、ContentSource、媒体资产或队列任务，图片仅在内存读取用于上传。其他群不开放新能力。独立 B站插件保留其他群原功能，但排除 QQ 私聊和群 1081948298，避免重复回复。

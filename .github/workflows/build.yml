@@ -59,7 +59,7 @@ jobs:
       - name: Install dependencies
         run: |
           flutter pub get
-          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+          dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
         working-directory: frontend
 
       - name: Cache generated Dart code
@@ -163,7 +163,7 @@ jobs:
       - name: Install dependencies
         run: |
           flutter pub get
-          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+          dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
         working-directory: frontend
 
       - name: Cache generated Dart code
@@ -216,7 +216,7 @@ jobs:
       - name: Install dependencies
         run: |
           flutter pub get
-          dart run tool/dependencies/ensure_inactive_branch_back_navigation.dart
+          dart --disable-dart-dev tool/dependencies/ensure_inactive_branch_back_navigation.dart
         working-directory: frontend
 
       - name: Cache generated Dart code

@@ -25,7 +25,7 @@ from app.schemas import (
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.search_service import UnifiedSearchService
-from app.services.content_presenter import compute_effective_layout_type
+from app.services.content_presenter import compute_content_excerpt, compute_effective_layout_type
 from app.schemas.media import MediaPurpose
 from app.services.media_manifest import build_content_media_manifests, resolve_media_base_url, media_preview_url
 from app.services.background_task_state import (
@@ -53,6 +53,7 @@ def _serialize_content_hit(hit, media_assets) -> UnifiedSearchContentItem:
         content_type=hit.content.content_type,
         effective_layout_type=compute_effective_layout_type(hit.content),
         title=hit.content.title,
+        excerpt=compute_content_excerpt(hit.content),
         summary=hit.content.summary,
         author_name=hit.content.author_name,
         author_avatar_url=media_preview_url(media_assets, avatar=True),

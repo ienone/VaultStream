@@ -177,7 +177,7 @@ class AgentController extends Notifier<AgentViewState> {
     state = state.copyWith(loading: true, error: null);
     try {
       await _loadSessions();
-      final requestedSession = initialSessionId?.trim();
+      final requestedSession = state.sessionId ?? initialSessionId?.trim();
       if (requestedSession != null && requestedSession.isNotEmpty) {
         await selectSession(requestedSession);
       } else if (state.sessions.isEmpty) {
@@ -529,6 +529,6 @@ class AgentController extends Notifier<AgentViewState> {
 
   String _formatRequestError(Object error) {
     if (error is DioException) return _formatAgentErrorMessage(error);
-    return 'Agent 工作台加载失败，请检查连接后重试。';
+    return '会话加载失败';
   }
 }

@@ -66,9 +66,11 @@ class ContentParser:
             await task_queue.mark_failed(claimed_task, reason="missing_content_id")
             return
 
+        run_name = task_data.get("run_name", "content_parse")
+        trigger = task_data.get("trigger", "queue")
         run = await record_task_run_started(
-            "content_parse",
-            trigger="queue",
+            run_name, run_id=task_data.get("run_id"),
+            trigger=trigger,
             content_id=content_id,
             task_id=task_id,
         )
@@ -77,13 +79,13 @@ class ContentParser:
         with log_context(task_id=task_id, content_id=content_id):
             try:
                 result = await asyncio.wait_for(
-                    self.execute_parse(content_id, claimed_task=claimed_task),
+                    self.execute_parse(content_id, claimed_task=claimed_task, force=task_data.get("force") is True),
                     timeout=TaskQueue.EXECUTION_TIMEOUT.total_seconds(),
                 )
                 await record_task_run_success(
-                    "content_parse",
+                    run_name,
                     run_id,
-                    trigger="queue",
+                    trigger=trigger,
                     content_id=content_id,
                     task_id=task_id,
                     task_db_id=claimed_task.id,
@@ -95,10 +97,10 @@ class ContentParser:
             except asyncio.CancelledError:
                 await self._settle_parse_error(content_id, claimed_task, RuntimeError("Parsing cancelled"), "cancelled")
                 await record_task_run_error(
-                    "content_parse",
+                    run_name,
                     run_id,
                     "Parsing cancelled",
-                    trigger="queue",
+                    trigger=trigger,
                     content_id=content_id,
                     task_id=task_id,
                     task_db_id=claimed_task.id,
@@ -112,10 +114,10 @@ class ContentParser:
                     f"{reason}: {type(e).__name__}: {e}",
                 )
                 await record_task_run_error(
-                    "content_parse",
+                    run_name,
                     run_id,
                     e,
-                    trigger="queue",
+                    trigger=trigger,
                     content_id=content_id,
                     task_id=task_id,
                     task_db_id=claimed_task.id,
@@ -128,18 +130,13 @@ class ContentParser:
         content_id: int,
         *,
         force: bool = False,
-        claimed_task: Task | None = None,
+        claimed_task: Task,
     ) -> ParseExecutionResult:
         """Execute one parse path and atomically settle claimed parse results."""
         async with AsyncSessionLocal() as session:
-            if claimed_task is not None:
-                if not await task_queue.owns(session, claimed_task):
-                    await session.rollback()
-                    raise RuntimeError("parse task already settled")
-            else:
-                await session.execute(update(Content).where(
-                    Content.id == content_id,
-                ).values(id=Content.id))
+            if not await task_queue.owns(session, claimed_task):
+                await session.rollback()
+                raise RuntimeError("parse task already settled")
             result = await session.execute(select(Content).where(Content.id == content_id))
             content = result.scalar_one_or_none()
             if content is None or content.deleted_at is not None:
@@ -149,7 +146,7 @@ class ContentParser:
                     skipped=True,
                     reason="content_deleted" if content is not None else "content_not_found",
                 )
-                if claimed_task is not None and not await task_queue.mark_complete(claimed_task, session=session):
+                if not await task_queue.mark_complete(claimed_task, session=session):
                     raise RuntimeError("parse task already settled")
                 await session.commit()
                 return skipped
@@ -165,7 +162,7 @@ class ContentParser:
                     status=content.status.value,
                     title=content.title,
                 )
-                if claimed_task is not None and not await task_queue.mark_complete(claimed_task, session=session):
+                if not await task_queue.mark_complete(claimed_task, session=session):
                     raise RuntimeError("parse task already settled")
                 await session.commit()
                 return skipped
@@ -184,20 +181,12 @@ class ContentParser:
                 return await self._update_content(
                     session, content, parsed, adapter, claimed_task=claimed_task,
                 )
-            except asyncio.CancelledError:
-                if claimed_task is None:
-                    await self._record_parse_error(session, content_id, RuntimeError("Parsing cancelled"))
-                raise
-            except Exception as error:
-                if claimed_task is None:
-                    await self._record_parse_error(session, content_id, error)
-                raise
             finally:
                 await close_adapter(adapter)
 
     async def _update_content(
         self, session: AsyncSession, content: Content, parsed: Any, adapter: Any,
-        *, claimed_task: Task | None = None,
+        *, claimed_task: Task,
     ) -> ParseExecutionResult:
         """更新内容数据到数据库"""
         # 私有归档媒体处理（可能更新 parsed.body / media_urls / cover_url 等）
@@ -222,31 +211,18 @@ class ContentParser:
         # acquire SQLite's write lock before changing persistent facts.
         content_id = content.id
         with session.no_autoflush:
-            if claimed_task is not None:
-                owns_write_lock = await task_queue.owns(session, claimed_task)
-            else:
-                lock = await session.execute(
-                    update(Content)
-                    .where(Content.id == content_id)
-                    .values(id=Content.id)
-                )
-                owns_write_lock = lock.rowcount == 1
+            owns_write_lock = await task_queue.owns(session, claimed_task)
         if not owns_write_lock:
             await session.rollback()
-            if claimed_task is not None:
-                raise RuntimeError("parse task already settled")
-            return ParseExecutionResult(found=False, skipped=True, reason="content_not_found")
+            raise RuntimeError("parse task already settled")
 
         session.expire_all()
         content = await session.get(Content, content_id)
         if content is None or content.deleted_at is not None:
             reason = "content_deleted" if content is not None else "content_not_found"
-            if claimed_task is not None:
-                if not await task_queue.mark_complete(claimed_task, session=session):
-                    raise RuntimeError("parse task already settled")
-                await session.commit()
-            else:
-                await session.rollback()
+            if not await task_queue.mark_complete(claimed_task, session=session):
+                raise RuntimeError("parse task already settled")
+            await session.commit()
             return ParseExecutionResult(found=False, skipped=True, reason=reason)
 
         content.resolved_url = parsed.clean_url if parsed.clean_url != content.canonical_url else None
@@ -327,7 +303,17 @@ class ContentParser:
             source="parse",
         )
 
-        if claimed_task is not None and not await task_queue.mark_complete(claimed_task, session=session):
+        await PostIngestService().run_for_content(
+            session,
+            content,
+            source="parse",
+            summary=True,
+            embedding=True,
+            distribution=True,
+            commit=False,
+        )
+
+        if not await task_queue.mark_complete(claimed_task, session=session):
             await session.rollback()
             raise RuntimeError("parse task already settled")
 
@@ -349,14 +335,7 @@ class ContentParser:
             "platform": content.platform.value if content.platform else None,
             "cover_url": content.cover_url,
         })
-        await PostIngestService().run_for_content(
-            session,
-            content,
-            source="parse",
-            summary=True,
-            embedding=True,
-            distribution=True,
-        )
+
 
         return execution_result
 
@@ -386,6 +365,7 @@ class ContentParser:
             changed = await task_queue.mark_failed(claim, reason=reason, session=session)
             if changed:
                 await session.commit()
+                await event_bus.publish("content_updated", {"id": content_id})
             else:
                 await session.rollback()
             return changed
@@ -398,34 +378,6 @@ class ContentParser:
         content.last_error_type = type(error).__name__
         content.last_error_detail = {"message": str(error)}
         content.last_error_at = utcnow()
-
-    async def _record_parse_error(self, session, content_id: int, error) -> None:
-        """Record content failure; queue settlement is owned by the caller."""
-        logger.error(f"处理任务失败: content_id={content_id}, 错误: {error}")
-
-        await session.rollback()
-        await session.execute(update(Content).where(
-            Content.id == content_id,
-        ).values(id=Content.id))
-        content = await session.get(Content, content_id)
-        if content is None or content.deleted_at is not None or content.status == ContentStatus.PARSE_SUCCESS:
-            return
-        self._apply_parse_error(content, error)
-        content.last_error_detail = {
-            "message": str(error),
-            "traceback": traceback.format_exc(limit=50),
-        }
-        await session.commit()
-
-        try:
-            from app.core.events import event_bus
-            await event_bus.publish("content_updated", {
-                "id": content.id,
-                "status": ContentStatus.PARSE_FAILED.value,
-                "error": str(error)
-            })
-        except Exception:
-            pass
 
     @staticmethod
     def _task_failure_reason(error: Exception) -> str:
@@ -533,12 +485,3 @@ class ContentParser:
         if archive.get("markdown"):
             parsed.body = archive["markdown"]
         apply_archive_media(parsed, archive)
-
-    async def retry_parse(
-        self,
-        content_id: int,
-        force: bool = False,
-    ) -> bool:
-        """用户主动重新解析一次，不循环重复相同方案。"""
-        result = await self.execute_parse(content_id, force=force)
-        return result.found

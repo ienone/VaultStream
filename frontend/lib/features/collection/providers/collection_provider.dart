@@ -30,13 +30,7 @@ class Collection extends _$Collection {
     _generation++;
     if (request != _request) _loadedPages = 1;
     _request = request;
-    refreshOnEvents(
-      ref,
-      (event) =>
-          _collectionEventTypes.contains(event.type) ||
-          (event.type == 'background_task_updated' &&
-              event.data['content_id'] != null),
-    );
+    refreshOnEvents(ref, (event) => _collectionEventTypes.contains(event.type));
 
     // 后端拥有筛选和排序。实时刷新重读已加载页，不在客户端猜测归属，
     // 也不把阅读中的长列表缩回第一页。
@@ -89,7 +83,10 @@ class Collection extends _$Collection {
   }
 }
 
-@riverpod
+// 详情页直接展示失败并提供重试，避免自动退避期间一直显示骨架。
+Duration? _detailRetry(int retryCount, Object error) => null;
+
+@Riverpod(retry: _detailRetry)
 Future<ContentDetail> contentDetail(Ref ref, int id) async {
   refreshOnEvents(ref, (event) => affectsContent(event, id));
   final dio = ref.watch(apiClientProvider);

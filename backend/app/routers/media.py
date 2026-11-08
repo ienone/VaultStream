@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.api_errors import build_error_payload
 from app.core.dependencies import require_api_token
 from app.core.database import get_db
-from app.core.safe_fetch import create_safe_async_transport, is_safe_url
+from app.core.safe_fetch import UnsafeUrlError, create_safe_async_transport, is_safe_url
 from app.adapters.storage import get_storage_backend, LocalStorageBackend
 from app.models.media import MediaArchiveStatus, MediaVariant, MediaVariantStatus
 from app.schemas.media import (
@@ -127,20 +127,17 @@ def _resolve_local_media_path(storage: LocalStorageBackend, key: str) -> Path:
     return file_path
 
 
-def _is_safe_url(url: str) -> bool:
-    """检查 URL 是否安全（防止 SSRF 访问内网）"""
-    return is_safe_url(url)
-
-
 async def _download_remote_image(
     client: httpx.AsyncClient,
     url: str,
     headers: dict[str, str],
+    *,
+    allow_source_refresh: bool = True,
 ) -> tuple[bytes, str, str]:
     """下载远程图片，并在每次重定向前重新执行 SSRF 与大小校验。"""
     current_url = url
     for _ in range(_MAX_PROXY_REDIRECTS + 1):
-        if not _is_safe_url(current_url):
+        if not await is_safe_url(current_url):
             raise HTTPException(
                 status_code=400,
                 detail="目标 URL 不允许访问（内网地址或无效协议）",
@@ -163,6 +160,19 @@ async def _download_remote_image(
                 continue
 
             if resp.status_code != 200:
+                if resp.status_code == 403 and allow_source_refresh:
+                    from app.adapters.errors import AdapterError
+                    from app.services.xiaohongshu_media_refresh import refresh_xiaohongshu_image_url
+
+                    await resp.aclose()
+                    try:
+                        refreshed = await refresh_xiaohongshu_image_url(url)
+                    except AdapterError as error:
+                        raise HTTPException(status_code=502, detail=f"图片来源刷新失败: {error}") from error
+                    if refreshed:
+                        return await _download_remote_image(
+                            client, refreshed, headers, allow_source_refresh=False,
+                        )
                 logger.error(f"图片代理上游错误 {resp.status_code}: {current_url}")
                 raise HTTPException(
                     status_code=502,
@@ -273,10 +283,12 @@ async def _enforce_proxy_cache_quota(storage: LocalStorageBackend) -> None:
 
 def _proxy_cache_media_type(path: str) -> str | None:
     """Infer the media type encoded by a cache filename, never assume WebP."""
-    media_type, _ = mimetypes.guess_type(path)
-    if media_type and media_type.startswith("image/"):
-        return media_type
-    return None
+    # Use exactly the formats we write; minimal container MIME tables omit WebP.
+    return {
+        ".webp": "image/webp", ".jpg": "image/jpeg", ".png": "image/png",
+        ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp",
+        ".tif": "image/tiff",
+    }.get(Path(path).suffix.lower())
 
 
 async def _find_proxy_cache_file(
@@ -387,13 +399,14 @@ async def _fetch_proxy_image_response(
         transport = create_safe_async_transport(**transport_kwargs)
         async with httpx.AsyncClient(
             transport=transport,
-            timeout=httpx.Timeout(10.0, connect=5.0),
+            timeout=httpx.Timeout(30.0, connect=15.0),
         ) as client:
-            original_data, content_type, final_url = await _download_remote_image(
-                client,
-                url,
-                headers,
-            )
+            async with asyncio.timeout(120.0):
+                original_data, content_type, final_url = await _download_remote_image(
+                    client,
+                    url,
+                    headers,
+                )
             await asyncio.to_thread(_validate_proxy_image_pixels, original_data)
 
             try:
@@ -459,9 +472,11 @@ async def _fetch_proxy_image_response(
                 )
     except HTTPException:
         raise
-    except httpx.TimeoutException:
-        logger.error(f"图片代理请求超时: {url}")
-        raise HTTPException(status_code=504, detail="上游服务器响应超时")
+    except UnsafeUrlError as exc:
+        raise HTTPException(status_code=400, detail="目标 URL 不允许访问（内网地址或无效地址）") from exc
+    except (httpx.TimeoutException, TimeoutError) as exc:
+        logger.error("图片代理请求超时: url={}, type={}", url, type(exc).__name__)
+        raise HTTPException(status_code=504, detail="上游服务器响应超时") from exc
     except httpx.RequestError as e:
         logger.error(f"图片代理网络错误: {url}, {e}")
         raise HTTPException(status_code=502, detail=f"网络请求失败: {str(e)}")

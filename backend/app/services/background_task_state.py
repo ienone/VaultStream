@@ -13,8 +13,8 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
-from app.models import BackgroundTaskRun, NotificationMessage
-from app.services.task_run_presentation import build_task_run_presentation, TASK_TERMINAL_STATUSES
+from app.models import BackgroundTaskRun, Content, NotificationMessage
+from app.services.task_run_presentation import build_task_run_presentation, task_content_subject, TASK_TERMINAL_STATUSES
 
 _UTC_DATETIME = TypeAdapter(OptionalUtcDatetime)
 _MAX_RECENT_RUNS = 200
@@ -133,10 +133,29 @@ async def get_recent_task_runs_all(
     return [_serialize_run(row) for row in rows]
 
 
+def task_content_join():
+    return and_(
+        Content.deleted_at.is_(None),
+        Content.id == func.coalesce(
+            BackgroundTaskRun.result["content_id"].as_integer(),
+            BackgroundTaskRun.run_metadata["content_id"].as_integer(),
+        ),
+    )
+
+
 async def get_task_run(run_id: str) -> dict[str, Any] | None:
     async with AsyncSessionLocal() as db:
-        row = await db.get(BackgroundTaskRun, run_id)
-    return _serialize_run(row) if row is not None else None
+        result = (await db.execute(
+            select(BackgroundTaskRun, Content.title, Content.url)
+            .outerjoin(Content, task_content_join())
+            .where(BackgroundTaskRun.run_id == run_id)
+        )).one_or_none()
+    if result is None:
+        return None
+    row, title, url = result
+    payload = _serialize_run(row)
+    payload["presentation"]["subject"] = task_content_subject(title, url)
+    return payload
 
 
 async def _upsert_run(
@@ -176,12 +195,14 @@ async def _upsert_run(
             },
             where=and_(
                 BackgroundTaskRun.task == task_name,
-                BackgroundTaskRun.status == "running",
+                BackgroundTaskRun.status.in_(["pending", "running"]),
             ),
         )
     else:
-        statement = insert_statement.on_conflict_do_nothing(
-            index_elements=[BackgroundTaskRun.run_id]
+        statement = insert_statement.on_conflict_do_update(
+            index_elements=[BackgroundTaskRun.run_id],
+            set_={"status": "running", "started_at": now, "updated_at": now},
+            where=and_(BackgroundTaskRun.task == task_name, BackgroundTaskRun.status == "pending"),
         )
 
     async with AsyncSessionLocal() as db:

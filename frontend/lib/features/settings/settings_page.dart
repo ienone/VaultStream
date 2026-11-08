@@ -1,11 +1,20 @@
-import 'package:flutter/material.dart';
+import '../../layout/root_page_actions.dart';
+import '../../routing/page_origin.dart';
+import '../../routing/overlay_back_observer.dart';
+import '../../theme/design_tokens.dart';
+import '../../core/layout/app_page_body.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/layout/responsive_layout.dart';
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/navigation_scope.dart';
-import '../../theme/design_tokens.dart';
+import '../../core/widgets/app_setting_group.dart';
 import 'presentation/tabs/automation_tab.dart';
+import 'providers/settings_provider.dart';
+import '../automation/widgets/processing_automation_panel.dart';
 import 'presentation/tabs/connection_tab.dart';
 import 'presentation/tabs/push_tab.dart';
 import 'presentation/tabs/system_tab.dart';
@@ -23,60 +32,55 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late int _selectedIndex;
   late bool _showMobileDetail;
   final _contentKey = GlobalKey();
+  PageOrigin? _origin;
   final _navigatorKey = GlobalKey<NavigatorState>();
+  final _backObserver = OverlayBackObserver();
   static const _detailPageKey = ValueKey('settings-detail-page');
 
   static const List<_SettingsSection> _sections = [
     _SettingsSection(
       key: 'connection',
-      title: '连接与访问',
-      subtitle: '服务器地址、访问密钥和网络代理',
+      title: '服务器连接',
       icon: Icons.lan_rounded,
       child: ConnectionTab(),
     ),
     _SettingsSection(
+      key: 'processing',
+      title: '内容处理',
+      icon: Icons.tune_rounded,
+      child: ProcessingAutomationPanel(),
+    ),
+    _SettingsSection(
       key: 'automation',
       title: 'AI 模型',
-      subtitle: '文本、视觉、摘要与语义模型',
       icon: Icons.auto_awesome_rounded,
       child: AutomationTab(),
     ),
     _SettingsSection(
-      key: 'sources',
-      title: '信息来源',
-      subtitle: '发现来源、兴趣与保留策略',
-      icon: Icons.rss_feed_rounded,
-      child: AutomationTab(sourcesOnly: true),
+      key: 'discovery',
+      title: '内容筛选',
+      icon: Icons.filter_alt_outlined,
+      child: AutomationTab(view: AutomationView.policy),
     ),
     _SettingsSection(
       key: 'push',
-      title: '推送与通知',
-      subtitle: '应用内摘要与账号入口',
-      icon: Icons.outbox_rounded,
+      title: '通知',
+      icon: Icons.notifications_outlined,
       child: PushTab(),
     ),
     _SettingsSection(
-      key: 'targets',
-      title: '推送目标',
-      subtitle: '群组与频道',
-      icon: Icons.groups_outlined,
-      child: PushTab(targetsOnly: true),
-    ),
-    _SettingsSection(
-      key: 'storage',
-      title: '媒体与存储',
-      subtitle: '媒体归档、质量与存储限制',
-      icon: Icons.storage_outlined,
-      child: SystemTab(storageOnly: true),
-    ),
-    _SettingsSection(
       key: 'system',
-      title: '外观与系统',
-      subtitle: '主题与开源许可',
+      title: '外观',
       icon: Icons.tune_rounded,
       child: SystemTab(),
     ),
   ];
+
+  @override
+  void dispose() {
+    _backObserver.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -98,12 +102,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep the settings response while browsing this workspace, including its
+    // section list, so opening another section does not flash a loading screen.
+    if (TickerMode.valuesOf(context).enabled) {
+      ref.watch(systemSettingsProvider);
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final metrics = WindowMetrics.fromSize(
           Size(constraints.maxWidth, constraints.maxHeight),
         );
-        final singlePane = !metrics.supportsSupportingPane;
+        final singlePane = !AppListDetailWorkspace.supportsSplit(
+          context,
+          availableSize: constraints.biggest,
+        );
         // Remember the detail actually shown by this layout, including when
         // a browser history entry clears the selected section query.
         if (!singlePane) _showMobileDetail = true;
@@ -123,33 +135,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: AppNavigationScope(
               child: Navigator(
                 key: _navigatorKey,
+                observers: [_backObserver],
                 pages: [
                   MaterialPage<void>(
                     key: const ValueKey('settings-list-page'),
                     child: Scaffold(
                       appBar: AppBar(
-                        toolbarHeight: metrics.heightClass.isCompact
-                            ? 48
-                            : null,
+                        toolbarHeight: metrics.toolbarHeight,
                         title: const Text('设置'),
-                        leading: _exitButton(context),
+                        leading: buildRootPageLeading(context),
+                        automaticallyImplyLeading: false,
                       ),
                       body: SafeArea(
                         top: false,
-                        child: _buildSectionList(context),
+                        child: AppPageBody(
+                          maxWidth: AppPane.readableMaxWidth,
+                          child: _buildSectionList(context),
+                        ),
                       ),
                     ),
                   ),
                   if (_showMobileDetail)
-                    MaterialPage<void>(
+                    OriginMaterialPage<void>(
+                      origin: singlePane ? _origin : null,
                       key: _detailPageKey,
                       canPop: singlePane,
                       child: singlePane
                           ? Scaffold(
                               appBar: AppBar(
-                                toolbarHeight: metrics.heightClass.isCompact
-                                    ? 48
-                                    : null,
+                                toolbarHeight: metrics.toolbarHeight,
                                 title: Text(selected.title),
                                 leading: BackButton(
                                   onPressed: () =>
@@ -158,7 +172,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               ),
                               body: SafeArea(
                                 top: false,
-                                child: _sectionContent(),
+                                child: AppPageBody(
+                                  maxWidth: AppPane.readableMaxWidth,
+                                  child: _sectionContent(),
+                                ),
                               ),
                             )
                           : _buildDesktopBody(context),
@@ -177,16 +194,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _exitButton(BuildContext context) => BackButton(
-    onPressed: () {
-      if (GoRouter.maybeOf(context)?.canPop() ?? false) {
-        context.pop();
-      } else {
-        context.go('/home');
-      }
-    },
-  );
-
   void _backToSections(BuildContext context) {
     setState(() => _showMobileDetail = false);
     context.replace('/settings');
@@ -194,72 +201,54 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _buildDesktopBody(BuildContext context) {
     final selected = _sections[_selectedIndex];
-    final surface = Theme.of(context).colorScheme.surfaceContainerLow;
-    return Scaffold(
-      body: Row(
-        children: [
-          SizedBox(
-            key: const ValueKey('settings-section-pane'),
-            width: AppPane.supportingWidth,
-            child: Column(
-              children: [
-                AppBar(title: const Text('设置'), leading: _exitButton(context)),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
-                    children: [
-                      for (var i = 0; i < _sections.length; i++)
-                        _SettingsSectionTile(
-                          section: _sections[i],
-                          selected: i == _selectedIndex,
-                          compact: true,
-                          onTap: () => _selectSection(context, i),
-                        ),
-                    ],
+    return AppListDetailWorkspace(
+      selectedId: selected.key,
+      list: Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+        appBar: AppBar(
+          title: const Text('设置'),
+          leading: buildRootPageLeading(context),
+          automaticallyImplyLeading: false,
+        ),
+        body: Theme(
+          data: Theme.of(context).copyWith(
+            drawerTheme: const DrawerThemeData(width: double.infinity),
+            navigationDrawerTheme: Theme.of(context).navigationDrawerTheme
+                .copyWith(indicatorSize: const Size(double.infinity, 56)),
+          ),
+          child: NavigationDrawer(
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+            selectedIndex: _navigationOrder.indexOf(_selectedIndex),
+            onDestinationSelected: (index) =>
+                _selectSection(context, _navigationOrder[index]),
+            children: [
+              for (final group in _groups) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 20, 24, 8),
+                  child: Text(
+                    group.$1,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
+                for (final i in group.$2)
+                  NavigationDrawerDestination(
+                    icon: Icon(_sections[i].icon),
+                    label: Text(_sections[i].title),
+                  ),
               ],
-            ),
+            ],
           ),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: const BorderRadius.horizontal(
-                left: Radius.circular(AppShape.sheet),
-              ),
-              child: Material(
-                color: surface,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AppBar(
-                      automaticallyImplyLeading: false,
-                      backgroundColor: surface,
-                      centerTitle: true,
-                      titleSpacing: 0,
-                      title: SizedBox(
-                        width: AppPane.readableMaxWidth,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Text(selected.title),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: AppPane.readableMaxWidth,
-                          ),
-                          child: _sectionContent(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
+      ),
+      detailBuilder: (_, _, _) => Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text(selected.title),
+        ),
+        body: AppPageBody(
+          maxWidth: AppPane.readableMaxWidth,
+          child: _sectionContent(),
+        ),
       ),
     );
   }
@@ -267,26 +256,44 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _sectionContent() =>
       KeyedSubtree(key: _contentKey, child: _sections[_selectedIndex].child);
 
-  Widget _buildSectionList(BuildContext context) {
-    return ListView(
-      key: const PageStorageKey('settings-section-list'),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-      children: [
-        for (var i = 0; i < _sections.length; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: _SettingsSectionTile(
-              section: _sections[i],
-              selected: false,
-              onTap: () {
-                _selectSection(context, i);
-                setState(() => _showMobileDetail = true);
-              },
-            ),
-          ),
+  static const _groups = [
+    ('应用', [5, 4, 0]),
+    ('内容', [1, 2, 3]),
+  ];
+  static final _navigationOrder = _groups.expand((group) => group.$2).toList();
+  Widget _buildSectionList(BuildContext context) => ListView(
+    key: const PageStorageKey('settings-section-list'),
+    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+    children: [
+      for (final group in _groups) ...[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 16, 8, 12),
+          child: Text(group.$1, style: Theme.of(context).textTheme.titleSmall),
+        ),
+        AppSettingGroup(
+          children: [
+            for (final i in group.$2)
+              Builder(
+                builder: (rowContext) => ListTile(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 4,
+                  ),
+                  leading: Icon(_sections[i].icon),
+                  title: Text(_sections[i].title),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    _origin = PageOrigin(rowContext);
+                    _selectSection(context, i);
+                    setState(() => _showMobileDetail = true);
+                  },
+                ),
+              ),
+          ],
+        ),
       ],
-    );
-  }
+    ],
+  );
 
   void _selectSection(BuildContext context, int index) {
     setState(() => _selectedIndex = index);
@@ -295,51 +302,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   int _sectionIndex(String? tab) {
     final index = _sections.indexWhere((section) => section.key == tab);
-    return index < 0 ? 0 : index;
+    return index < 0 ? 5 : index;
   }
 }
 
 class _SettingsSection {
   final String key;
   final String title;
-  final String subtitle;
   final IconData icon;
   final Widget child;
 
   const _SettingsSection({
     required this.key,
     required this.title,
-    required this.subtitle,
     required this.icon,
     required this.child,
   });
-}
-
-class _SettingsSectionTile extends StatelessWidget {
-  final _SettingsSection section;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-
-  const _SettingsSectionTile({
-    required this.section,
-    required this.selected,
-    required this.onTap,
-    this.compact = false,
-  });
-
-  @override
-  Widget build(BuildContext context) => ListTile(
-    titleAlignment: compact
-        ? ListTileTitleAlignment.center
-        : ListTileTitleAlignment.titleHeight,
-    leading: Icon(section.icon),
-    title: Text(section.title),
-    subtitle: compact ? null : Text(section.subtitle),
-    trailing: compact ? null : const Icon(Icons.chevron_right_rounded),
-    selected: selected,
-    selectedTileColor: Theme.of(context).colorScheme.secondaryContainer,
-    shape: RoundedRectangleBorder(borderRadius: AppShape.cardBorder),
-    onTap: onTap,
-  );
 }

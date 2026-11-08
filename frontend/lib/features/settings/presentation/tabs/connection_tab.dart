@@ -1,15 +1,21 @@
+import '../../../../core/widgets/app_setting_group.dart';
+import '../../../../core/layout/app_page_body.dart';
+
 import 'package:go_router/go_router.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
-import '../../../../core/widgets/predictive_back_dialog.dart';
+import 'package:material_ui/material_ui.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/providers/local_settings_provider.dart';
 import '../../../../core/layout/responsive_layout.dart';
 import '../../../../core/utils/safe_url_launcher.dart';
 import '../../../../core/widgets/adaptive_form_dialog.dart';
+import '../../../accounts/account_detail_page.dart';
 import '../../../../core/network/api_client.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/platform_auth_controller.dart';
@@ -24,67 +30,110 @@ class ConnectionTab extends ConsumerWidget {
   const ConnectionTab({
     super.key,
     this.accountsOnly = false,
-    this.onOpenPlatform,
+    this.selectedPlatform,
   });
 
+  final String? selectedPlatform;
   final bool accountsOnly;
-  final ValueChanged<PlatformHealthStatus>? onOpenPlatform;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (accountsOnly) {
       final platformHealthAsync = ref.watch(platformHealthProvider);
       return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 4,
-              vertical: 12,
-            ),
-            leading: const Icon(Icons.telegram_rounded),
-            title: const Text('Telegram'),
-            subtitle: const Text('个人账号、同步、机器人与群组'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.push('/accounts/telegram'),
-          ),
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 4,
-              vertical: 12,
-            ),
-            leading: const Icon(Icons.chat_bubble_outline_rounded),
-            title: const Text('QQ'),
-            subtitle: const Text('机器人与群组'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.push('/accounts/qq'),
-          ),
-          _buildPlatformHealthSection(context, ref, platformHealthAsync),
-          ref
-              .watch(systemSettingsProvider)
-              .when(
-                data: (settings) => SwitchListTile(
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('自动检查登录状态'),
-                  subtitle: const Text('关闭后停止后续定时检查，仍可手动检测'),
-                  value: parseBoolSetting(
-                    getSettingValue(settings, 'enable_cookie_keepalive', true),
-                    true,
-                  ),
-                  onChanged: (value) => ref
-                      .read(systemSettingsProvider.notifier)
-                      .updateSetting(
-                        'enable_cookie_keepalive',
-                        value,
-                        category: 'automation',
-                      ),
+          const SectionHeader(title: '消息账号'),
+          AppSettingGroup(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
                 ),
-                loading: () => const LinearProgressIndicator(),
-                error: (_, _) => const Text('登录检查策略暂时无法读取'),
+                leading: const Icon(Icons.telegram_rounded),
+                selected: selectedPlatform == 'telegram',
+                title: const Text('Telegram'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.go('/accounts/telegram'),
               ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                leading: const Icon(Icons.chat_bubble_outline_rounded),
+                selected: selectedPlatform == 'qq',
+                title: const Text('QQ'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.go('/accounts/qq'),
+              ),
+              ref
+                  .watch(systemSettingsProvider)
+                  .when(
+                    data: (settings) => SettingSwitch(
+                      title: const Text('允许机器人转存收藏'),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      value: parseBoolSetting(
+                        getSettingValue(settings, 'chat_capture_enabled', true),
+                        true,
+                      ),
+                      onChanged: (value) => ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'chat_capture_enabled',
+                            value,
+                            category: 'bot',
+                          ),
+                    ),
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, _) => SettingLoadFailure(
+                      onRetry: () => ref.invalidate(systemSettingsProvider),
+                    ),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const SectionHeader(title: '内容平台'),
+          _buildPlatformHealthSection(context, ref, platformHealthAsync),
+          AppSettingGroup(
+            children: [
+              ref
+                  .watch(systemSettingsProvider)
+                  .when(
+                    data: (settings) => SettingSwitch(
+                      shape: const RoundedRectangleBorder(),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
+                      title: const Text('自动检查登录状态'),
+                      value: parseBoolSetting(
+                        getSettingValue(
+                          settings,
+                          'enable_cookie_keepalive',
+                          true,
+                        ),
+                        true,
+                      ),
+                      onChanged: (value) => ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSetting(
+                            'enable_cookie_keepalive',
+                            value,
+                            category: 'automation',
+                          ),
+                    ),
+                    loading: () => const LinearProgressIndicator(),
+                    error: (_, _) => SettingLoadFailure(
+                      onRetry: () => ref.invalidate(systemSettingsProvider),
+                    ),
+                  ),
+            ],
+          ),
           const SizedBox(height: 40),
         ],
       );
@@ -93,64 +142,52 @@ class ConnectionTab extends ConsumerWidget {
     final localSettings = ref.watch(localSettingsProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          children: [
-            ExpandableSettingTile(
-              title: '服务器地址',
-              subtitle: localSettings.baseUrl,
-              expandedContent: _buildBaseUrlEditor(
-                context,
-                ref,
-                localSettings.baseUrl,
+    return AppPageBody(
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        children: [
+          SettingGroup(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: _buildBaseUrlEditor(context, ref, localSettings.baseUrl),
               ),
-            ),
-            ExpandableSettingTile(
-              title: 'API 访问密钥',
-              subtitle: _maskToken(localSettings.apiToken),
-              expandedContent: _buildApiTokenEditor(
-                context,
-                ref,
-                localSettings.apiToken,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 24),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.tonalIcon(
-                  onPressed: () => _testConnection(
-                    context,
-                    ref,
-                    localSettings.baseUrl,
-                    localSettings.apiToken,
-                  ),
-                  icon: const Icon(Icons.cell_tower_rounded),
-                  label: const Text('测试服务器连接'),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: _buildApiTokenEditor(
+                  context,
+                  ref,
+                  localSettings.apiToken,
                 ),
               ),
-            ),
-            ExpandableSettingTile(
-              title: '网络代理',
-              subtitle: _getProxySubtitle(ref),
-              expandedContent: _buildProxyEditor(context, ref),
-            ),
-            const SizedBox(height: 32),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => _confirmLogout(context, ref),
-                style: TextButton.styleFrom(foregroundColor: colorScheme.error),
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('退出登录'),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: _buildProxyEditor(context, ref),
               ),
-            ),
-            const SizedBox(height: 40),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SettingGroup(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.network_check_rounded),
+                title: const Text('测试连接'),
+                onTap: () => _testConnection(
+                  context,
+                  ref,
+                  localSettings.baseUrl,
+                  localSettings.apiToken,
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.logout_rounded, color: colorScheme.error),
+                title: Text('退出登录', style: TextStyle(color: colorScheme.error)),
+                onTap: () => _confirmLogout(context, ref),
+              ),
+            ],
+          ),
+          const SizedBox(height: 40),
+        ],
       ),
     );
   }
@@ -165,35 +202,9 @@ class ConnectionTab extends ConsumerWidget {
         if (health.platforms.isEmpty) {
           return const SizedBox.shrink();
         }
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Column(
-            children: [
-              for (final platform in health.platforms)
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 12,
-                  ),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: AppShape.cardMediaBorder,
-                  ),
-                  title: Text(
-                    platform.label,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  subtitle: Text(_platformHealthSubtitle(platform)),
-                  leading: Icon(
-                    _platformHealthIcon(platform),
-                    color: _platformHealthColor(context, platform),
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: onOpenPlatform == null
-                      ? null
-                      : () => onOpenPlatform!(platform),
-                ),
-            ],
-          ),
+        return _PlatformAccountList(
+          platforms: health.platforms,
+          selectedPlatform: selectedPlatform,
         );
       },
       loading: () => const Padding(
@@ -220,60 +231,6 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
-  String _platformHealthSubtitle(PlatformHealthStatus platform) {
-    final parts = <String>[];
-    if (platform.hasCookie) {
-      parts.add(platform.browserAuthValid == false ? '登录失效' : '已配置登录');
-    } else {
-      parts.add('未配置登录');
-    }
-    if (platform.favoritesSupported) {
-      if (platform.favoritesEnabled) {
-        parts.add(
-          platform.favoritesAuthenticated == false ? '同步认证失败' : '收藏同步已启用',
-        );
-      } else {
-        parts.add('收藏同步未启用');
-      }
-    }
-    if (platform.health == 'error' &&
-        platform.browserAuthValid != false &&
-        platform.favoritesAuthenticated != false) {
-      parts.add('需要处理');
-    }
-    return parts.join(' · ');
-  }
-
-  IconData _platformHealthIcon(PlatformHealthStatus platform) {
-    switch (platform.health) {
-      case 'ok':
-        return Icons.verified_user_rounded;
-      case 'error':
-        return Icons.report_gmailerrorred_rounded;
-      case 'inactive':
-        return Icons.account_circle_outlined;
-      default:
-        return Icons.info_outline_rounded;
-    }
-  }
-
-  Color? _platformHealthColor(
-    BuildContext context,
-    PlatformHealthStatus platform,
-  ) {
-    final colors = Theme.of(context).colorScheme;
-    switch (platform.health) {
-      case 'ok':
-        return colors.primary;
-      case 'error':
-        return colors.error;
-      case 'inactive':
-        return colors.outline;
-      default:
-        return null;
-    }
-  }
-
   Widget _buildBaseUrlEditor(
     BuildContext context,
     WidgetRef ref,
@@ -282,11 +239,15 @@ class ConnectionTab extends ConsumerWidget {
     return _ConnectionValueEditor(
       initialValue: currentValue,
       label: '服务器地址',
-      hint: 'http://example.com/api/v1',
+      hint: 'https://vault.example.com',
       buttonLabel: '保存地址',
       onSave: (value) async {
-        await ref.read(localSettingsProvider.notifier).setBaseUrl(value);
-        if (context.mounted) showToast(context, 'API 地址已保存');
+        try {
+          await ref.read(localSettingsProvider.notifier).setBaseUrl(value);
+          if (context.mounted) showToast(context, '服务器地址已保存');
+        } on FormatException catch (error) {
+          if (context.mounted) showToast(context, error.message);
+        }
       },
     );
   }
@@ -298,38 +259,13 @@ class ConnectionTab extends ConsumerWidget {
   ) {
     return _ConnectionValueEditor(
       initialValue: currentValue,
-      label: 'API 访问密钥',
+      label: '访问密钥',
       obscureText: true,
       buttonLabel: '更新密钥',
       onSave: (value) async {
         await ref.read(localSettingsProvider.notifier).setApiToken(value);
         if (context.mounted) showToast(context, '密钥已更新');
       },
-    );
-  }
-
-  String _maskToken(String token) {
-    if (token.isEmpty) return '未配置';
-    if (token.length <= 8) return '********';
-    return '${token.substring(0, 4)}****${token.substring(token.length - 4)}';
-  }
-
-  String _getProxySubtitle(WidgetRef ref) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.maybeWhen(
-      data: (settings) {
-        final proxy =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'http_proxy',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        return proxy.isNotEmpty ? proxy : '未配置';
-      },
-      orElse: () => '加载中...',
     );
   }
 
@@ -408,11 +344,6 @@ class ConnectionTab extends ConsumerWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  '一般情况下无需配置，仅用于高画质或会员内容。',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
                 const Text('SESSDATA（Cookie）'),
                 const SizedBox(height: 8),
                 Semantics(
@@ -502,7 +433,7 @@ class ConnectionTab extends ConsumerWidget {
       if (context.mounted) {
         if (result['success'] == true) {
           final authOk = result['auth_ok'] == true;
-          showToast(context, authOk ? '连接并认证成功' : '连接成功，但 API 密钥无效');
+          showToast(context, authOk ? '连接成功' : '访问密钥无效');
         } else {
           showToast(context, result['error'] as String);
         }
@@ -523,28 +454,79 @@ class ConnectionTab extends ConsumerWidget {
       animationStyle: MediaQuery.disableAnimationsOf(context)
           ? AnimationStyle.noAnimation
           : null,
-      builder: (ctx) => PredictiveBackDialog(
-        child: AlertDialog(
-          title: const Text('退出登录'),
-          content: const Text('注销后将清除本地 API 密钥，需重新配置。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('退出后需重新输入访问密钥。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(localSettingsProvider.notifier).clearAuth();
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await ref.read(localSettingsProvider.notifier).clearAuth();
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-              ),
-              child: const Text('退出'),
-            ),
-          ],
-        ),
+            child: const Text('退出'),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+class _PlatformAccountList extends StatefulWidget {
+  const _PlatformAccountList({
+    required this.platforms,
+    required this.selectedPlatform,
+  });
+
+  final List<PlatformHealthStatus> platforms;
+  final String? selectedPlatform;
+
+  @override
+  State<_PlatformAccountList> createState() => _PlatformAccountListState();
+}
+
+class _PlatformAccountListState extends State<_PlatformAccountList> {
+  final _platformKeys = <String, GlobalKey>{};
+  String? _revealedPlatform;
+
+  @override
+  void didUpdateWidget(_PlatformAccountList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedPlatform != widget.selectedPlatform) {
+      _revealedPlatform = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    for (final platform in widget.platforms) {
+      _platformKeys.putIfAbsent(platform.platform, GlobalKey.new);
+    }
+    final target = widget.selectedPlatform;
+    final key = _platformKeys[target];
+    if (key != null && _revealedPlatform != target) {
+      _revealedPlatform = target;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || widget.selectedPlatform != target) return;
+        final targetContext = key.currentContext;
+        if (targetContext != null) Scrollable.ensureVisible(targetContext);
+      });
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final platform in widget.platforms)
+          AccountPlatformPanel(
+            key: _platformKeys[platform.platform],
+            account: platform,
+          ),
+      ],
     );
   }
 }
@@ -817,18 +799,13 @@ class _ConnectionValueEditor extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Semantics(
-            label: label,
-            child: TextField(
-              controller: controller,
-              obscureText: obscureText,
-              enableSuggestions: false,
-              autocorrect: false,
-              keyboardType: obscureText
-                  ? TextInputType.text
-                  : TextInputType.url,
-              decoration: InputDecoration(hintText: hint),
-            ),
+          TextField(
+            controller: controller,
+            obscureText: obscureText,
+            enableSuggestions: false,
+            autocorrect: false,
+            keyboardType: obscureText ? TextInputType.text : TextInputType.url,
+            decoration: InputDecoration(labelText: label, hintText: hint),
           ),
           const SizedBox(height: 12),
           Align(
@@ -904,10 +881,6 @@ class _XSessionCookieDialogState extends ConsumerState<XSessionCookieDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '在你已登录的 x.com 网页中取得 auth_token 和 ct0，按下方格式填写。登录保存在当前 VaultStream 服务器；可在账号页清除。',
-            ),
-            const SizedBox(height: 16),
             TextField(
               controller: _controller,
               obscureText: true,

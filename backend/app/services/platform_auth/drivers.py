@@ -347,11 +347,12 @@ class XiaohongshuQrLoginDriver(QrLoginDriver):
         self._browser_error = ""
 
     async def open(self) -> None:
+        from app.services.config_service import ConfigService
+
+        proxy = await ConfigService().get_http_proxy()
         async def _open() -> None:
-            browser = self._browser_manager.get_browser()
-            self._context = await browser.new_context(
-                user_agent=self._browser_manager.ua,
-                viewport=self._browser_manager.auth_viewport,
+            self._context = await self._browser_manager.new_context(
+                proxy=proxy, viewport=self._browser_manager.auth_viewport,
             )
             self._page = await self._context.new_page()
             self._page.on("response", self._handle_browser_response)

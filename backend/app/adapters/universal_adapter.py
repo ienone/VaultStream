@@ -1,36 +1,13 @@
-# 通用适配器 (Universal Adapter)
+"""通用网页获取、正文提取与统一存档映射。"""
 
-# 架构升级：
-# 1. 获取层：一次 HTTP 内容协商，必要时使用共享 WebKit 渲染
-# 2. 解析层：明确的正文结构直接提取，其余页面交由内容 Agent
-# 3. 编排层 (Orchestrator): 统一协调获取与解析流程
-
-import sys
-import asyncio
 import hashlib
 import re
-import concurrent.futures
 from typing import Optional
 
 from app.adapters.base import PlatformAdapter, ParsedContent, LAYOUT_ARTICLE, LAYOUT_GALLERY
-from app.services.config_service import ConfigService, LLMConfig
+from app.services.config_service import ConfigService
 from app.adapters.utils.tiered_fetcher import tiered_fetch
 from app.adapters.utils.content_agent import process_content
-
-
-def _run_crawl_in_process(url: str, cookies: dict, llm_config: LLMConfig) -> ParsedContent:
-    """在独立进程中运行爬取（Windows 兼容）"""
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        adapter = UniversalAdapter(cookies=cookies)
-        adapter.llm_config = llm_config
-        return loop.run_until_complete(adapter._do_parse(url))
-    finally:
-        loop.close()
 
 
 def infer_layout_type(content: str, media_urls: list) -> str:
@@ -53,27 +30,13 @@ class UniversalAdapter(PlatformAdapter):
 
     async def parse(self, url: str) -> ParsedContent:
         self.llm_config = await ConfigService().get_text_llm_config()
-        if sys.platform == 'win32':
-            return await self._parse_in_thread(url)
-        else:
-            return await self._do_parse(url)
-    
-    async def _parse_in_thread(self, url: str) -> ParsedContent:
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
-            return await loop.run_in_executor(
-                executor, 
-                _run_crawl_in_process, 
-                url, 
-                self.cookies, 
-                self.llm_config, 
-            )
+        return await self._do_parse(url)
 
-    async def _do_parse(self, url: str) -> ParsedContent:
+    async def _do_parse(self, url: str, *, fetched=None) -> ParsedContent:
         """获取、提取正文并映射到统一存档。"""
 
         # 1. 分层获取
-        fetch_result = await tiered_fetch(url, cookies=self.cookies)
+        fetch_result = fetched or await tiered_fetch(url, cookies=self.cookies)
 
         # 2. 使用最终页面 URL 解析正文中的相对链接。
         process_result = await process_content(fetch_result.url, fetch_result, self.llm_config, verbose=True)

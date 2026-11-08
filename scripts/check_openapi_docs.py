@@ -13,6 +13,7 @@ from unittest.mock import patch
 ENDPOINT_ROW = re.compile(r"^\|\s*`(?P<methods>[^`]+)`\s*\|\s*`(?P<path>[^`]+)`\s*\|")
 
 REQUIRED_ACTION_RESPONSE_MODELS = {
+    ("post", "/api/v1/distribution-queue/cancel", "200"): "BatchQueueCancelResponse",
     (
         "delete",
         "/api/v1/pushed-records/{record_id}",
@@ -88,11 +89,6 @@ REQUIRED_ACTION_RESPONSE_MODELS = {
         "/api/v1/contents/{content_id}",
         "200",
     ): "ContentDeleteResponse",
-    (
-        "post",
-        "/api/v1/contents/{content_id}/retry",
-        "200",
-    ): "ContentRetryResponse",
     (
         "post",
         "/api/v1/contents/{content_id}/generate-summary",

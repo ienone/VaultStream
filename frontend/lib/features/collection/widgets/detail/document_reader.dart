@@ -1,5 +1,10 @@
-import 'package:flutter/material.dart';
-import '../../../../theme/design_tokens.dart';
+import '../../../../core/widgets/app_filter_menu.dart';
+import '../../../../core/utils/toast.dart';
+
+import 'package:material_ui/material_ui.dart';
+
+import '../../../../core/widgets/app_choice_segments.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -56,18 +61,16 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
         .read(contentActionsProvider.notifier)
         .extractDocumentText(widget.contentId);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result.message),
-        action: result.runId == null
-            ? null
-            : SnackBarAction(
-                label: '查看任务',
-                onPressed: () => context.push(
-                  '/tasks/${Uri.encodeComponent(result.runId!)}',
-                ),
-              ),
-      ),
+    Toast.show(
+      context,
+      result.message,
+      action: result.runId == null
+          ? null
+          : SnackBarAction(
+              label: '查看任务',
+              onPressed: () =>
+                  context.push('/tasks/${Uri.encodeComponent(result.runId!)}'),
+            ),
     );
   }
 
@@ -139,34 +142,24 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                 ],
               ),
               if (items.length > 1)
-                DropdownButton<int>(
-                  borderRadius: AppShape.cardBorder,
-                  value: document.assetId,
-                  isExpanded: true,
-                  items: items
-                      .map(
-                        (item) => DropdownMenuItem(
-                          value: item.assetId,
-                          child: Text(
-                            item.filename,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (id) {
-                    if (id != null) _select(id, 1);
-                  },
+                Semantics(
+                  label: '文件',
+                  child: AppFilterMenu(
+                    label: '文件',
+                    value: '${document.assetId}',
+                    options: {
+                      for (final item in items)
+                        '${item.assetId}': item.filename,
+                    },
+                    onSelected: (id) => _select(int.parse(id), 1),
+                  ),
                 ),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: true, label: Text('原页')),
-                  ButtonSegment(value: false, label: Text('文本')),
-                ],
+              const SizedBox(height: 12),
+              AppChoiceSegments<bool>(
+                options: const {true: '原页', false: '文本'},
                 selected: {_showOriginal},
-                onSelectionChanged: (selection) =>
-                    setState(() => _showOriginal = selection.first),
+                onChanged: (values) =>
+                    setState(() => _showOriginal = values.first),
               ),
               const SizedBox(height: 12),
               if (_assetId == null || selected != null)
@@ -199,24 +192,19 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                       icon: const Icon(Icons.chevron_left),
                     ),
                     Expanded(
-                      child: DropdownButton<int>(
-                        borderRadius: AppShape.cardBorder,
-                        isExpanded: true,
-                        value: page?.number,
-                        hint: const Text('选择页码'),
-                        items: document.pages
-                            .map(
-                              (p) => DropdownMenuItem(
-                                value: p.number,
-                                child: Text(
+                      child: Semantics(
+                        label: '页码',
+                        child: AppFilterMenu(
+                          label: '页码',
+                          value: '${page?.number ?? _pageNumber}',
+                          options: {
+                            for (final p in document.pages)
+                              '${p.number}':
                                   '第 ${p.number} / ${document.pageCount} 页',
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (number) {
-                          if (number != null) _select(document.assetId, number);
-                        },
+                          },
+                          onSelected: (number) =>
+                              _select(document.assetId, int.parse(number)),
+                        ),
                       ),
                     ),
                     IconButton(
@@ -236,9 +224,8 @@ class _DocumentReaderState extends ConsumerState<DocumentReader> {
                         ? const Text('本页没有文本，可切换到原页查看。')
                         : SelectableText(
                             page.text,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyLarge?.copyWith(height: 1.6),
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(height: 1.6),
                           ),
                   ),
               ],

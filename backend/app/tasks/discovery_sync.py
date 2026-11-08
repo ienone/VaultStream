@@ -4,12 +4,10 @@
 定期检查到期的发现源并抓取新内容入库。
 """
 import asyncio
-from copy import deepcopy
 from datetime import timedelta
 
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.orm.attributes import flag_modified
 
 from app.adapters.discovery.base import BaseDiscoveryScraper
 from app.adapters.discovery.rss import RSSDiscoveryScraper
@@ -18,8 +16,6 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
 from app.adapters.storage import get_storage_backend
 from app.core.config import settings
-from app.media.processor import store_archive_images, store_archive_videos
-from app.media.references import apply_archive_media
 from app.services.media_backfill import replace_content_media_assets
 from app.models import (
     Content,
@@ -337,45 +333,22 @@ class DiscoverySyncTask:
                 source.last_cursor = new_cursor
             source.last_error = None
 
+            pipeline = PostIngestService()
+            for content_id, work in post_ingest_work.items():
+                content = await db.get(Content, content_id)
+                if content is not None:
+                    if content_id in new_content_ids:
+                        from app.services.media_repair import enqueue_media_repair
+                        await enqueue_media_repair(db, content_id)
+                    await pipeline.run_for_content(
+                        db, content, source="discovery", scoring=content_id in new_content_ids,
+                        commit=False, **work,
+                    )
             await db.commit()
 
             if new_content_ids:
-                logger.info(
-                    f"Discovery sync [{source.name}]: ingested {len(new_content_ids)} items"
-                )
+                logger.info("Discovery sync [{}]: ingested {} items", source.name, len(new_content_ids))
 
-                try:
-                    await self._archive_discovery_media(db, new_content_ids)
-                except Exception as e:
-                    logger.warning(f"Discovery media archiving [{source.name}] error: {e}")
-
-            if post_ingest_work:
-                pipeline = PostIngestService()
-                patrol_error: Exception | None = None
-                if new_content_ids:
-                    try:
-                        # Reuse patrol tags for distribution classification. Scoring
-                        # later would replace the rule tags just added below.
-                        await pipeline.score_discovery(db)
-                    except Exception as error:
-                        # Other post-ingest work also ran before patrol failures
-                        # previously; retain that behavior and report the failure.
-                        patrol_error = error
-                for content_id in sorted(post_ingest_work):
-                    result = await db.execute(select(Content).where(Content.id == content_id))
-                    content = result.scalar_one_or_none()
-                    if content is not None:
-                        work = post_ingest_work[content_id]
-                        await pipeline.run_for_content(
-                            db,
-                            content,
-                            source="discovery",
-                            summary=work["summary"],
-                            embedding=work["embedding"],
-                            distribution=work["distribution"],
-                        )
-                if patrol_error is not None:
-                    raise patrol_error
             if run_id:
                 await record_task_run_success(
                     "discovery_sync",
@@ -389,6 +362,8 @@ class DiscoverySyncTask:
                 )
 
         except Exception as e:
+            await db.rollback()
+            await db.refresh(source)
             source.last_error = str(e)[:500]
             source.last_sync_at = utcnow()
             await db.commit()
@@ -403,56 +378,6 @@ class DiscoverySyncTask:
                     source_kind=_source_kind_value(source),
                     trigger=trigger,
                 )
-
-    async def _archive_discovery_media(self, db, content_ids: list[int]):
-        """Archive declared image/video media under the existing media switches."""
-        archive_config = await ConfigService().get_archive_media_config()
-        if not archive_config.enabled or not (archive_config.images_enabled or archive_config.videos_enabled):
-            return
-
-        if not content_ids:
-            return
-
-        storage = get_storage_backend()
-        namespace = "vaultstream"
-        stmt = select(Content).where(Content.id.in_(content_ids))
-        result = await db.execute(stmt)
-        contents = result.scalars().all()
-
-        for content in contents:
-            if not content.media_urls:
-                continue
-            try:
-                metadata = deepcopy(content.archive_metadata or {})
-                archive = metadata.get("archive")
-                if not isinstance(archive, dict):
-                    # RSS discovery's untyped media contract contains images.
-                    archive = {"images": [{"url": url, "type": "image"} for url in content.media_urls]}
-                if archive_config.images_enabled:
-                    await store_archive_images(
-                        archive=archive, storage=storage, namespace=namespace,
-                        quality=archive_config.image_webp_quality,
-                        max_images=archive_config.image_max_count,
-                    )
-                if archive_config.videos_enabled:
-                    await store_archive_videos(
-                        archive=archive, storage=storage, namespace=namespace,
-                        max_videos=archive_config.video_max_count,
-                        max_bytes=archive_config.video_max_bytes,
-                    )
-                metadata["archive"] = archive
-                content.archive_metadata = metadata
-                apply_archive_media(content, archive)
-                await replace_content_media_assets(db, content, storage, source="discovery_archive")
-                flag_modified(content, "media_urls")
-                if content.rich_payload:
-                    flag_modified(content, "rich_payload")
-
-            except Exception as e:
-                logger.warning(f"Discovery media archive failed for content {content.id}: {e}")
-                continue
-
-        await db.commit()
 
     def _get_scraper(self, source: DiscoverySource) -> BaseDiscoveryScraper | None:
         """Factory: return the correct scraper for the source kind"""

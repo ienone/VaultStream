@@ -181,7 +181,6 @@ class FavoritesSyncService:
             platform_state = (
                 await self.config_service.get_favorites_sync_platform_state(
                     platform,
-                    default_rate_per_minute=task.default_rate_for(platform),
                 )
             )
             platforms.append(

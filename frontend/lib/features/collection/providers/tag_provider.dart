@@ -1,4 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import '../../../core/network/api_client.dart';
 
 part 'tag_provider.g.dart';
@@ -10,10 +11,7 @@ class TagInfo {
   TagInfo({required this.name, required this.count});
 
   factory TagInfo.fromJson(Map<String, dynamic> json) {
-    return TagInfo(
-      name: json['name'] as String,
-      count: json['count'] as int,
-    );
+    return TagInfo(name: json['name'] as String, count: json['count'] as int);
   }
 }
 
