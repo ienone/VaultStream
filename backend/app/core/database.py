@@ -66,27 +66,21 @@ def _create_schema(connection) -> None:
 
 
 async def get_database_health() -> dict[str, Any]:
-    from app.core.schema_gate import validate_database_schema
-
-    ping_ok = await db_ping()
-    details: dict[str, Any] = {"status": "ok" if ping_ok else "error", "ping": ping_ok}
-    if ping_ok:
-        async with engine.connect() as conn:
-            details["schema"] = await validate_database_schema(conn)
-        details["fts"] = details["schema"]["fts"]
-    else:
-        details["fts"] = {"status": "unknown", "available": False}
-        details["schema"] = {"status": "unknown"}
-    return details
-
-
-async def db_ping() -> bool:
     try:
         async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
+            result = await conn.execute(text(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master "
+                "WHERE type='table' AND name='contents_fts')"
+            ))
+            available = bool(result.scalar_one())
     except Exception:
-        return False
+        return {"status": "error", "ping": False, "fts": {"status": "unknown", "available": False}}
+
+    return {
+        "status": "ok",
+        "ping": True,
+        "fts": {"status": "ok" if available else "missing", "available": available},
+    }
 
 
 async def get_db():

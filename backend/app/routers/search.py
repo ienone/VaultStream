@@ -202,16 +202,17 @@ async def _run_reindex_job(
     scope: str,
     content_id: int | None,
     limit: int,
+    content_ids: list[int],
+    estimated_calls: int,
     run_id: str,
 ) -> None:
     async with AsyncSessionLocal() as session:
         try:
-            result = await EmbeddingService().reindex_scope(
+            result = await EmbeddingService().index_planned_contents(
                 scope=scope,
                 content_id=content_id,
-                limit=limit,
-                batch_size=8,
-                delay_seconds=0.2,
+                content_ids=content_ids,
+                estimated_calls=estimated_calls,
                 session=session,
             )
             await session.commit()
@@ -270,6 +271,8 @@ async def semantic_reindex(
             scope,
             payload.content_id,
             payload.limit,
+            content_ids,
+            estimated_calls,
             run_id,
         )
     return SemanticReindexResponse(

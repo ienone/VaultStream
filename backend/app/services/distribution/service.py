@@ -167,15 +167,10 @@ class DistributionService:
             for item in existing_result.scalars().all()
         }
 
-        rules_map = {r.id: r for r in enabled_rules}
         count = 0
 
-        for rule_id, pairs in rule_targets.items():
-            rule = rules_map.get(rule_id)
-            if not rule:
-                continue
-
-            for target, bot_chat in pairs:
+        for rule in enabled_rules:
+            for target, bot_chat in rule_targets.get(rule.id, ()):
                 if bot_chat_id is not None and bot_chat.id != bot_chat_id:
                     continue
                 if (
@@ -183,6 +178,10 @@ class DistributionService:
                     and content.created_at is not None
                     and content.created_at < target.backfill_watermark
                 ):
+                    continue
+
+                existing = existing_items.get((rule.id, bot_chat.id))
+                if existing and not manual and not (force and existing.status == QueueItemStatus.FAILED):
                     continue
 
                 decision = should_distribute(
@@ -198,9 +197,6 @@ class DistributionService:
                 target_id = decision.target_id or bot_chat.chat_id
                 if not manual and await has_qq_agent_receipt(self.db, content_id, bot_chat, target_id):
                     continue
-
-                key = (rule.id, bot_chat.id)
-                existing = existing_items.get(key)
 
                 if existing:
                     if manual and existing.status == QueueItemStatus.SCHEDULED and existing.approved_by != EXPLICIT_PUSH:

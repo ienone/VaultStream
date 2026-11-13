@@ -110,8 +110,9 @@ class FavoritesSyncService:
             default_duplicate_strategy=FavoritesSyncTask._DEFAULT_DUPLICATE_STRATEGY,
             supported_platforms=task.get_supported_platforms(),
             allowed_duplicate_strategies=FavoritesSyncTask._DUPLICATE_STRATEGIES,
+            fresh=True,
         )
-        enabled_platforms = await task.load_enabled_platforms()
+        enabled_platforms = config.enabled_platforms
 
         recent_runs = await get_recent_task_runs("favorites_sync", limit=10)
         latest = latest_favorites_runs()

@@ -67,7 +67,6 @@ from app.services.background_task_state import (
     record_task_run_started,
     record_task_run_success,
 )
-from app.media.extractor import sanitize_media_urls
 from app.services.config_service import ConfigService
 from app.schemas.media import MediaPurpose
 from app.services.media_manifest import (
@@ -942,15 +941,6 @@ async def get_content_detail(
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
 
-    sanitized_media_urls = sanitize_media_urls(
-        content.media_urls,
-        author_avatar_url=content.author_avatar_url,
-    )
-    if sanitized_media_urls != (content.media_urls or []):
-        content.media_urls = sanitized_media_urls
-        await db.commit()
-        await db.refresh(content)
-        
     base_url = resolve_media_base_url(str(request.base_url))
     return await build_content_detail(db, content, base_url, for_edit=for_edit)
 

@@ -4,10 +4,11 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict, ValidationInfo
 import json
 
 from app.models import DiscoveryState, Platform, ContentStatus, ReviewStatus, LayoutType
+from app.media.extractor import sanitize_media_urls
 from app.schemas.base import UtcDatetime, OptionalUtcDatetime
 from app.schemas.media import MediaAssetManifest, MediaSegmentItem
 
@@ -157,6 +158,12 @@ class ContentDetail(BaseModel):
     
     cover_color: Optional[str] = None
     media_urls: List[str] = Field(default_factory=list)
+
+    @field_validator("media_urls", mode="before")
+    @classmethod
+    def clean_media_urls(cls, value: Any, info: ValidationInfo) -> list[str]:
+        return sanitize_media_urls(value, author_avatar_url=info.data.get("author_avatar_url"))
+
     media_assets: List[MediaAssetManifest] = Field(
         default_factory=list,
         validation_alias="media_asset_manifests",

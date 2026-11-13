@@ -133,37 +133,6 @@ class EmbeddingService:
                 session=local_session,
             )
 
-    async def reindex_scope(
-        self,
-        *,
-        scope: str,
-        content_id: int | None = None,
-        limit: int = 100,
-        batch_size: int = 8,
-        delay_seconds: float = 0.2,
-        session: Optional[AsyncSession] = None,
-    ) -> dict:
-        if session is not None:
-            return await self._reindex_scope_impl(
-                scope=scope,
-                content_id=content_id,
-                limit=limit,
-                batch_size=batch_size,
-                delay_seconds=delay_seconds,
-                session=session,
-                own_session=False,
-            )
-        async with AsyncSessionLocal() as local_session:
-            return await self._reindex_scope_impl(
-                scope=scope,
-                content_id=content_id,
-                limit=limit,
-                batch_size=batch_size,
-                delay_seconds=delay_seconds,
-                session=local_session,
-                own_session=True,
-            )
-
     async def get_index_status(self, *, session: Optional[AsyncSession] = None) -> dict:
         if session is not None:
             return await self._get_index_status_impl(session)
@@ -243,26 +212,12 @@ class EmbeddingService:
             estimated_calls += (stale_units + self._REQUEST_BATCH_SIZE - 1) // self._REQUEST_BATCH_SIZE
         return [c.id for c in contents], estimated_calls
 
-    async def _reindex_scope_impl(
-        self,
-        *,
-        scope: str,
-        content_id: int | None,
-        limit: int,
-        batch_size: int,
-        delay_seconds: float,
-        session: AsyncSession,
-        own_session: bool,
+    async def index_planned_contents(
+        self, *, scope: str, content_id: int | None, content_ids: list[int],
+        estimated_calls: int, session: AsyncSession,
     ) -> dict:
-        content_ids, estimated_calls = await self._plan_reindex_impl(
-            scope=scope,
-            content_id=content_id,
-            limit=limit,
-            session=session,
-        )
         indexed = 0
         failed = 0
-        batch_size = max(1, min(batch_size, 32))
         for idx, cid in enumerate(content_ids, start=1):
             try:
                 ok = await self._index_content_impl(cid, session, own_session=False)
@@ -272,12 +227,8 @@ class EmbeddingService:
             failed += int(not ok)
             # Release the SQLite writer before the next provider request.
             await session.commit()
-            if idx % batch_size == 0:
-                await asyncio.sleep(max(0.0, delay_seconds))
-        if own_session:
-            await session.commit()
-        else:
-            await session.flush()
+            if idx % 8 == 0 and idx < len(content_ids):
+                await asyncio.sleep(0.2)
         return {
             "scope": scope,
             "content_id": content_id,

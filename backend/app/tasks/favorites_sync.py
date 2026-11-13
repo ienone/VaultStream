@@ -73,15 +73,11 @@ class FavoritesSyncTask:
         return await record_task_run_started("favorites_sync", **metadata)
 
     async def load_enabled_platforms(self) -> list[str]:
-        config = await self._config_service.get_favorites_sync_config(
-            default_interval_minutes=self._DEFAULT_INTERVAL_MINUTES,
-            default_max_items=self._DEFAULT_MAX_ITEMS,
-            default_duplicate_strategy=self._DEFAULT_DUPLICATE_STRATEGY,
-            supported_platforms=self._fetchers.keys(),
-            allowed_duplicate_strategies=self._DUPLICATE_STRATEGIES,
-            fresh=True,
-        )
-        return config.enabled_platforms
+        raw = await self._config_service.get_value_fresh("favorites_sync_platforms", [])
+        return [
+            platform for platform in self._config_service.parse_favorites_sync_platforms(raw)
+            if platform in self._fetchers
+        ]
 
     def start(self):
         if self.is_running():
@@ -140,10 +136,8 @@ class FavoritesSyncTask:
                 run_id = str(run["run_id"])
                 enabled = await self.load_enabled_platforms()
                 results: dict[str, dict] = {}
-                for platform in enabled:
-                    # Re-check enabled list before each platform to honor runtime toggles ASAP.
-                    latest_enabled = await self.load_enabled_platforms()
-                    if platform not in latest_enabled:
+                for index, platform in enumerate(enabled):
+                    if index and platform not in await self.load_enabled_platforms():
                         logger.info("[favorites sync] platform disabled at runtime, skip {}", platform)
                         results[platform] = {
                             "platform": platform,

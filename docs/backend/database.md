@@ -66,4 +66,4 @@ active
 - Agent context summary 等外键列的索引检查。
 - Alembic 当前 revision 与迁移目录 head 比较。
 
-健康检查只读，使用 SQLAlchemy Inspector 检查实际表、列和索引，FTS 与 SQLite 完整性单独检查。`scripts/check_database_schema.py --db 路径` 对指定测试库执行升级和检查；默认复用 `backend/.test-runtime/regression.db`，不创建随机临时数据库。
+数据库维护脚本使用 SQLAlchemy Inspector 检查实际表、列和索引，FTS 与 SQLite 完整性单独检查。`scripts/check_database_schema.py --db 路径` 对指定测试库执行升级和检查；默认复用 `backend/.test-runtime/regression.db`，不创建随机临时数据库。

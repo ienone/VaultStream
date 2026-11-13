@@ -53,7 +53,7 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 
 - `/health` 与 `/api/v1/health` 返回同一健康结构。
 - `GET /api/v1/init-status` 返回 `has_bot` 和 `version`，用于连接探测；不再返回首次向导状态 `needs_setup`。服务器连接成功后仍需验证 API 密钥。
-- 健康检查区分数据库、队列、FTS、worker、模型供应商和后台任务状态。
+- 健康响应包含数据库、队列、FTS、worker、模型供应商与后台任务状态。数据库部分通过一次元数据查询确认连接和 FTS 表是否存在。完整性、外键及索引一致性由数据库维护脚本检查。
 - `GET /api/v1/ai/capabilities` 描述配置与能力，不执行真实模型请求。
 - `POST /api/v1/ai/connectivity-test` 执行真实连通性测试并记录 `run_id`。
 - AI 连通性响应稳定包含 `run_id`、`target`、`status`、`ok` 和 `elapsed_ms`，供应商相关结果或错误按目标落在明确可选字段；`POST /api/v1/ai/models` 返回目标与模型名列表。

@@ -211,7 +211,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         if max_items < 1:
             raise ValueError("max_items must be positive")
         cookies = await self._get_cookies()
-        if not await self.check_auth():
+        if not (cookies.get("a1") and cookies.get("web_session")):
             raise FavoritesFetchError(
                 code="auth_required",
                 message="Xiaohongshu auth cookie missing",

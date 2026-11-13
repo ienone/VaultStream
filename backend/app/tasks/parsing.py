@@ -28,7 +28,7 @@ from app.core.queue import TaskQueue
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
-from app.services.config_service import ConfigService
+from app.services.config_service import ArchiveMediaConfig, ConfigService
 from app.services.settings_service import get_setting_value
 from app.services.media_backfill import replace_content_media_assets
 from app.services.platform_parsing import create_configured_adapter
@@ -193,7 +193,7 @@ class ContentParser:
         archive_config = await ConfigService().get_archive_media_config()
         if archive_config.enabled:
             try:
-                await self._maybe_process_private_archive_media(parsed)
+                await self._maybe_process_private_archive_media(parsed, archive_config)
             except Exception as e:
                 logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
         
@@ -451,7 +451,7 @@ class ContentParser:
         )
         return metadata
 
-    async def _maybe_process_private_archive_media(self, parsed) -> None:
+    async def _maybe_process_private_archive_media(self, parsed, archive_config: ArchiveMediaConfig) -> None:
         """处理私有归档媒体"""
         meta = getattr(parsed, "archive_metadata", None)
         if not isinstance(meta, dict):
@@ -464,7 +464,6 @@ class ContentParser:
         storage = get_storage_backend()
         
         namespace = "vaultstream"
-        archive_config = await ConfigService().get_archive_media_config()
 
         # 处理图片
         if archive_config.images_enabled:
