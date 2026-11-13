@@ -3,6 +3,8 @@
 """
 import os
 import time
+
+import sqlite_vec
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
@@ -24,8 +26,16 @@ def _create_engine():
         connect_args={"timeout": 30},
     )
     
+    async def load_vector_extension(connection):
+        await connection.enable_load_extension(True)
+        try:
+            await connection.load_extension(sqlite_vec.loadable_path())
+        finally:
+            await connection.enable_load_extension(False)
+
     @event.listens_for(_engine.sync_engine, "connect")
     def set_sqlite_pragma(dbapi_conn, _connection_record):
+        dbapi_conn.run_async(load_vector_extension)
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=30000")

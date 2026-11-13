@@ -2,11 +2,10 @@
 语义检索相关模型定义
 """
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import JSON
 
 from app.core.time_utils import utcnow
 from app.models.base import Base
@@ -38,7 +37,7 @@ class ContentEmbedding(Base):
 
     embedding_model: Mapped[str] = mapped_column(String(200), default="gemini-embedding-2")
     embedding_model_signature: Mapped[Optional[str]] = mapped_column(String(240), default=None)
-    embedding: Mapped[Any] = mapped_column(JSON, default=list)
+    embedding: Mapped[bytes] = mapped_column(LargeBinary, default=bytes)
     text_hash: Mapped[Optional[str]] = mapped_column(String(64), default=None)
     source_text: Mapped[Optional[str]] = mapped_column(Text, default=None)
     index_status: Mapped[str] = mapped_column(String(40), default="pending")

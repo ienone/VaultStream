@@ -66,7 +66,7 @@ active
 - `index_status`、`failure_reason`、`retry_count`、`last_attempted_at` 和 `last_indexed_at` 描述索引生命周期。
 - `source_text` 用于检索解释和证据回溯。
 
-当前向量保存为 SQLite JSON，尚未依赖 sqlite-vec 或 sqlite-vss。这个实现事实不应被写成长期方案承诺。
+向量以 float32 BLOB 保存，sqlite-vec 在 SQLite 内计算余弦距离。已有 JSON 向量随 Alembic 升级转换，保留切片 ID 和模型签名。
 
 ## FTS5
 

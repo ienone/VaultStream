@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+from sqlite_vec import serialize_float32
 from sqlalchemy import and_, delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -578,13 +579,13 @@ class EmbeddingService:
             record.embedding_model_signature = signature
             record.last_attempted_at = datetime.utcnow()
             if isinstance(result, Exception):
-                record.embedding = []
+                record.embedding = b""
                 record.index_status = "failed"
                 record.failure_reason = str(result)[:1000]
                 record.retry_count = int(record.retry_count or 0) + 1
                 failures += 1
             else:
-                record.embedding = result
+                record.embedding = serialize_float32(result)
                 record.index_status = "indexed"
                 record.failure_reason = None
                 record.last_indexed_at = record.last_attempted_at
@@ -627,8 +628,8 @@ class EmbeddingService:
                 filters=filters,
                 limit=candidate_limit,
             )
-        vector_ids = [cid for cid, _, _, _, _ in vector_ranked]
-        vector_meta_map = {cid: (score, cidx, ctitle, source_text) for cid, score, cidx, ctitle, source_text in vector_ranked}
+        best_chunks = dict(vector_ranked)
+        vector_ids = list(best_chunks)
 
         fts_ids = await rank_ids_by_fts_or_like(
             session=session,
@@ -656,33 +657,29 @@ class EmbeddingService:
         ).scalars().all()
         content_map = {c.id: c for c in contents}
 
+        winning_ids = [best_chunks[cid] for cid in merged_ids if cid in best_chunks]
+        chunks = {}
+        if winning_ids:
+            rows = await session.execute(select(
+                ContentEmbedding.id, ContentEmbedding.chunk_index,
+                ContentEmbedding.chunk_title, ContentEmbedding.source_text,
+            ).where(ContentEmbedding.id.in_(winning_ids)))
+            chunks = {row.id: row for row in rows}
+        lexical_ids = set(fts_ids)
         results: list[SemanticSearchHit] = []
-        for content_id, rrf_score in merged:
+        for content_id, score in merged:
             content = content_map.get(content_id)
             if content is None:
                 continue
-
-            in_vector = content_id in vector_meta_map
-            in_fts = content_id in set(fts_ids)
-            
-            score = rrf_score
-            cidx, ctitle, source_text = -1, None, None
-            
-            if in_vector:
-                v_score, cidx, ctitle, source_text = vector_meta_map[content_id]
-                if not in_fts:
-                    score = max(rrf_score, v_score)
-                source = "hybrid" if in_fts else "vector"
-            else:
-                source = "fts"
-
+            chunk = chunks.get(best_chunks.get(content_id))
+            source = "fts"
+            if content_id in best_chunks:
+                source = "hybrid" if content_id in lexical_ids else "vector"
             results.append(SemanticSearchHit(
-                content=content, 
-                score=float(score), 
-                match_source=source,
-                chunk_index=cidx,
-                chunk_title=ctitle,
-                source_text=source_text,
+                content=content, score=score, match_source=source,
+                chunk_index=chunk.chunk_index if chunk else -1,
+                chunk_title=chunk.chunk_title if chunk else None,
+                source_text=chunk.source_text if chunk else None,
             ))
         logger.bind(
             component="semantic_search",
@@ -718,72 +715,37 @@ class EmbeddingService:
         query_vec: list[float],
         filters: list,
         limit: int,
-    ) -> list[tuple[int, float, int, Optional[str], Optional[str]]]:
-        """
-        向量搜索：支持多切片。
-        返回: list[(content_id, score, chunk_index, chunk_title)]
-        """
-        model_signature = await self._get_document_embedding_signature()
-        
-        model_filters = list(filters)
-        model_filters.append(ContentEmbedding.embedding_model_signature == model_signature)
-        model_filters.append(ContentEmbedding.index_status == "indexed")
-        
-        stmt = (
+    ) -> list[tuple[int, int]]:
+        """Return each matching content ID and its nearest chunk ID."""
+        query_blob = serialize_float32(query_vec)
+        distances = (
             select(
-                ContentEmbedding.content_id, 
-                ContentEmbedding.embedding,
-                ContentEmbedding.chunk_index,
-                ContentEmbedding.chunk_title,
-                ContentEmbedding.source_text,
+                ContentEmbedding.id, ContentEmbedding.content_id,
+                func.vec_distance_cosine(ContentEmbedding.embedding, query_blob).label("distance"),
             )
             .join(Content, Content.id == ContentEmbedding.content_id)
-            .where(and_(*model_filters))
+            .where(
+                *filters,
+                ContentEmbedding.embedding_model_signature == await self._get_document_embedding_signature(),
+                ContentEmbedding.index_status == "indexed",
+                func.length(ContentEmbedding.embedding) == len(query_blob),
+            )
+            .cte("distances").prefix_with("MATERIALIZED")
         )
-
-        row_scan_limit = await self._get_embedding_search_max_rows()
-        row_scan_limit = max(limit, row_scan_limit)
-        if row_scan_limit > 0:
-            stmt = stmt.order_by(ContentEmbedding.last_indexed_at.desc()).limit(row_scan_limit)
-        
-        rows = (await session.execute(stmt)).all()
-        logger.bind(
-            component="semantic_search",
-            vector_scan_rows=len(rows),
-            vector_scan_limit=row_scan_limit,
-        ).debug("Semantic vector scan completed")
-
-        if not rows:
-            return []
-
-        import numpy as np
-        
-        q = np.array(query_vec, dtype=np.float32)
-        
-        results = []
-        for row in rows:
-            vec = self._coerce_vector(row.embedding)
-            if len(vec) != len(q):
-                continue
-            
-            score = float(np.dot(vec, q))
-            results.append((row.content_id, score, row.chunk_index, row.chunk_title, row.source_text))
-
-        # 按分数排序
-        results.sort(key=lambda x: x[1], reverse=True)
-        
-        # 结果去重：同一篇文章如果命中多个 chunk，只保留最高分的那个，但记录 chunk 信息
-        seen_content_ids = set()
-        unique_results = []
-        for cid, score, cidx, ctitle, source_text in results:
-            if cid not in seen_content_ids:
-                unique_results.append((cid, score, cidx, ctitle, source_text))
-                seen_content_ids.add(cid)
-                if len(unique_results) >= limit:
-                    break
-                    
-        return unique_results
-
+        candidates = select(
+            distances,
+            func.row_number().over(
+                partition_by=distances.c.content_id,
+                order_by=(distances.c.distance, distances.c.id),
+            ).label("position"),
+        ).where(distances.c.distance.is_not(None)).subquery()
+        stmt = (
+            select(candidates.c.content_id, candidates.c.id)
+            .where(candidates.c.position == 1)
+            .order_by(candidates.c.distance, candidates.c.content_id)
+            .limit(limit)
+        )
+        return [(row.content_id, row.id) for row in await session.execute(stmt)]
 
     def _rrf_merge(self, *, vector_ids: list[int], fts_ids: list[int], top_k: int) -> list[tuple[int, float]]:
         scores: dict[int, float] = {}
@@ -931,20 +893,6 @@ class EmbeddingService:
             return dimension
         return self._DEFAULT_OUTPUT_DIMENSIONALITY
 
-    async def _get_embedding_search_max_rows(self) -> int:
-        config = await self._get_embedding_config()
-        return self._normalize_embedding_search_max_rows(config.search_max_rows)
-
-    def _normalize_embedding_search_max_rows(self, value: object) -> int:
-        try:
-            row_limit = int(value)
-        except (TypeError, ValueError):
-            return 5000
-
-        if row_limit <= 0:
-            return 5000
-        return min(row_limit, 100_000)
-
     async def _get_document_embedding_signature(self) -> str:
         model = await self._get_embedding_model()
         dimension = await self._get_embedding_output_dimensionality()
@@ -961,19 +909,3 @@ class EmbeddingService:
         if norm == 0:
             return vector
         return [v / norm for v in vector]
-
-    def _coerce_vector(self, value) -> list[float]:
-        if not isinstance(value, list):
-            return []
-        try:
-            return [float(v) for v in value]
-        except Exception:
-            return []
-
-    def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
-        if not a or not b:
-            return float("nan")
-        length = min(len(a), len(b))
-        if length == 0:
-            return float("nan")
-        return float(sum(a[i] * b[i] for i in range(length)))

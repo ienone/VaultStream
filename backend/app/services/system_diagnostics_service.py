@@ -285,7 +285,6 @@ class SystemDiagnosticsService:
                 "configured": bool(ai_config.embedding.api_key),
                 "model": ai_config.embedding.model,
                 "output_dimensionality": ai_config.embedding.output_dimensionality,
-                "search_max_rows": ai_config.embedding.search_max_rows,
             },
             "agent_chat": {
                 "configured": bool(ai_config.agent_chat.api_key),

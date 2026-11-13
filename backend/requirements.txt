@@ -10,6 +10,7 @@ pydantic-settings
 python-multipart
 
 # Database (SQLite mode)
+sqlite-vec
 aiosqlite  # SQLite async driver
 sqlalchemy
 alembic

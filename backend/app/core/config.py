@@ -94,7 +94,6 @@ class Settings(BaseSettings):
     embedding_api_key: Optional[SecretStr] = None
     embedding_model: str = "gemini-embedding-2"
     embedding_output_dimensionality: int = 1536
-    embedding_search_max_rows: int = 5000
 
     # 存储后端配置
     storage_backend: Literal["local", "s3"] = "local"

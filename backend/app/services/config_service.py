@@ -67,7 +67,6 @@ class EmbeddingAIConfig:
     api_key: str | None
     model: str
     output_dimensionality: int
-    search_max_rows: int
 
 
 @dataclass(frozen=True)
@@ -317,21 +316,12 @@ class ConfigService:
             "embedding_output_dimensionality",
             settings.embedding_output_dimensionality,
         )
-        search_max_rows = await self.get_value(
-            "embedding_search_max_rows",
-            settings.embedding_search_max_rows,
-        )
-
         return EmbeddingAIConfig(
             api_key=key_text,
             model=str(model or settings.embedding_model),
             output_dimensionality=coerce_int(
                 output_dimensionality,
                 settings.embedding_output_dimensionality,
-            ),
-            search_max_rows=coerce_int(
-                search_max_rows,
-                settings.embedding_search_max_rows,
             ),
         )
 
