@@ -341,6 +341,14 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     final contentId = widget.selectedContentId ?? defaultItem?.contentId;
     final preview = _preview?.id == contentId ? _preview : null;
     return AppListDetailWorkspace(
+      emptyDetail: _distributionView == _DistributionDomainView.targets
+          ? null
+          : WorkspacePlaceholder(
+              loading: isQueue
+                  ? ref.watch(contentQueueProvider).isLoading
+                  : ref.watch(distributionRulesProvider).isLoading,
+              label: isQueue ? '暂无内容详情' : '选择规则查看详情',
+            ),
       onClose: editorKey != null
           ? () => context.go('/automation/distribution/rules')
           : widget.selectedContentId == null

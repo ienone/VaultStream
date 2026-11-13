@@ -123,6 +123,12 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
       return Scaffold(
         appBar: wide ? _workspaceHeader(context) : null,
         body: AppListDetailWorkspace(
+          emptyDetail: widget.tab == SourcesSection.subscriptions
+              ? WorkspacePlaceholder(
+                  loading: ref.watch(discoverySourcesProvider).isLoading,
+                  label: '选择订阅查看详情',
+                )
+              : null,
           selectedId: selectedId,
           onClose: !explicitSelection
               ? null

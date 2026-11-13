@@ -76,6 +76,10 @@ class _NotificationCenterPageState
           onClose: _selected == null
               ? null
               : () => setState(() => _selected = null),
+          emptyDetail: WorkspacePlaceholder(
+            loading: inbox.isLoading,
+            label: '暂无消息详情',
+          ),
           selectedId: selected?.id,
           list: Scaffold(
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,

@@ -1,3 +1,4 @@
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../layout/root_page_actions.dart';
@@ -230,6 +231,10 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
     return CollectionWorkspace(
+      emptyDetail: WorkspacePlaceholder(
+        loading: collectionAsync.isLoading,
+        label: '选择收藏查看详情',
+      ),
       selectedId: widget.selectedContentId,
       preview: _preview?.id == widget.selectedContentId ? _preview : null,
       onClose: _closeReader,

@@ -18,16 +18,22 @@ import 'models/knowledge_event.dart';
 import 'providers/knowledge_event_provider.dart';
 
 class EventDetailPage extends ConsumerWidget {
-  const EventDetailPage({super.key, required this.eventId});
+  const EventDetailPage({
+    super.key,
+    required this.eventId,
+    this.embedded = false,
+  });
 
   final int eventId;
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final event = ref.watch(knowledgeEventDetailProvider(eventId));
     return Scaffold(
       appBar: AppBar(
-        leading: const AppBackButton(fallback: '/collection'),
+        automaticallyImplyLeading: false,
+        leading: embedded ? null : const AppBackButton(fallback: '/collection'),
         title: const Text('事件详情'),
         actions: [
           event.maybeWhen(

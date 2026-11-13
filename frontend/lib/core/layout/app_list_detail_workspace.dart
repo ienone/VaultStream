@@ -18,6 +18,7 @@ class AppListDetailWorkspace extends StatefulWidget {
     required this.list,
     required this.selectedId,
     required this.detailBuilder,
+    this.emptyDetail,
     this.onClose,
   });
 
@@ -31,6 +32,7 @@ class AppListDetailWorkspace extends StatefulWidget {
   }
 
   final Widget list;
+  final Widget? emptyDetail;
   final Object? selectedId;
   final VoidCallback? onClose;
   final Widget Function(bool deferBody, bool focused, VoidCallback? toggleFocus)
@@ -222,7 +224,8 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
         280.0,
         math.min(480.0, constraints.maxWidth - 492),
       );
-      final listWidth = wide && readerVisible
+      final reserveDetail = wide && widget.emptyDetail != null;
+      final listWidth = wide && (readerVisible || reserveDetail)
           ? _listWidth.clamp(280.0, maxListWidth)
           : constraints.maxWidth;
       final readerWidth = wide && !_focused
@@ -240,7 +243,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
         _saveWidth();
       }
 
-      if (!animate) _readerReady = true;
+      if (!animate || reserveDetail) _readerReady = true;
       final readerReady = _readerReady;
       final readerConfiguration = (
         _readerId,
@@ -264,7 +267,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
       return _WorkspaceBackScope(
         register: _registerDetailRoute,
         child: SharedLayoutTransition(
-          value: readerVisible && _previewingBack
+          value: readerVisible && _previewingBack && !reserveDetail
               ? paneWidth + (constraints.maxWidth - paneWidth) * _back.value
               : paneWidth,
           animate: animate && (!_previewingBack || !readerVisible),
@@ -354,28 +357,32 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                           alignment: Alignment.topLeft,
                           minWidth: readerWidth,
                           maxWidth: readerWidth,
-                          child: TickerMode(
-                            enabled: readerVisible,
-                            child: ExcludeFocus(
-                              excluding: !readerVisible,
-                              child: ExcludeSemantics(
-                                excluding: !readerVisible,
-                                child: IgnorePointer(
-                                  ignoring: !readerVisible,
-                                  child: Semantics(
-                                    container: true,
-                                    child: RepaintBoundary(child: _reader),
+                          child: reserveDetail && !readerVisible
+                              ? widget.emptyDetail!
+                              : TickerMode(
+                                  enabled: readerVisible,
+                                  child: ExcludeFocus(
+                                    excluding: !readerVisible,
+                                    child: ExcludeSemantics(
+                                      excluding: !readerVisible,
+                                      child: IgnorePointer(
+                                        ignoring: !readerVisible,
+                                        child: Semantics(
+                                          container: true,
+                                          child: RepaintBoundary(
+                                            child: _reader,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                if (wide && readerVisible && listVisible)
+                if (wide && (readerVisible || reserveDetail) && listVisible)
                   Positioned(
                     left: paneWidth - 16,
                     top: 0,
@@ -493,5 +500,57 @@ class WorkspaceBackTarget extends StatelessWidget {
       ModalRoute.of(context),
     );
     return child;
+  }
+}
+
+/// The detail surface before a list can supply an object to display.
+class WorkspacePlaceholder extends StatelessWidget {
+  const WorkspacePlaceholder({
+    super.key,
+    required this.loading,
+    required this.label,
+  });
+  final bool loading;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: colors.surface,
+      child: loading
+          ? Semantics(
+              label: '正在加载详情',
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final width in [0.46, 0.88, 0.73])
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: FractionallySizedBox(
+                            widthFactor: width,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: colors.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const SizedBox(height: 16),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : Center(
+              child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+            ),
+    );
   }
 }

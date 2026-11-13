@@ -1,3 +1,5 @@
+import '../events/event_detail_page.dart';
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../core/utils/toast.dart';
@@ -126,6 +128,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   final Set<int> _busyItems = <int>{};
   DiscoveryFeedView _view = DiscoveryFeedView.recent;
   bool _showEventUpdates = false;
+  int? _selectedEventId;
 
   Future<void> _refresh() async {
     if (_showEventUpdates) {
@@ -273,8 +276,31 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             ? defaultItem?.id
             : null);
 
+    final wideEvents =
+        _showEventUpdates &&
+        CollectionWorkspace.supportsSplit(
+          context,
+          availableSize: availableSize,
+        );
+    final events = wideEvents ? ref.watch(activeKnowledgeEventsProvider) : null;
+    final eventItems = events?.value?.items;
+    final activeEvent =
+        eventItems
+            ?.where((event) => event.id == _selectedEventId)
+            .firstOrNull ??
+        eventItems?.firstOrNull;
     final content = _showEventUpdates
-        ? _EventUpdatesFeed(onRefresh: _refresh)
+        ? _EventUpdatesFeed(
+            onRefresh: _refresh,
+            selectedId: wideEvents ? activeEvent?.id : null,
+            onSelect: (id) {
+              if (wideEvents) {
+                setState(() => _selectedEventId = id);
+              } else {
+                context.push('/events/$id');
+              }
+            },
+          )
         : feed.when(
             loading: () => const SliverFillRemaining(
               hasScrollBody: false,
@@ -347,71 +373,87 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             },
           );
     if (selectedId != null) _lastReadId = selectedId;
-    return CollectionWorkspace(
-      selectedId: selectedId,
-      defaultSelection: widget.selectedContentId == null,
-      preview: _preview?.id == selectedId ? _preview : null,
-      onClose: _closeReader,
-      list: Builder(
-        builder: (context) {
-          final split = (WorkspaceGeometry.maybeOf(context)?.progress ?? 0) > 0;
-          final horizontalPadding = split ? 12.0 : 24.0;
-          return Scaffold(
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              leading: buildRootPageLeading(context),
-              toolbarHeight: metrics.toolbarHeight,
-              title: const Text('动态'),
-              actions: [const RootPageActions()],
-            ),
-            body: RefreshIndicator(
-              onRefresh: _refresh,
-              child: CustomScrollView(
-                scrollCacheExtent: const ScrollCacheExtent.pixels(0),
-                key: const PageStorageKey('dashboard-feed'),
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      AppSpacing.sm,
-                      horizontalPadding,
-                      AppSpacing.xl,
-                    ),
-                    sliver: SliverMainAxisGroup(
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 880),
-                              child: SizedBox(
-                                width: double.infinity,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: AppSpacing.sm,
-                                  ),
-                                  child: _FeedViewSelector(
-                                    view: _view,
-                                    showEvents: _showEventUpdates,
-                                    onChanged: _showView,
-                                    onShowEvents: _showEvents,
-                                  ),
+    final list = Builder(
+      builder: (context) {
+        final split = (WorkspaceGeometry.maybeOf(context)?.progress ?? 0) > 0;
+        final horizontalPadding = split ? 12.0 : 24.0;
+        return Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            leading: buildRootPageLeading(context),
+            toolbarHeight: metrics.toolbarHeight,
+            title: const Text('动态'),
+            actions: [const RootPageActions()],
+          ),
+          body: RefreshIndicator(
+            onRefresh: _refresh,
+            child: CustomScrollView(
+              scrollCacheExtent: const ScrollCacheExtent.pixels(0),
+              key: const PageStorageKey('dashboard-feed'),
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    AppSpacing.sm,
+                    horizontalPadding,
+                    AppSpacing.xl,
+                  ),
+                  sliver: SliverMainAxisGroup(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 880),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  bottom: AppSpacing.sm,
+                                ),
+                                child: _FeedViewSelector(
+                                  view: _view,
+                                  showEvents: _showEventUpdates,
+                                  onChanged: _showView,
+                                  onShowEvents: _showEvents,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        content,
-                      ],
-                    ),
+                      ),
+                      content,
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
+    );
+    if (wideEvents) {
+      return AppListDetailWorkspace(
+        list: list,
+        selectedId: activeEvent?.id,
+        emptyDetail: WorkspacePlaceholder(
+          loading: events!.isLoading,
+          label: '暂无事件详情',
+        ),
+        detailBuilder: (_, _, _) =>
+            EventDetailPage(eventId: activeEvent!.id, embedded: true),
+      );
+    }
+    return CollectionWorkspace(
+      emptyDetail: _showEventUpdates
+          ? null
+          : WorkspacePlaceholder(loading: feed.isLoading, label: '暂无动态详情'),
+      selectedId: selectedId,
+      defaultSelection: widget.selectedContentId == null,
+      preview: _preview?.id == selectedId ? _preview : null,
+      onClose: _closeReader,
+      list: list,
     );
   }
 }
@@ -465,7 +507,13 @@ class _FeedSliverList extends StatelessWidget {
 }
 
 class _EventUpdatesFeed extends ConsumerWidget {
-  const _EventUpdatesFeed({required this.onRefresh});
+  const _EventUpdatesFeed({
+    required this.onRefresh,
+    required this.selectedId,
+    required this.onSelect,
+  });
+  final int? selectedId;
+  final ValueChanged<int> onSelect;
   final Future<void> Function() onRefresh;
 
   @override
@@ -489,7 +537,12 @@ class _EventUpdatesFeed extends ConsumerWidget {
             const _EmptyEvents()
           else ...[
             _EventFeedLead(total: data.total),
-            for (final event in data.items) _EventUpdateCard(event: event),
+            for (final event in data.items)
+              _EventUpdateCard(
+                event: event,
+                selected: selectedId == event.id,
+                onTap: () => onSelect(event.id),
+              ),
           ],
           const SizedBox(height: AppSpacing.xxl),
         ],
@@ -515,7 +568,13 @@ class _EventFeedLead extends StatelessWidget {
 }
 
 class _EventUpdateCard extends StatelessWidget {
-  const _EventUpdateCard({required this.event});
+  const _EventUpdateCard({
+    required this.event,
+    required this.selected,
+    required this.onTap,
+  });
+  final bool selected;
+  final VoidCallback onTap;
 
   final KnowledgeEventSummary event;
 
@@ -524,11 +583,11 @@ class _EventUpdateCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Material(
-      color: scheme.surfaceContainerLow,
+      color: selected ? scheme.secondaryContainer : scheme.surfaceContainerLow,
       borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => context.push('/events/${event.id}'),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Column(

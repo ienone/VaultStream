@@ -359,24 +359,21 @@ class _AgentPageState extends ConsumerState<AgentPage> {
                     ),
                   ),
                 ),
-          body: _loading && _sessionId == null
-              ? const Center(child: CircularProgressIndicator())
-              : _sessionId == null && _error != null
-              ? _AgentUnavailable(message: _error!, onRetry: _bootstrap)
-              : AppListDetailWorkspace(
-                  selectedId: 'conversation',
-                  list: Material(
-                    color: Theme.of(context).colorScheme.surfaceContainerLow,
-                    child: _SessionPane(state: this),
-                  ),
-                  detailBuilder: (_, _, _) => Scaffold(
-                    appBar: supportsSessionPane ? conversationBar : null,
-                    body: _ConversationPane(
-                      state: this,
-                      showInlineCitations: true,
-                    ),
-                  ),
-                ),
+          body: AppListDetailWorkspace(
+            selectedId: 'conversation',
+            list: Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              child: _SessionPane(state: this),
+            ),
+            detailBuilder: (_, _, _) => Scaffold(
+              appBar: supportsSessionPane ? conversationBar : null,
+              body: _loading && _sessionId == null
+                  ? const WorkspacePlaceholder(loading: true, label: '')
+                  : _sessionId == null && _error != null
+                  ? _AgentUnavailable(message: _error!, onRetry: _bootstrap)
+                  : _ConversationPane(state: this, showInlineCitations: true),
+            ),
+          ),
         );
       },
     );
