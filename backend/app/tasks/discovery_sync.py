@@ -211,10 +211,6 @@ class DiscoverySyncTask:
 
             for item in items:
                 canonical = normalize_url_for_dedup(item.url)
-                cover_candidate = item.cover_url or (
-                    item.media_urls[0] if item.media_urls and item.layout_type != "video" else None
-                )
-
                 # 检查 URL 是否已存在（主库或发现流）
                 stmt = select(Content).where(Content.canonical_url == canonical).limit(1)
                 result = await db.execute(stmt)
@@ -236,23 +232,8 @@ class DiscoverySyncTask:
                             url=item.url,
                         ))
 
-                    existing_media_urls = (
-                        existing_content.media_urls
-                        if isinstance(existing_content.media_urls, list)
-                        else []
-                    )
-                    existing_cover_is_fallback = bool(
-                        existing_content.cover_url
-                        and existing_media_urls
-                        and existing_content.cover_url == existing_media_urls[0]
-                    )
-
-                    if item.cover_url and (
-                        not existing_content.cover_url or existing_cover_is_fallback
-                    ):
+                    if item.cover_url and not existing_content.cover_url:
                         existing_content.cover_url = item.cover_url
-                    elif cover_candidate and not existing_content.cover_url:
-                        existing_content.cover_url = cover_candidate
 
                     if item.media_urls and not existing_content.media_urls:
                         existing_content.media_urls = item.media_urls
@@ -306,7 +287,7 @@ class DiscoverySyncTask:
                     status=ContentStatus.PARSE_SUCCESS,
                     layout_type=LayoutType(item.layout_type),
                     archive_metadata=item.archive_metadata,
-                    cover_url=cover_candidate,
+                    cover_url=item.cover_url,
                     media_urls=item.media_urls,
                     rich_payload=item.rich_payload,
                     extra_stats=item.extra_stats,

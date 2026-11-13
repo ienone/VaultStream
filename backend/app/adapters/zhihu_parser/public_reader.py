@@ -77,7 +77,7 @@ def parse_public_reader(html: str, url: str, kind: str, content_id: str) -> Pars
         platform="zhihu", content_type=kind, content_id=content_id, clean_url=url,
         layout_type=LAYOUT_ARTICLE, title=f"回答：{title}" if kind == "answer" else title,
         body=markdown, author_name=author.get("name"), author_avatar_url=avatar,
-        cover_url=images[0] if images else None, media_urls=images, context_data=context,
+        cover_url=None, media_urls=images, context_data=context,
         stats={
             "like": data.get("upvoted_count", 0), "reply": data.get("comment_count", 0),
             "favorite": data.get("favorites", 0), "voteup_count": data.get("upvoted_count", 0),

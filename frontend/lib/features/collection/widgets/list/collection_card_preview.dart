@@ -37,38 +37,16 @@ class CollectionCardPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final representativeAssets = content.mediaAssets
-        .where(
-          (asset) =>
-              asset.mediaType == MediaType.image &&
-              asset.role != MediaRole.avatar &&
-              asset.sources.isNotEmpty,
-        )
-        .toList();
-    final representativeAsset = representativeAssets.firstOrNull;
-    final contractImageUrls = representativeAssets
-        .expand((asset) => asset.sources)
-        .map((source) => source.url)
-        .where((url) => url.trim().isNotEmpty)
-        .toSet()
-        .toList(growable: false);
-    final imageUrl = contractImageUrls.firstOrNull ?? '';
-    final imageFallbackUrls = contractImageUrls.skip(1).toList(growable: false);
-    final surface = _CardSurface(
+    return _CardSurface(
       content: content,
       onTap: onTap,
-      imageUrl: imageUrl,
-      imageFallbackUrls: imageFallbackUrls,
-      mediaAsset: representativeAsset,
-      mediaAssets: representativeAssets,
+      mediaAsset: content.mediaAssets.cardImage,
       isList: isList,
       isHovered: isHovered,
       isEmphasized: isEmphasized,
       trailingSpace: trailingSpace,
       transparentSurface: transparentSurface,
     );
-
-    return surface;
   }
 }
 
@@ -76,10 +54,7 @@ class _CardSurface extends StatefulWidget {
   const _CardSurface({
     required this.content,
     required this.onTap,
-    required this.imageUrl,
-    required this.imageFallbackUrls,
     required this.mediaAsset,
-    required this.mediaAssets,
     required this.isHovered,
     required this.isEmphasized,
     required this.trailingSpace,
@@ -89,10 +64,7 @@ class _CardSurface extends StatefulWidget {
 
   final ShareCard content;
   final VoidCallback? onTap;
-  final String imageUrl;
-  final List<String> imageFallbackUrls;
   final MediaAsset? mediaAsset;
-  final List<MediaAsset> mediaAssets;
   final bool isHovered;
   final bool isEmphasized;
   final double trailingSpace;
@@ -112,7 +84,6 @@ class _CardSurfaceState extends State<_CardSurface> {
   void didUpdateWidget(_CardSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.content.id != widget.content.id ||
-        oldWidget.imageUrl != widget.imageUrl ||
         oldWidget.mediaAsset != widget.mediaAsset) {
       _imageRevision++;
       _imageFailed = false;
@@ -183,22 +154,12 @@ class _CardSurfaceState extends State<_CardSurface> {
         ],
       ],
     );
-    final media = widget.imageUrl.isEmpty
+    final media = widget.mediaAsset == null
         ? null
         : ClipRRect(
             borderRadius: AppShape.cardMediaBorder,
-            child: NetworkThumbnail(
-              imageUrl: widget.imageUrl,
-              fallbackUrls: widget.imageFallbackUrls,
-              mediaAsset: widget.mediaAsset,
-              mediaAssets: widget.mediaAssets,
-              purpose: MediaPurpose.card,
-              fit: BoxFit.cover,
-              maxWidthDiskCache: (600 * MediaQuery.devicePixelRatioOf(context))
-                  .ceil(),
-              maxHeightDiskCache: (160 * MediaQuery.devicePixelRatioOf(context))
-                  .ceil(),
-              errorIcon: Icons.broken_image_rounded,
+            child: CardMediaPreview(
+              asset: widget.mediaAsset!,
               failureBuilder: _failedMedia,
             ),
           );

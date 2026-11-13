@@ -112,9 +112,7 @@ def _parse_weibo_sync(
             image for image in archive.get("images", [])
             if image.get("url") and image.get("type") != "avatar"
         ]
-        if content_images:
-            cover_url = content_images[0].get("url")
-        elif archive.get("videos"):
+        if archive.get("videos"):
             cover_url = archive["videos"][0].get("cover")
         
         # 如果仍未找到封面，使用page_info中的

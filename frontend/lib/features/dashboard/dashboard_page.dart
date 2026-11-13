@@ -737,14 +737,7 @@ class _FeedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final coverAssets = item.mediaAssets
-        .where(
-          (asset) =>
-              asset.mediaType == MediaType.image &&
-              asset.role != MediaRole.avatar,
-        )
-        .toList(growable: false);
-    final coverUrl = coverAssets.firstOrNull?.sources.firstOrNull?.url ?? '';
+    final asset = item.mediaAssets.cardImage;
     final title = _displayTitle(item);
 
     final content = Column(
@@ -807,30 +800,19 @@ class _FeedCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  if (coverUrl.isEmpty) return content;
+                  if (asset == null) return content;
                   final textScale =
                       MediaQuery.textScalerOf(context).scale(16) / 16;
                   const coverWidth = 88.0;
                   final stacked =
                       constraints.maxWidth - coverWidth - AppSpacing.md <
                       120 * textScale;
-                  final cover = NetworkThumbnail(
-                    imageUrl: coverUrl,
-                    mediaAssets: coverAssets,
-                    purpose: MediaPurpose.card,
+                  final cover = SizedBox(
                     width: stacked ? constraints.maxWidth : coverWidth,
                     height: stacked
                         ? (constraints.maxWidth / 2.4).clamp(80.0, 160.0)
                         : coverWidth * 0.72,
-                    fit: BoxFit.cover,
-                    borderRadius: AppShape.cardMediaBorder,
-                    maxWidthDiskCache:
-                        ((stacked ? constraints.maxWidth : coverWidth) *
-                                MediaQuery.devicePixelRatioOf(context))
-                            .ceil(),
-                    maxHeightDiskCache:
-                        (160 * MediaQuery.devicePixelRatioOf(context)).ceil(),
-                    errorIcon: Icons.article_outlined,
+                    child: CardMediaPreview(asset: asset),
                   );
                   if (stacked) {
                     return Column(

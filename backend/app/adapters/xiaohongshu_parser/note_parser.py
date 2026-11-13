@@ -73,13 +73,7 @@ async def parse_note(
     
     # 提取封面（优先使用第一张图片，否则使用视频首帧）
     cover_url = None
-    content_images = [
-        image for image in archive.get("images", [])
-        if image.get("url") and image.get("type") != "avatar"
-    ]
-    if content_images:
-        cover_url = content_images[0].get("url")
-    elif archive.get("videos"):
+    if archive.get("videos"):
         cover_url = archive["videos"][0].get("cover")
     
     # 提取媒体URL列表

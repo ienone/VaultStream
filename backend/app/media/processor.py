@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from pathlib import Path
 from io import BytesIO
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -12,8 +13,9 @@ from PIL import Image, ImageOps
 
 from app.adapters.storage import LocalStorageBackend
 from app.core.logging import logger
-from app.core.safe_fetch import SafeFetchResult, safe_client_get
-from app.media.color import dominant_color
+from app.core.safe_fetch import safe_client_get
+from app.media.color import _color_from_bytes
+from app.media.proxy_cache import find_proxy_cache_file, proxy_cache_location
 from app.services.config_service import ConfigService
 
 _MAX_ARCHIVE_IMAGE_BYTES = 20 * 1024 * 1024
@@ -82,18 +84,6 @@ def _validate_image(image: Image.Image) -> None:
         raise ValueError("Image exceeds archive pixel limit")
 
 
-def _image_to_webp(data: bytes, quality: int = 80) -> tuple[bytes, int, int]:
-    """代理和归档共用 Pillow 编码器；已编码的 WebP 直接复用。"""
-    with Image.open(BytesIO(data)) as image:
-        _validate_image(image)
-        image.load()
-        if image.format == "WEBP":
-            return data, image.width, image.height
-        encoded = _encode_webp(image, quality)
-    with Image.open(BytesIO(encoded)) as result:
-        return encoded, result.width, result.height
-
-
 def _thumbnail(image: Image.Image) -> bytes:
     image = ImageOps.exif_transpose(image)
     image.thumbnail((300, 300), Image.Resampling.LANCZOS)
@@ -119,25 +109,24 @@ async def _store_thumbnail(storage: LocalStorageBackend, namespace: str, data: b
             "thumb_width": width, "thumb_height": height}
 
 
-def _prepare_image(data: bytes, quality: int) -> tuple[bytes, bytes | None, dict[str, Any]]:
+def _prepare_image(data: bytes, quality: int) -> tuple[bytes, dict[str, Any]]:
     with Image.open(BytesIO(data)) as image:
         _validate_image(image)
         image.load()
-        original_format = image.format
-        encoded = data if original_format == "WEBP" else _encode_webp(image, quality)
-        # 只保存一个主文件。转换没有节省空间时使用已验证的源图。
-        source_extensions = {"JPEG": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp", "AVIF": "avif"}
-        use_source = original_format in source_extensions and len(data) <= len(encoded)
-        main = data if use_source else encoded
-        mime = Image.MIME[original_format] if use_source else "image/webp"
-        ext = source_extensions[original_format] if use_source else "webp"
-    with Image.open(BytesIO(main)) as result:
-        result.load()
-        metadata = {"width": result.width, "height": result.height,
-                    "content_type": mime, "extension": ext,
-                    "dominant_color": dominant_color(result)}
-        thumb = _thumbnail(result) if max(result.size) > 300 else None
-    return main, thumb, metadata
+        fmt = image.format
+        extensions = {"JPEG": "jpg", "PNG": "png", "GIF": "gif", "WEBP": "webp", "AVIF": "avif"}
+        extension = extensions.get(fmt)
+        if fmt != "WEBP":
+            try:
+                encoded = _encode_webp(image, quality)
+            except (ValueError, OSError, RuntimeError):
+                if not extension:
+                    raise
+            else:
+                if not extension or len(encoded) < len(data):
+                    data, fmt, extension = encoded, "WEBP", "webp"
+        return data, {"width": image.width, "height": image.height,
+                      "content_type": Image.MIME[fmt], "extension": extension}
 
 
 async def _download(client: httpx.AsyncClient, url: str, *, kind: str, max_bytes: int):
@@ -170,7 +159,7 @@ async def _download(client: httpx.AsyncClient, url: str, *, kind: str, max_bytes
                 if attempt == 2:
                     raise error
             else:
-                if not response.headers.get("content-type", "").lower().startswith(f"{kind}/"):
+                if kind != "image" and not response.headers.get("content-type", "").lower().startswith(f"{kind}/"):
                     raise ValueError(f"Media response is not {kind}")
                 if not response.content:
                     raise ValueError("Empty media response")
@@ -214,16 +203,6 @@ async def _restore_thumbnail(
         logger.warning("Thumbnail repair failed: {}", type(error).__name__)
 
 
-async def _store_download(
-    response: SafeFetchResult, *, kind: str, quality: int,
-    storage: LocalStorageBackend, namespace: str,
-) -> tuple[dict[str, Any], str | None]:
-    return await store_media_bytes(
-        response.content, content_type=response.headers.get("content-type", "video/mp4"),
-        kind=kind, quality=quality, storage=storage, namespace=namespace,
-    )
-
-
 async def store_media_bytes(
     data: bytes, *, content_type: str, kind: str, quality: int,
     storage: LocalStorageBackend, namespace: str,
@@ -231,9 +210,8 @@ async def store_media_bytes(
     """HTTP 和原生平台下载共用同一转码、缩略图和内容寻址存储。"""
     color = None
     if kind == "image":
-        data, thumbnail, info = await asyncio.to_thread(_prepare_image, data, quality)
+        data, info = await asyncio.to_thread(_prepare_image, data, quality)
         extension = info.pop("extension")
-        color = info.pop("dominant_color")
     else:
         mime = content_type.split(";")[0].strip()
         extension = {"video/mp4": "mp4", "video/webm": "webm", "video/ogg": "ogg",
@@ -246,85 +224,40 @@ async def store_media_bytes(
     result.update(stored_key=key, stored_url=storage.get_url(key=key),
                   stored_sha256=digest, stored_size=len(data))
     if kind == "image":
-        await _save_thumbnail(result, thumbnail, storage, namespace)
+        try:
+            thumbnail = await asyncio.to_thread(_thumbnail_from_bytes, data)
+            await _save_thumbnail(result, thumbnail, storage, namespace)
+        except (OSError, ValueError, RuntimeError) as error:
+            logger.warning("Thumbnail unavailable: {}", error)
+        try:
+            color = await asyncio.to_thread(_color_from_bytes, data)
+        except (OSError, ValueError, RuntimeError) as error:
+            logger.warning("Image color unavailable: {}", error)
     return result, color
 
 
-async def _store_archive_media(
-    *, archive: dict[str, Any], storage: LocalStorageBackend, namespace: str,
-    kind: str, quality: int, timeout_seconds: float, limit: int | None, max_bytes: int,
-) -> dict[str, Any]:
-    from app.media.references import rewrite_media_urls
-
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for item in archive.get(f"{kind}s") or []:
-        if isinstance(item, dict) and isinstance(item.get("url"), str) and item["url"].strip():
-            groups.setdefault(item["url"].strip(), []).append(item)
-    if not groups:
-        return archive
-
-    rewrites: dict[str, str] = {}
-    attempts = 0
-    proxy = await ConfigService().get_http_proxy()
-    async with httpx.AsyncClient(proxy=proxy, timeout=timeout_seconds) as client:
-        for url, items in groups.items():
-            result, color = {}, None
+async def archive_media_file(url: str, *, kind: str, main_key: str | None, storage: LocalStorageBackend,
+                             quality: int, video_max_bytes: int | None) -> tuple[dict, str | None]:
+    """Return the stored versions of one asset, reusing a surviving main file or proxy copy."""
+    if main_key and await storage.exists(key=main_key):
+        info = {"stored_key": main_key}
+        if kind == "image":
+            await _restore_thumbnail(info, storage, "vaultstream")
+        return info, None
+    if kind == "image":
+        cached = await find_proxy_cache_file(storage, *proxy_cache_location(url))
+        if cached:
             try:
-                # 同一来源的任一条目有可用主文件即可复用，不受条目顺序影响。
-                for item in items:
-                    if item.get("stored_key") and await storage.exists(key=item["stored_key"]):
-                        result = {name: value for name, value in item.items()
-                                  if name.startswith(("stored_", "thumb_"))}
-                        break
-                if result:
-                    if kind == "image":
-                        await _restore_thumbnail(result, storage, namespace)
-                elif limit is None or attempts < limit:
-                    attempts += 1
-                    response = await _download(client, url, kind=kind, max_bytes=max_bytes)
-                    result, color = await _store_download(
-                        response, kind=kind, quality=quality, storage=storage, namespace=namespace,
-                    )
-            except Exception as error:
-                logger.warning("Archive {} failed ({}): {}", kind, type(error).__name__, str(error))
-
-            local_url = f"local://{result['stored_key']}" if result else url
-            if result:
-                rewrites[url] = local_url
-            for item in items:
-                item["url"] = url
-                previous_key = item.get("stored_key")
-                if previous_key:
-                    rewrites[f"local://{previous_key}"] = local_url
-                for name in list(item):
-                    if name.startswith(("stored_", "thumb_")):
-                        item.pop(name)
-                item.update(result)
-            if color and not archive.get("dominant_color") and any(
-                not item.get("is_avatar") and item.get("type") != "avatar" for item in items
-            ):
-                archive["dominant_color"] = color
-    if isinstance(archive.get("markdown"), str):
-        archive["markdown"] = rewrite_media_urls(archive["markdown"], rewrites)
-    return archive
-
-
-async def store_archive_images(
-    *, archive: dict[str, Any], storage: LocalStorageBackend, namespace: str,
-    quality: int = 80, timeout_seconds: float = 30.0, max_images: int | None = None,
-) -> dict[str, Any]:
-    return await _store_archive_media(
-        archive=archive, storage=storage, namespace=namespace, kind="image", quality=quality,
-        timeout_seconds=timeout_seconds, limit=max_images, max_bytes=_MAX_ARCHIVE_IMAGE_BYTES,
-    )
-
-
-async def store_archive_videos(
-    *, archive: dict[str, Any], storage: LocalStorageBackend, namespace: str,
-    timeout_seconds: float = 120.0, max_videos: int | None = None, max_bytes: int | None = None,
-) -> dict[str, Any]:
-    return await _store_archive_media(
-        archive=archive, storage=storage, namespace=namespace, kind="video", quality=80,
-        timeout_seconds=timeout_seconds, limit=max_videos,
-        max_bytes=max_bytes if max_bytes is not None else _MAX_ARCHIVE_VIDEO_BYTES,
-    )
+                data = await asyncio.to_thread(Path(cached[0]).read_bytes)
+                return await store_media_bytes(data, content_type=cached[1], kind=kind,
+                    quality=quality, storage=storage, namespace="vaultstream")
+            except (OSError, ValueError):
+                pass
+    if not url:
+        raise ValueError("Missing archive source")
+    limit = _MAX_ARCHIVE_IMAGE_BYTES if kind == "image" else video_max_bytes or _MAX_ARCHIVE_VIDEO_BYTES
+    proxy = await ConfigService().get_http_proxy()
+    async with httpx.AsyncClient(proxy=proxy, timeout=30 if kind == "image" else 120) as client:
+        response = await _download(client, url, kind=kind, max_bytes=limit)
+    return await store_media_bytes(response.content, content_type=response.headers.get("content-type", ""),
+        kind=kind, quality=quality, storage=storage, namespace="vaultstream")

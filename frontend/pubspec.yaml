@@ -56,6 +56,8 @@ dependencies:
   flutter_secure_storage: ^10.3.4
   video_player: ^2.10.1
   flutter_math_fork: ^0.7.4
+  flutter_cache_manager: ^3.4.5
+  crypto: ^3.0.7
   http: ^1.4.0
   receive_sharing_intent: ^1.8.1
   timeago: ^3.7.0

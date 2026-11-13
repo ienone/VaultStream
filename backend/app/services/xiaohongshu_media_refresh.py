@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
-import re
 import time
-from urllib.parse import urlsplit
+from app.media.references import xiaohongshu_image_identity
 
 from sqlalchemy import select
 
@@ -19,20 +18,9 @@ _refresh_lock = asyncio.Lock()
 _note_images: OrderedDict[int, tuple[float, dict[str, str]]] = OrderedDict()
 
 
-def _image_identity(url: str) -> str | None:
-    """Signed webpic URLs retain the platform image ID before the transform."""
-    parts = urlsplit(url)
-    if parts.scheme not in {"http", "https"} or not re.fullmatch(
-        r"sns-webpic-[a-z0-9-]+\.xhscdn\.com", parts.hostname or "",
-    ):
-        return None
-    image_id = parts.path.rsplit("/", 1)[-1].split("!", 1)[0]
-    return image_id if re.fullmatch(r"[a-z0-9]{20,}", image_id) else None
-
-
 async def refresh_xiaohongshu_image_url(url: str) -> str | None:
     """Refresh only an exact saved source; never persist or reorder note content."""
-    identity = _image_identity(url)
+    identity = xiaohongshu_image_identity(url)
     if identity is None:
         return None
     async with AsyncSessionLocal() as db:
@@ -63,7 +51,7 @@ async def refresh_xiaohongshu_image_url(url: str) -> str | None:
             for image_url in [parsed.cover_url, *(parsed.media_urls or [])]:
                 if not image_url:
                     continue
-                image_id = _image_identity(image_url)
+                image_id = xiaohongshu_image_identity(image_url)
                 if image_id is None:
                     continue
                 if image_id in images and images[image_id] != image_url:

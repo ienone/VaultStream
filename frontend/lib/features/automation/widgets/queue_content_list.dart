@@ -172,14 +172,7 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
               itemBuilder: (context, index) {
                 final item = widget.items[index];
                 final canEdit = _editable(item) && !_busy;
-                final asset = item.mediaAssets
-                    .where(
-                      (a) =>
-                          a.mediaType == MediaType.image &&
-                          a.role != MediaRole.avatar &&
-                          a.sources.isNotEmpty,
-                    )
-                    .firstOrNull;
+                final asset = item.mediaAssets.cardImage;
                 final time = item.scheduledTime;
                 final selected = _selected.contains(item.id);
                 final row = Material(
@@ -246,14 +239,9 @@ class _QueueContentListState extends ConsumerState<QueueContentList> {
                               if (asset != null)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 16),
-                                  child: NetworkThumbnail(
-                                    imageUrl: asset.sources.first.url,
-                                    mediaAsset: asset,
-                                    purpose: MediaPurpose.card,
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.cover,
-                                    borderRadius: AppShape.cardMediaBorder,
+                                  child: SizedBox.square(
+                                    dimension: 56,
+                                    child: CardMediaPreview(asset: asset),
                                   ),
                                 ),
                               if (_selectionMode)

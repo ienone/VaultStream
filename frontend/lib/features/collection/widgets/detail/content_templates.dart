@@ -545,7 +545,7 @@ class _ImmersiveThumbnailStrip extends StatelessWidget {
                     failureBuilder: (_, _) =>
                         const Center(child: Icon(Icons.hide_image_outlined)),
                     mediaAsset: mediaAssets[image],
-                    purpose: MediaPurpose.detail,
+                    purpose: MediaPurpose.card,
                     fit: BoxFit.cover,
                     maxWidthDiskCache:
                         (64 * MediaQuery.devicePixelRatioOf(context)).ceil(),
@@ -1148,7 +1148,7 @@ class _PagedMediaViewerState extends State<_PagedMediaViewer> {
                       failureBuilder: (_, _) =>
                           const Center(child: Icon(Icons.hide_image_outlined)),
                       mediaAsset: ctx.imageAssets[image],
-                      purpose: MediaPurpose.detail,
+                      purpose: MediaPurpose.card,
                       fit: BoxFit.cover,
                     ),
                   ),

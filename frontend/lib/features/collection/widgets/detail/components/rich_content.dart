@@ -53,7 +53,7 @@ class _RichContentState extends State<RichContent> {
     final mediaFallbacks = ContentParser.extractImageFallbacks(detail);
     final mediaAssetsByImage = {
       for (final asset in detail.mediaAssets)
-        if (asset.sources.isNotEmpty) asset.sources.first.url: asset,
+        asset.sources.firstOrNull?.url ?? 'asset://image/${asset.id}': asset,
     };
     final markdown = detail.body ?? '';
 
@@ -262,12 +262,6 @@ class _RichContentState extends State<RichContent> {
       final mediaUrls = ContentParser.extractAllMedia(detail);
       effectiveIndex = mediaUrls.indexOf(url);
       if (effectiveIndex == -1) {
-        final cleanSearch = url.split('?').first;
-        effectiveIndex = mediaUrls.indexWhere(
-          (m) => m.split('?').first == cleanSearch,
-        );
-      }
-      if (effectiveIndex == -1) {
         // 完全找不到：单张图片 gallery
         effectiveMediaUrls = [url];
         effectiveIndex = 0;
@@ -287,7 +281,8 @@ class _RichContentState extends State<RichContent> {
             fallbackUrlsByImage: effectiveFallbacks,
             mediaAssetsByImage: {
               for (final asset in detail.mediaAssets)
-                if (asset.sources.isNotEmpty) asset.sources.first.url: asset,
+                asset.sources.firstOrNull?.url ?? 'asset://image/${asset.id}':
+                    asset,
             },
             contentId: detail.id,
             presentation: MediaPresentation.body,

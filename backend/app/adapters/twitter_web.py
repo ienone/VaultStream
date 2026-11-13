@@ -176,7 +176,7 @@ def parse_web_tweet(payload, tweet_id):
             clean_url=f'https://x.com/i/status/{tweet_id}', layout_type='video' if videos else 'gallery' if images else 'article',
             title=text[:200], body=text, author_name=profile.get('name'), author_id=author_id,
             author_url=f'https://x.com/i/user/{author_id}', author_avatar_url=avatar,
-            cover_url=(videos[0]['thumbnail_url'] if videos else images[0]['url'] if images else None),
+            cover_url=(videos[0]['thumbnail_url'] if videos else None),
             media_urls=media_urls, published_at=created, source_tags=tags, rich_payload=rich or None,
             stats={'like': legacy.get('favorite_count', 0), 'share': legacy.get('retweet_count', 0),
                 'reply': legacy.get('reply_count', 0), 'view': int(tweet.get('views', {}).get('count', 0)),

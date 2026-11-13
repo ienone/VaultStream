@@ -20,15 +20,12 @@ from app.adapters import close_adapter
 from app.adapters.errors import AdapterError, RetryableAdapterError
 from app.adapters.storage import get_storage_backend
 from app.media.extractor import sanitize_media_urls
-from app.media.processor import store_archive_images, store_archive_videos
-from app.media.color import extract_cover_color
-from app.media.references import apply_archive_media
 from app.core.queue import task_queue
 from app.core.queue import TaskQueue
 from app.utils.datetime_utils import normalize_datetime_for_db
 from app.utils.url_utils import normalize_share_url_input
 from app.services.post_ingest import PostIngestService
-from app.services.config_service import ArchiveMediaConfig, ConfigService
+from app.services.media_repair import enqueue_media_repair
 from app.services.settings_service import get_setting_value
 from app.services.media_backfill import replace_content_media_assets
 from app.services.platform_parsing import create_configured_adapter
@@ -152,7 +149,6 @@ class ContentParser:
                 return skipped
 
             if not force and content.status == ContentStatus.PARSE_SUCCESS:
-                from app.services.media_repair import enqueue_media_repair
                 await enqueue_media_repair(session, content_id)
                 logger.info("内容已解析完成，跳过解析")
                 skipped = ParseExecutionResult(
@@ -189,23 +185,11 @@ class ContentParser:
         *, claimed_task: Task,
     ) -> ParseExecutionResult:
         """更新内容数据到数据库"""
-        # 私有归档媒体处理（可能更新 parsed.body / media_urls / cover_url 等）
-        archive_config = await ConfigService().get_archive_media_config()
-        if archive_config.enabled:
-            try:
-                await self._maybe_process_private_archive_media(parsed, archive_config)
-            except Exception as e:
-                logger.warning("Archive media processing skipped: {}", f"{type(e).__name__}: {e}")
-        
         # 若存档中有 markdown 且解析器未使用，优先用 archive markdown 作为正文
         if not getattr(parsed, '_body_is_markdown', False):
             archive_blob = self._extract_archive_blob(getattr(parsed, 'archive_metadata', None))
             if isinstance(archive_blob, dict) and archive_blob.get("markdown"):
                 parsed.body = archive_blob["markdown"]
-
-        # 未在归档中取得颜色时，复用本地图片或读取远程封面
-        if not getattr(parsed, "cover_color", None) and parsed.cover_url:
-            parsed.cover_color = await extract_cover_color(parsed.cover_url)
 
         # Network/media preparation is complete. Re-read current user fields and
         # acquire SQLite's write lock before changing persistent facts.
@@ -302,6 +286,7 @@ class ContentParser:
             get_storage_backend(),
             source="parse",
         )
+        await enqueue_media_repair(session, content.id)
 
         await PostIngestService().run_for_content(
             session,
@@ -450,37 +435,3 @@ class ContentParser:
             f"{original_size // 1024}KB → {final_size // 1024}KB"
         )
         return metadata
-
-    async def _maybe_process_private_archive_media(self, parsed, archive_config: ArchiveMediaConfig) -> None:
-        """处理私有归档媒体"""
-        meta = getattr(parsed, "archive_metadata", None)
-        if not isinstance(meta, dict):
-            return
-
-        archive = self._extract_archive_blob(meta)
-        if not isinstance(archive, dict):
-            return
-
-        storage = get_storage_backend()
-        
-        namespace = "vaultstream"
-
-        # 处理图片
-        if archive_config.images_enabled:
-            await store_archive_images(
-                archive=archive,
-                storage=storage,
-                namespace=namespace,
-                quality=archive_config.image_webp_quality,
-                max_images=archive_config.image_max_count,
-            )
-        
-        if archive_config.videos_enabled:
-            await store_archive_videos(
-                archive=archive, storage=storage, namespace=namespace,
-                max_videos=archive_config.video_max_count,
-                max_bytes=archive_config.video_max_bytes,
-            )
-        if archive.get("markdown"):
-            parsed.body = archive["markdown"]
-        apply_archive_media(parsed, archive)

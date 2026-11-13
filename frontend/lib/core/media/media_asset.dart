@@ -160,6 +160,7 @@ class MediaAsset {
   };
 
   final int id;
+  String get imageReference => sources.firstOrNull?.url ?? 'asset://image/$id';
   final int contentId;
   final MediaType mediaType;
   final MediaRole role;
@@ -179,6 +180,10 @@ class MediaAsset {
 }
 
 extension MediaAssetSelection on Iterable<MediaAsset> {
+  // The API orders card assets by cover role and document position.
+  MediaAsset? get cardImage =>
+      where((asset) => asset.mediaType == MediaType.image).firstOrNull;
+
   MediaAsset? firstFor({required MediaRole role, MediaType? type}) {
     for (final asset in this) {
       if (asset.role == role && (type == null || asset.mediaType == type)) {

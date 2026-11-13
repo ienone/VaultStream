@@ -18,7 +18,6 @@ class NetworkThumbnail extends ConsumerStatefulWidget {
     this.imageUrl = '',
     this.fallbackUrls = const [],
     this.mediaAsset,
-    this.mediaAssets = const [],
     this.purpose = MediaPurpose.detail,
     this.width,
     this.height,
@@ -33,7 +32,6 @@ class NetworkThumbnail extends ConsumerStatefulWidget {
   final String imageUrl;
   final List<String> fallbackUrls;
   final MediaAsset? mediaAsset;
-  final List<MediaAsset> mediaAssets;
   final MediaPurpose purpose;
   final double? width;
   final double? height;
@@ -68,19 +66,20 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     if (oldWidget.imageUrl != widget.imageUrl ||
         !listEquals(oldWidget.fallbackUrls, widget.fallbackUrls) ||
         oldWidget.mediaAsset != widget.mediaAsset ||
-        !listEquals(oldWidget.mediaAssets, widget.mediaAssets) ||
         oldWidget.purpose != widget.purpose) {
       _resetResolver();
     }
   }
 
   void _resetResolver() {
-    final assets = widget.mediaAssets.isNotEmpty
-        ? widget.mediaAssets
-        : [if (widget.mediaAsset != null) widget.mediaAsset!];
-    _session = assets.isEmpty
+    final asset = widget.mediaAsset;
+    _session = asset == null
         ? MediaSourceSession.fromUrls([widget.imageUrl, ...widget.fallbackUrls])
-        : MediaSourceSession.fromAssets(assets);
+        : MediaSourceSession.fromAsset(
+            asset,
+            preferThumbnail: widget.purpose == MediaPurpose.card,
+          );
+    _reported.clear();
     _advanceScheduled = false;
     _refreshing = false;
     _failure = null;
@@ -104,7 +103,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
       );
       if (!mounted ||
           !identical(_session, session) ||
-          !identical(ref.read(mediaImageCacheScopeProvider), scope)) {
+          ref.read(mediaImageCacheScopeProvider) != scope) {
         return;
       }
       setState(() {
@@ -115,7 +114,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     } catch (_) {
       if (!mounted ||
           !identical(_session, session) ||
-          !identical(ref.read(mediaImageCacheScopeProvider), scope)) {
+          ref.read(mediaImageCacheScopeProvider) != scope) {
         return;
       }
       setState(() {
@@ -127,16 +126,22 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
     }
   }
 
-  void _reportMissing(MediaSource source) {
+  final _reported = <(int, int, String)>{};
+
+  void _reportFailure(MediaSource source, String code) {
     final asset = _session.asset;
     final variantId = source.variantId;
-    if (asset == null || variantId == null) return;
+    if (asset == null ||
+        variantId == null ||
+        !_reported.add((asset.id, variantId, code))) {
+      return;
+    }
     unawaited(
       reportLocalMediaFailure(
         ref.read(apiClientProvider),
         assetId: asset.id,
         variantId: variantId,
-        errorCode: 'media_blob_missing',
+        errorCode: code,
       ).catchError((_) {}),
     );
   }
@@ -164,7 +169,12 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
       return _LoadingThumbnail(colorScheme: colorScheme);
     }
     if (failure == MediaFailureKind.localMissing) {
-      _reportMissing(source);
+      _reportFailure(source, 'media_blob_missing');
+    } else if (source.sourceKind == MediaSourceKind.localSigned &&
+        error is AssetImageDecodeException) {
+      _reportFailure(source, 'media_decode_failed');
+    } else if (failure == MediaFailureKind.authorizationDenied) {
+      return _buildFailure(colorScheme, failure: failure, onRetry: _retry);
     }
     if (_session.hasNext) {
       if (!_advanceScheduled) {
@@ -223,26 +233,30 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
   Widget _buildImage(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final source = _session.current;
-    if (source == null) {
-      return _buildFailure(
-        colorScheme,
-        failure: _failure ?? MediaFailureKind.unavailable,
-        onRetry: _session.assets.isNotEmpty || _session.sources.isNotEmpty
-            ? _retry
-            : null,
-      );
-    }
-    if (_session.currentSignatureExpired() &&
+    if (source == null &&
+        _session.asset != null &&
         !_session.automaticRefreshAttempted) {
       if (!_refreshing) {
+        final session = _session;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) unawaited(_refreshManifest());
+          if (mounted && identical(session, _session)) {
+            unawaited(_refreshManifest());
+          }
         });
       }
       return _LoadingThumbnail(colorScheme: colorScheme);
     }
+    if (source == null) {
+      return _buildFailure(
+        colorScheme,
+        failure: _failure ?? MediaFailureKind.unavailable,
+        onRetry: _session.asset != null || _session.sources.isNotEmpty
+            ? _retry
+            : null,
+      );
+    }
     final imageUrl = source.url;
-    final useFlutterNetworkImage = _session.assets.isNotEmpty;
+    final useFlutterNetworkImage = _session.asset != null;
     final cacheScope = ref.watch(mediaImageCacheScopeProvider);
     final coverSize =
         widget.fit == BoxFit.cover &&
@@ -411,6 +425,28 @@ class _ErrorThumbnail extends StatelessWidget {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+class CardMediaPreview extends StatelessWidget {
+  const CardMediaPreview({super.key, required this.asset, this.failureBuilder});
+  final MediaAsset asset;
+  final Widget Function(BuildContext, VoidCallback?)? failureBuilder;
+  @override
+  Widget build(BuildContext context) {
+    final image = NetworkThumbnail(
+      mediaAsset: asset,
+      purpose: MediaPurpose.card,
+      borderRadius: AppShape.cardMediaBorder,
+      failureBuilder: failureBuilder,
+    );
+    if (asset.role != MediaRole.avatar) return image;
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      child: Center(
+        child: ClipOval(child: SizedBox.square(dimension: 48, child: image)),
       ),
     );
   }

@@ -355,7 +355,7 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
         final imageFallbacks = ContentParser.extractImageFallbacks(detail);
         final imageAssets = {
           for (final asset in ContentParser.extractImageAssets(detail))
-            asset.sources.first.url: asset,
+            asset.imageReference: asset,
         };
 
         final templateContext = TemplateContext(

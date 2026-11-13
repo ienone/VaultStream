@@ -55,7 +55,7 @@ def compute_display_title(content, max_len: int = 60, fallback: str = "无标题
     return ensure_title(content.title, content.body, max_len=max_len, fallback=fallback)
 
 
-async def build_content_detail(session, content, base_url: str, *, for_edit: bool = False) -> ContentDetail:
+async def build_content_detail(session, content, base_url: str, *, for_edit: bool = False, asset_refs: bool = False) -> ContentDetail:
     """Resolve stored references once, from asset records to response sources."""
     detail = ContentDetail.model_validate(content)
     detail.media_assets = []
@@ -64,15 +64,35 @@ async def build_content_detail(session, content, base_url: str, *, for_edit: boo
         session, [content.id], purpose=MediaPurpose.DETAIL,
     ))[content.id]
     mapping = {}
+    body_mapping = {}
+    edit_refs = {}
     for asset in assets:
         manifest = build_media_manifest(asset, purpose=MediaPurpose.DETAIL, base_url=base_url)
         detail.media_assets.append(manifest)
+        if asset.media_type.value == "image" and asset.original_url:
+            edit_refs[f"asset://image/{asset.id}"] = asset.original_url
+        if asset_refs and asset.media_type.value == "image":
+            reference = f"asset://image/{asset.id}"
+            body_mapping[reference] = reference
+            if asset.original_url:
+                body_mapping[asset.original_url] = reference
+            for variant in asset.variants:
+                body_mapping[f"local://{variant.storage_key}"] = reference
+            for key in (asset.asset_metadata or {}).get("previous_keys", []):
+                body_mapping[f"local://{key}"] = reference
         if manifest.sources:
             preferred = manifest.sources[0].url
             if asset.original_url:
                 mapping[asset.original_url] = preferred
+            for key in (asset.asset_metadata or {}).get("previous_keys", []):
+                mapping[f"local://{key}"] = preferred
+            if asset.media_type.value == "image":
+                mapping[f"asset://image/{asset.id}"] = preferred
             for variant in asset.variants:
                 mapping[f"local://{variant.storage_key}"] = preferred
+
+    if asset_refs:
+        mapping.update(body_mapping)
 
     def bind(value):
         if isinstance(value, str):
@@ -85,6 +105,7 @@ async def build_content_detail(session, content, base_url: str, *, for_edit: boo
 
     for field in ("body", "cover_url", "author_avatar_url", "media_urls", "rich_payload", "context_data"):
         if for_edit and field in {"body", "cover_url"}:
+            setattr(detail, field, rewrite_media_urls(getattr(detail, field), edit_refs))
             continue
         setattr(detail, field, bind(getattr(detail, field)))
     detail.media_segments = build_media_segment_items(

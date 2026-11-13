@@ -516,7 +516,7 @@ class ZhihuAdapter(PlatformAdapter):
             author_id=author.url_token or (str(author.id) if author.id is not None else None),
             author_avatar_url=author.avatar_url,
             author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
-            cover_url=data.get('thumbnail') or (media_urls[0] if media_urls else None),
+            cover_url=data.get('thumbnail'),
             media_urls=media_urls,
             published_at=published_at,
             archive_metadata=archive_metadata,
@@ -563,8 +563,6 @@ class ZhihuAdapter(PlatformAdapter):
         }
         
         cover_url = data.get('title_image') or data.get('image_url')
-        if not cover_url and media_urls:
-            cover_url = media_urls[0]
         
         return ParsedContent(
             platform="zhihu",
@@ -648,7 +646,7 @@ class ZhihuAdapter(PlatformAdapter):
             author_name=author_name,
             author_id=author_id,
             author_url=f"https://www.zhihu.com/people/{author_id}" if author_id else None,
-            cover_url=media_urls[0] if media_urls else None,
+            cover_url=None,
             media_urls=media_urls,
             published_at=published_at,
             archive_metadata=archive_metadata,

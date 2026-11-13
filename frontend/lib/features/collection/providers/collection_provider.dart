@@ -1,4 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
+import '../../../core/media/media_disk_cache.dart';
+import '../../../core/media/asset_image_provider.dart';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -26,6 +33,7 @@ class Collection extends _$Collection {
 
   @override
   Future<ShareCardListResponse> build() async {
+    ref.watch(mediaImageCacheScopeProvider);
     final request = ref.watch(collectionFilterProvider).toSearchRequest();
     _generation++;
     if (request != _request) _loadedPages = 1;
@@ -46,16 +54,27 @@ class Collection extends _$Collection {
   }
 
   Future<ShareCardListResponse> _fetch(UnifiedSearchRequest request) async {
-    final result = await fetchUnifiedSearch(
-      ref.read(apiClientProvider),
-      request,
+    final key = privateCacheKey(
+      ref.read(mediaImageCacheScopeProvider),
+      request.toUri('library').toString(),
     );
-    return ShareCardListResponse(
-      items: result.contents.map((hit) => hit.card).toList(growable: false),
-      total: result.contentTotal,
-      page: result.page,
-      size: result.size,
-      hasMore: result.contentHasMore,
+    return _readingSnapshot(
+      key,
+      () async {
+        final result = await fetchUnifiedSearch(
+          ref.read(apiClientProvider),
+          request,
+        );
+        return ShareCardListResponse(
+          items: result.contents.map((hit) => hit.card).toList(),
+          total: result.contentTotal,
+          page: result.page,
+          size: result.size,
+          hasMore: result.contentHasMore,
+        );
+      },
+      ShareCardListResponse.fromJson,
+      (value) => value.toJson(),
     );
   }
 
@@ -90,8 +109,51 @@ Duration? _detailRetry(int retryCount, Object error) => null;
 Future<ContentDetail> contentDetail(Ref ref, int id) async {
   refreshOnEvents(ref, (event) => affectsContent(event, id));
   final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/contents/$id');
-  return ContentDetail.fromJson(response.data);
+  final key = privateCacheKey(
+    ref.watch(mediaImageCacheScopeProvider),
+    'article/$id',
+  );
+  return _readingSnapshot(
+    key,
+    () async {
+      final response = await dio.get<Map<String, dynamic>>(
+        '/contents/$id',
+        queryParameters: {'asset_refs': true},
+      );
+      return ContentDetail.fromJson(response.data!);
+    },
+    ContentDetail.fromJson,
+    (value) => value.toJson(),
+  );
+}
+
+Future<T> _readingSnapshot<T>(
+  String key,
+  Future<T> Function() fetch,
+  T Function(Map<String, dynamic>) parse,
+  Map<String, dynamic> Function(T) encode,
+) async {
+  try {
+    final data = await fetch();
+    if (supportsMediaDiskCache) {
+      await cacheBytes(
+        key,
+        Uint8List.fromList(utf8.encode(jsonEncode(encode(data)))),
+      );
+    }
+    return data;
+  } on DioException catch (error) {
+    if (error.response != null) {
+      if ([401, 403, 404, 410].contains(error.response?.statusCode)) {
+        await forgetCachedBytes(key);
+      }
+      rethrow;
+    }
+    if (error.type == DioExceptionType.cancel) rethrow;
+    final cached = await readCachedBytes(key);
+    if (cached == null) rethrow;
+    return parse(jsonDecode(utf8.decode(cached)));
+  }
 }
 
 /// 后处理状态使用正式 contract，不推断后台任务是否完成。

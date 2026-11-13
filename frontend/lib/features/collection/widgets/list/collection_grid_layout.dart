@@ -20,12 +20,7 @@ class CollectionGridMetrics {
     final imageHeight =
         ((overviewWidth - 24 - 8 * (columns - 1)) / columns - 24) / 2.4;
     for (final item in items) {
-      final hasImage = item.mediaAssets.any(
-        (asset) =>
-            asset.mediaType == MediaType.image &&
-            asset.role != MediaRole.avatar &&
-            asset.sources.isNotEmpty,
-      );
+      final hasImage = item.mediaAssets.cardImage != null;
       final status =
           item.isNsfw ||
           ['parse_failed', 'processing', 'unprocessed'].contains(item.status);

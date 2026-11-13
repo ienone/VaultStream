@@ -20,7 +20,7 @@ active
 - `POST /api/v1/captures/file` 接收 `multipart/form-data` 原始文件，以及可选标题、标签、说明和 NSFW 标记。服务端边接收边计算 SHA-256，写入仓库配置的本地 storage，并以统一 `MediaAsset` / 原始 `MediaVariant` 暴露签名访问；图片、视频、音频和文档使用明确的内容类型，不经过网页适配器。空文件返回 `400 capture_file_empty`，超过 `CAPTURE_UPLOAD_MAX_BYTES`（默认 512 MiB）返回 `413 capture_file_too_large`。
 - `POST /api/v1/captures/files` 接收同一次分享中的 1–32 个 `uploads`。所有文件归入同一个内容对象并按顺序建立独立 `MediaAsset`；多张图片形成 gallery，其他混合文件形成带附件的 document。单个文件仍受 `CAPTURE_UPLOAD_MAX_BYTES` 限制；来源说明和 `client_context_json` 写入同一条 `ContentSource`，无效上下文返回稳定错误码。
 - `GET /api/v1/contents` 提供分页、平台、状态、标签、作者、日期、关键词和 NSFW 筛选。
-- `GET /api/v1/contents/{content_id}` 返回单条内容详情。编辑器传入 `for_edit=true` 时，正文与封面返回存储的可编辑引用；阅读视图使用媒体访问地址。若 `rich_payload.chunks[]` 含显式章节/转写时间点，响应会额外返回经过媒体归属、类型和时长校验的 `media_segments`；调用方不应自行解析原始 payload 猜测可播放位置。
+- `GET /api/v1/contents/{content_id}` 返回单条内容详情。编辑器传入 `for_edit=true` 时，正文与封面返回存储的可编辑引用；阅读端可传入 `asset_refs=true`，正文及结构化内容中的已登记图片按 `asset://image/{id}` 对应同一响应的 media_assets，下载地址与时效由清单提供。默认响应兼容既有客户端。若 `rich_payload.chunks[]` 含显式章节/转写时间点，响应会额外返回经过媒体归属、类型和时长校验的 `media_segments`；调用方不应自行解析原始 payload 猜测可播放位置。
 - `media_segments[].excerpt` 是至多 280 字的预览，`full_text` 是同一已校验切片的完整原文，供逐字稿展开阅读。两者均不代表模型校正后的事实；无原文时为空字符串。
 - `GET, POST /api/v1/contents/{content_id}/media-bookmarks` 按明确 `media_asset_id` 列出或创建用户时间点书签；`PATCH, DELETE /api/v1/contents/{content_id}/media-bookmarks/{bookmark_id}` 编辑可选笔记或删除书签。服务端验证内容存在、资产归属、audio/video 类型、非负秒数和已知媒体时长；同一资产的同一毫秒位置只保留一个书签。
 - `PATCH /api/v1/contents/{content_id}` 更新允许人工维护的内容字段。只有值实际变化的标题、正文、作者、封面、标签和模板会记为人工修订；`layout_type_override=null` 会恢复自动模板并解除对应保护。
@@ -66,7 +66,7 @@ active
 - `GET /api/v1/media/blobs/{key}` 使用绑定 storage key、variant ID 和过期时间的资源级签名读取本地对象，不接收全局 API Token。
 - `GET /api/v1/media/{key}` 是迁移期间仍供旧 URL 字段使用的受保护端点；统一媒体调用方不得新增对此路径的依赖。
 - `GET /api/v1/proxy/image` 读取 manifest 返回的资源签名 URL，必需 `url/expires/signature`；签名绑定目标地址，过期返回 410，无效返回 403。代理不根据 Origin/Referer 猜测授权，下载时仍核验目标及重定向安全。
-- 图片代理缓存命中按缓存对象实际 MIME 返回；冷请求的 `X-Cache-Persist` 表达缓存持久化结果，`X-Proxy-Warning` 表达转码降级。调用方不得把图片响应成功误解为缓存也已成功。
+- 图片代理缓存命中按缓存对象实际 MIME 返回；冷请求的 `X-Cache-Persist` 表达缓存持久化结果。调用方不得把图片响应成功误解为缓存也已成功。
 - 同 URL 的并发冷请求共享 URL hash 临界区并在锁内复查缓存；不同 URL 的冷下载和解码链路最多并发 4 路。
 - `local://` 是旧存档引用，不是前端可直接请求的 HTTP URL。新调用方只执行后端返回的 `MediaSource`，不得自行拼接签名或代理 URL。
 

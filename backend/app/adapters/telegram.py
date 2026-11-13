@@ -192,7 +192,7 @@ class TelegramAdapter(PlatformAdapter):
         
         images = [{"url": url} for url in media_urls]
         videos = []
-        cover_url = media_urls[0] if media_urls else None
+        cover_url = None
         for player in msg.select('.tgme_widget_message_video_player'):
             poster = player.select_one('i[style]')
             match = re.search(r"background-image:url\(['\"](.*?)['\"]\)", poster.get('style', '')) if poster else None

@@ -13,16 +13,14 @@ enum MediaFailureKind {
 }
 
 class MediaSourceSession {
-  MediaSourceSession.fromAsset(MediaAsset asset) : this.fromAssets([asset]);
-
-  MediaSourceSession.fromAssets(Iterable<MediaAsset> assets)
-    : _assets = List.of(assets),
-      _sources = const [] {
-    _rebuildSources();
+  MediaSourceSession.fromAsset(MediaAsset asset, {this.preferThumbnail = false})
+    : _asset = asset,
+      _sources = [] {
+    _setSources(asset);
   }
 
   MediaSourceSession.fromUrls(Iterable<String> urls)
-    : _assets = const [],
+    : preferThumbnail = false,
       _sources = _deduplicate(
         urls.map(
           (url) =>
@@ -30,26 +28,16 @@ class MediaSourceSession {
         ),
       );
 
-  List<MediaAsset> _assets;
+  final bool preferThumbnail;
+  MediaAsset? _asset;
   List<MediaSource> _sources;
-  final Map<String, MediaAsset> _sourceAssets = {};
   int _index = 0;
-  final Set<int> _automaticallyRefreshedAssets = {};
-
-  // A persisted asset still exists when its expiring sources were omitted.
-  MediaAsset? get asset =>
-      current == null ? _assets.firstOrNull : _sourceAssets[current!.url];
-  List<MediaAsset> get assets => List.unmodifiable(_assets);
+  bool automaticRefreshAttempted = false;
+  MediaAsset? get asset => _asset;
   List<MediaSource> get sources => _sources;
   MediaSource? get current => _sources.isEmpty ? null : _sources[_index];
   int get index => _index;
   bool get hasNext => _index + 1 < _sources.length;
-  bool get automaticRefreshAttempted {
-    final currentAsset = asset;
-    return currentAsset != null &&
-        _automaticallyRefreshedAssets.contains(currentAsset.id);
-  }
-
   bool currentSignatureExpired([DateTime? now]) {
     final source = current;
     return source?.isExpiredAt(now ?? DateTime.now().toUtc()) ?? false;
@@ -62,46 +50,27 @@ class MediaSourceSession {
   }
 
   void markAutomaticRefreshAttempted() {
-    final currentAsset = asset;
-    if (currentAsset != null) {
-      _automaticallyRefreshedAssets.add(currentAsset.id);
-    }
+    automaticRefreshAttempted = true;
   }
 
   void replaceManifest(MediaAsset asset) {
-    final previous = current;
-    final assetIndex = _assets.indexWhere((item) => item.id == asset.id);
-    if (assetIndex >= 0) {
-      _assets[assetIndex] = asset;
-    } else {
-      _assets = [asset];
-    }
-    _rebuildSources();
+    _asset = asset;
+    _setSources(asset);
     _index = 0;
-    if (previous?.variantId != null) {
-      final sameVariant = _sources.indexWhere(
-        (source) => source.variantId == previous!.variantId,
-      );
-      if (sameVariant >= 0) _index = sameVariant;
-    }
   }
 
   void resetForManualRetry() {
     _index = 0;
-    _automaticallyRefreshedAssets.clear();
+    automaticRefreshAttempted = false;
   }
 
-  void _rebuildSources() {
-    _sourceAssets.clear();
-    _sources = _deduplicate([
-      for (final asset in _assets)
-        for (final source in asset.sources) source,
-    ]);
-    for (final asset in _assets) {
-      for (final source in asset.sources) {
-        _sourceAssets.putIfAbsent(source.url, () => asset);
-      }
-    }
+  void _setSources(MediaAsset asset) {
+    _sources = preferThumbnail
+        ? _deduplicate([
+            ...asset.sources.where((s) => s.variantKind == 'thumbnail'),
+            ...asset.sources,
+          ])
+        : _deduplicate(asset.sources);
   }
 
   static List<MediaSource> _deduplicate(Iterable<MediaSource> sources) {

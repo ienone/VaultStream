@@ -65,13 +65,9 @@ def resolve_media_base_url(request_base_url: str) -> str:
 def _content_asset_priority(asset: MediaAsset, purpose: MediaPurpose) -> tuple[int, ...]:
     role_priority = _ROLE_PRIORITY.get(asset.role, 99)
     if purpose == MediaPurpose.CARD:
-        has_ready_local = any(
-            variant.status == MediaVariantStatus.READY for variant in asset.variants
-        )
         return (
             0 if asset.media_type == MediaType.IMAGE else 1,
             role_priority,
-            0 if has_ready_local else 1,
             asset.position,
             asset.id,
         )
@@ -116,9 +112,9 @@ async def build_content_media_manifests(
 
 
 def media_preview_url(assets: list[MediaAssetManifest], *, avatar: bool = False) -> str | None:
-    return next((asset.sources[0].url for asset in assets
-                 if asset.media_type == MediaType.IMAGE and asset.sources
-                 and (asset.role == MediaRole.AVATAR) == avatar), None)
+    selected = next((asset for asset in assets if asset.media_type == MediaType.IMAGE
+                     and (asset.role == MediaRole.AVATAR) == avatar), None)
+    return selected.sources[0].url if selected and selected.sources else None
 
 
 def build_media_manifest(
@@ -210,7 +206,7 @@ def build_media_manifest(
         last_error=asset.last_error,
         repairable=asset.repairable,
         metadata={key: value for key, value in (asset.asset_metadata or {}).items()
-                  if key != "document_text"},
+                  if key not in {"document_text", "previous_keys"}},
         purpose=purpose,
         sources=sources,
         generated_at=datetime.fromtimestamp(issued_at, timezone.utc),

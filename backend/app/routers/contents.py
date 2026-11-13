@@ -68,9 +68,10 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.services.config_service import ConfigService
+from app.models.media import MediaType, MediaVariantKind, MediaVariantStatus
 from app.schemas.media import MediaPurpose
 from app.services.media_manifest import (
-    build_content_media_manifests,
+    build_content_media_manifests, load_content_media_assets,
     resolve_media_base_url,
 )
 from app.services.media_manifest import media_preview_url
@@ -192,21 +193,20 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         summary_state = ProcessingStageState.PENDING
         summary_message = "摘要尚未生成（RAG 分块已存在）" if has_chunks else "尚未生成摘要"
 
-    archive = {}
-    if isinstance(content.archive_metadata, dict):
-        archive = content.archive_metadata.get("archive") or {}
-        if not isinstance(archive, dict):
-            archive = {}
-    archive_images = archive.get("images") if isinstance(archive.get("images"), list) else []
-    archive_videos = archive.get("videos") if isinstance(archive.get("videos"), list) else []
-    stored_images = [item for item in archive_images if isinstance(item, dict) and item.get("stored_key")]
-    stored_videos = [item for item in archive_videos if isinstance(item, dict) and item.get("stored_key")]
+    assets = (await load_content_media_assets(db, [content.id], purpose=MediaPurpose.DETAIL))[content.id]
+    archive_images = [a for a in assets if a.media_type == MediaType.IMAGE and a.original_url]
+    archive_videos = [a for a in assets if a.media_type == MediaType.VIDEO and a.original_url]
+    def stored(asset):
+        return any(v.status == MediaVariantStatus.READY and v.variant_kind in (
+            MediaVariantKind.OPTIMIZED, MediaVariantKind.ORIGINAL_ARCHIVE) for v in asset.variants)
+    stored_images = [a for a in archive_images if stored(a)]
+    stored_videos = [a for a in archive_videos if stored(a)]
     image_work_enabled = archive_config.enabled and archive_config.images_enabled
     video_work_enabled = archive_config.enabled and archive_config.videos_enabled
-    image_pending = image_work_enabled and len(stored_images) < len(archive_images)
-    video_pending = video_work_enabled and len(stored_videos) < len(archive_videos)
-    archive_total = len(archive_images) + len(archive_videos)
-    archive_stored = len(stored_images) + len(stored_videos)
+    targets = sorted(archive_images, key=lambda a: a.id)[:archive_config.image_max_count] if image_work_enabled else []
+    targets += sorted(archive_videos, key=lambda a: a.id)[:archive_config.video_max_count] if video_work_enabled else []
+    archive_total = len(targets)
+    archive_stored = sum(stored(a) for a in targets)
     if not archive_config.enabled:
         archive_status = "disabled"
         archive_state = ProcessingStageState.DISABLED
@@ -215,7 +215,11 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         archive_status = "no_media"
         archive_state = ProcessingStageState.NOT_APPLICABLE
         archive_message = "该内容没有需要归档的远端媒体"
-    elif image_pending or video_pending:
+    elif any(a.last_error and not stored(a) for a in targets):
+        archive_status = "failed"
+        archive_state = ProcessingStageState.FAILED
+        archive_message = f"部分媒体下载失败，已归档 {archive_stored}/{archive_total} 项"
+    elif archive_stored < archive_total:
         if archive_stored > 0:
             archive_status = "partial"
             archive_state = ProcessingStageState.PARTIAL
@@ -484,7 +488,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         archive_issues.append("图片归档已关闭")
     if archive_videos and not video_work_enabled:
         archive_issues.append("视频归档已关闭")
-    if archive_status in {"pending", "partial"}:
+    if archive_status in {"pending", "partial", "failed"}:
         archive_hints.append("检查归档媒体设置，必要时重新解析该内容")
 
     distribution_issues: list[str] = []
@@ -932,6 +936,7 @@ async def get_content_detail(
     content_id: int,
     request: Request,
     for_edit: bool = False,
+    asset_refs: bool = False,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -942,7 +947,7 @@ async def get_content_detail(
         raise HTTPException(status_code=404, detail="Content not found")
 
     base_url = resolve_media_base_url(str(request.base_url))
-    return await build_content_detail(db, content, base_url, for_edit=for_edit)
+    return await build_content_detail(db, content, base_url, for_edit=for_edit, asset_refs=asset_refs)
 
 
 @router.get("/contents/{content_id}/document-text", response_model=DocumentTextResponse)

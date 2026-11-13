@@ -1,3 +1,9 @@
+import 'dart:async';
+
+import 'package:http/http.dart' as http;
+
+import 'media_disk_cache.dart';
+
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -7,13 +13,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/local_settings_provider.dart';
 
-// A new opaque scope on server/account changes; credentials never enter image keys.
-final mediaImageCacheScopeProvider = Provider<Object>((ref) {
-  ref.watch(
-    localSettingsProvider.select((value) => (value.baseUrl, value.apiToken)),
-  );
-  return Object();
+final mediaImageCacheScopeProvider = Provider<String>((ref) {
+  final settings = ref.watch(localSettingsProvider);
+  return privateCacheKey(settings.baseUrl, settings.apiToken);
 });
+
+class AssetImageDecodeException implements Exception {
+  const AssetImageDecodeException(this.cause);
+  final Object cause;
+  @override
+  String toString() => cause.toString();
+}
 
 class AssetImageProvider extends ImageProvider<AssetImageProvider> {
   const AssetImageProvider(
@@ -25,7 +35,7 @@ class AssetImageProvider extends ImageProvider<AssetImageProvider> {
 
   final String url;
   final String cacheKey;
-  final Object scope;
+  final String scope;
   final Size? coverSize;
 
   @override
@@ -37,31 +47,78 @@ class AssetImageProvider extends ImageProvider<AssetImageProvider> {
     AssetImageProvider key,
     ImageDecoderCallback decode,
   ) {
-    final image = NetworkImage(key.url);
     final size = key.coverSize;
-    if (size == null) return image.loadImage(image, decode);
-    return image.loadImage(image, (buffer, {getTargetSize}) {
-      return decode(
-        buffer,
-        getTargetSize: (width, height) {
-          // Keep enough pixels on both axes for cover cropping, without upscaling.
-          final scale = math.min(
-            1.0,
-            math.max(size.width / width, size.height / height),
+    Future<ui.Codec> decodeImage(
+      ui.ImmutableBuffer buffer, {
+      ui.TargetImageSizeCallback? getTargetSize,
+    }) async {
+      try {
+        if (size == null) {
+          return await decode(buffer, getTargetSize: getTargetSize);
+        }
+        return await decode(
+          buffer,
+          getTargetSize: (width, height) {
+            // Keep enough pixels on both axes for cover cropping, without upscaling.
+            final scale = math.min(
+              1.0,
+              math.max(size.width / width, size.height / height),
+            );
+            return ui.TargetImageSize(
+              width: (width * scale).ceil(),
+              height: (height * scale).ceil(),
+            );
+          },
+        );
+      } catch (error) {
+        throw AssetImageDecodeException(error);
+      }
+    }
+
+    if (!supportsMediaDiskCache) {
+      final image = NetworkImage(key.url);
+      return image.loadImage(image, decodeImage);
+    }
+    Future<ui.Codec> load() async {
+      final diskKey = privateCacheKey(scope, cacheKey);
+      final bytes = await readCachedBytes(diskKey);
+      if (bytes != null) {
+        try {
+          return await decodeImage(
+            await ui.ImmutableBuffer.fromUint8List(bytes),
           );
-          return ui.TargetImageSize(
-            width: (width * scale).ceil(),
-            height: (height * scale).ceil(),
-          );
-        },
+        } on AssetImageDecodeException {
+          await forgetCachedBytes(diskKey);
+        }
+      }
+      final uri = Uri.parse(url);
+      final response = await http.get(uri).timeout(const Duration(seconds: 45));
+      if (response.statusCode != 200) {
+        throw NetworkImageLoadException(
+          statusCode: response.statusCode,
+          uri: uri,
+        );
+      }
+      final codec = await decodeImage(
+        await ui.ImmutableBuffer.fromUint8List(response.bodyBytes),
       );
-    });
+      unawaited(cacheBytes(diskKey, response.bodyBytes));
+      return codec;
+    }
+
+    return MultiFrameImageStreamCompleter(
+      codec: load().catchError((Object error, StackTrace stack) {
+        scheduleMicrotask(() => PaintingBinding.instance.imageCache.evict(key));
+        Error.throwWithStackTrace(error, stack);
+      }),
+      scale: 1,
+    );
   }
 
   @override
   bool operator ==(Object other) =>
       other is AssetImageProvider &&
-      identical(scope, other.scope) &&
+      scope == other.scope &&
       cacheKey == other.cacheKey &&
       coverSize == other.coverSize;
 

@@ -180,6 +180,16 @@ def _variant_from_item(
     )
 
 
+def _body_images(body: str | None):
+    if not body or "![" not in body:
+        return
+    from markdown_it import MarkdownIt
+    for block in MarkdownIt().parse(body):
+        for token in block.children or ():
+            if token.type == "image" and token.attrGet("src"):
+                yield token.attrGet("src")
+
+
 def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
     archive = _archive_blob(content.archive_metadata)
     image_items = [item for item in archive.get("images") or [] if isinstance(item, dict)]
@@ -247,6 +257,7 @@ def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
                 original_url=original,
                 width=item.get("stored_width") or item.get("width"),
                 height=item.get("stored_height") or item.get("height"),
+                source_identity=_text(item.get("source_identity")),
                 alt_text=_text(item.get("alt")) or _text(item.get("alt_text")),
                 caption=_text(item.get("caption")),
                 variants=variants,
@@ -306,7 +317,7 @@ def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
         for candidate in candidates
         for variant in candidate.variants
     )
-    for raw_url in content.media_urls or []:
+    for raw_url in [*_body_images(content.body), *(content.media_urls or [])]:
         original = _remote_url(raw_url)
         local_key = _local_key(raw_url)
         identity = original or local_key
@@ -342,15 +353,6 @@ def build_media_candidates(content: Content) -> list[MediaAssetCandidate]:
             )
         )
         known_values.add(identity)
-
-    if not any(item.role == MediaRole.COVER for item in candidates):
-        first_image = next(
-            (item for item in candidates if item.media_type == MediaType.IMAGE and item.role != MediaRole.AVATAR),
-            None,
-        )
-        if first_image is not None:
-            first_image.role = MediaRole.COVER
-            first_image.position = 0
 
     return candidates
 
@@ -413,6 +415,7 @@ async def replace_content_media_assets(
     source: str,
     media_types: set[MediaType] | None = None,
 ) -> list[MediaAsset]:
+    from app.media.references import xiaohongshu_image_identity
     candidates = build_media_candidates(content)
     if media_types is not None:
         candidates = [item for item in candidates if item.media_type in media_types]
@@ -422,17 +425,20 @@ async def replace_content_media_assets(
         .options(selectinload(MediaAsset.variants))
     )).all())
     # Vacate positions before a cover change or reorder reuses existing IDs.
+    original_positions = {asset.id: asset.position for asset in existing}
     for asset in existing:
         asset.position = -asset.id
     await session.flush()
     retained_ids: set[int] = set()
     assets: list[MediaAsset] = []
     for candidate in candidates:
+        if candidate.media_type == MediaType.IMAGE and candidate.original_url and not candidate.source_identity:
+            candidate.source_identity = xiaohongshu_image_identity(candidate.original_url)
         candidate_keys = {variant.storage_key for variant in candidate.variants}
         matches = [item for item in existing
             if item.id not in retained_ids and item.media_type == candidate.media_type
             and (
-                (candidate.source_identity is not None and (item.asset_metadata or {}).get("source_identity") == candidate.source_identity)
+                (candidate.source_identity is not None and ((item.asset_metadata or {}).get("source_identity") or xiaohongshu_image_identity(item.original_url or "")) == candidate.source_identity)
                 or (candidate.source_identity is None and candidate.original_url is not None and item.original_url == candidate.original_url)
                 or (not candidate.source_identity and candidate_keys.intersection(variant.storage_key for variant in item.variants))
             )]
@@ -452,17 +458,15 @@ async def replace_content_media_assets(
         asset.repairable = bool(candidate.original_url)
         asset.asset_metadata = {**(asset.asset_metadata or {}), "write_source": source}
         if candidate.source_identity:
-            asset.asset_metadata["source_identity"] = candidate.source_identity
+            asset.asset_metadata = {**asset.asset_metadata, "source_identity": candidate.source_identity}
         previous_variants = {(item.variant_kind, item.storage_key): item for item in asset.variants}
         variants = []
         for variant in candidate.variants:
-            exists = _variant_path(storage, variant.storage_key).is_file()
             persisted = previous_variants.get((variant.kind, variant.storage_key)) or MediaVariant(
                 variant_kind=variant.kind, storage_key=variant.storage_key,
             )
             for field_name in ("mime_type", "width", "height", "size_bytes", "checksum"):
                 setattr(persisted, field_name, getattr(variant, field_name))
-            persisted.status = MediaVariantStatus.READY if exists else MediaVariantStatus.MISSING
             variants.append(persisted)
         # Turning archiving off must not discard previously saved versions.
         replaced_kinds = {variant.variant_kind for variant in variants}
@@ -470,19 +474,52 @@ async def replace_content_media_assets(
                         if variant.variant_kind not in replaced_kinds)
         for variant in variants:
             exists = _variant_path(storage, variant.storage_key).is_file()
-            variant.status = MediaVariantStatus.READY if exists else MediaVariantStatus.MISSING
+            if not exists:
+                variant.status = MediaVariantStatus.MISSING
+            elif variant.status != MediaVariantStatus.FAILED:
+                variant.status = MediaVariantStatus.READY
         ready_count = sum(variant.status == MediaVariantStatus.READY for variant in variants)
         missing_count = len(variants) - ready_count
-        asset.archive_status = (MediaArchiveStatus.READY if ready_count and not missing_count
-            else MediaArchiveStatus.PARTIAL if ready_count else MediaArchiveStatus.MISSING)
+        has_main = any(v.variant_kind != MediaVariantKind.THUMBNAIL and v.status == MediaVariantStatus.READY for v in variants)
+        asset.archive_status = (MediaArchiveStatus.READY if has_main
+            else MediaArchiveStatus.PARTIAL if ready_count else MediaArchiveStatus.FAILED if any(v.status == MediaVariantStatus.FAILED for v in variants)
+            else MediaArchiveStatus.MISSING if variants else MediaArchiveStatus.PENDING)
         asset.last_error = "legacy_local_blob_missing" if missing_count else None
         asset.variants = variants
         session.add(asset)
         assets.append(asset)
+    # A legacy capture or a stored article can be represented solely by its asset records.
+    referenced = set(_body_images(content.body))
+    for old in sorted(existing, key=lambda item: original_positions[item.id]):
+        if old.id in retained_ids:
+            continue
+        metadata = old.asset_metadata or {}
+        if (f"asset://image/{old.id}" in referenced or metadata.get("telegram") or
+                (not old.original_url and old.variants and not metadata.get("write_source"))):
+            old.position = max((a.position for a in assets if a.role == old.role and a.media_type == old.media_type), default=-1) + 1
+            retained_ids.add(old.id)
+            assets.append(old)
     removed_ids = [item.id for item in existing if item.id not in retained_ids]
     if removed_ids:
         await session.execute(delete(MediaAsset).where(MediaAsset.id.in_(removed_ids)))
     await session.flush()
+    if media_types is None and content.body:
+        from app.media.references import rewrite_media_urls
+        refs = {}
+        for asset in assets:
+            if asset.media_type == MediaType.IMAGE:
+                ref = f"asset://image/{asset.id}"
+                if asset.original_url:
+                    refs[asset.original_url] = ref
+                refs.update({f"local://{v.storage_key}": ref for v in asset.variants})
+        content.body = rewrite_media_urls(content.body, refs)
+        def link_images(value):
+            if isinstance(value, dict):
+                return {k: link_images(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [link_images(v) for v in value]
+            return refs.get(value, value) if isinstance(value, str) else value
+        content.rich_payload = link_images(content.rich_payload)
     # Platform time slices refer to explicit media identities before database IDs exist.
     identities = {asset.asset_metadata.get("source_identity"): asset.id for asset in assets
                   if asset.asset_metadata.get("source_identity")}

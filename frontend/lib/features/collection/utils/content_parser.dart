@@ -57,7 +57,7 @@ class ContentParser {
     final archivedImages = extractImageAssets(detail);
     if (archivedImages.isNotEmpty) {
       return archivedImages
-          .map((asset) => asset.sources.first.url)
+          .map((asset) => asset.imageReference)
           .toSet()
           .toList(growable: false);
     }
@@ -71,27 +71,13 @@ class ContentParser {
   }
 
   static List<MediaAsset> extractImageAssets(ContentDetail detail) {
-    final assets = detail.mediaAssets
+    return detail.mediaAssets
         .where(
           (asset) =>
               asset.mediaType == MediaType.image &&
-              asset.role != MediaRole.avatar &&
-              asset.sources.isNotEmpty,
+              asset.role != MediaRole.avatar,
         )
         .toList();
-    const roleOrder = {
-      MediaRole.cover: 0,
-      MediaRole.poster: 1,
-      MediaRole.body: 2,
-      MediaRole.gallery: 3,
-      MediaRole.attachment: 4,
-      MediaRole.avatar: 5,
-    };
-    assets.sort((a, b) {
-      final byRole = roleOrder[a.role]!.compareTo(roleOrder[b.role]!);
-      return byRole != 0 ? byRole : a.position.compareTo(b.position);
-    });
-    return assets;
   }
 
   static MediaAsset? imageAssetForUrl(ContentDetail detail, String rawUrl) {
@@ -101,7 +87,9 @@ class ContentParser {
 
   static MediaAsset? mediaAssetForUrl(ContentDetail detail, String rawUrl) {
     for (final asset in detail.mediaAssets) {
-      if (asset.sources.any((source) => source.url == rawUrl)) {
+      if ((asset.mediaType == MediaType.image &&
+              rawUrl == 'asset://image/${asset.id}') ||
+          asset.sources.any((source) => source.url == rawUrl)) {
         return asset;
       }
     }
@@ -127,15 +115,10 @@ class ContentParser {
     ContentDetail detail,
     String rawUrl,
   ) {
-    for (final asset in detail.mediaAssets) {
-      if (asset.mediaType != MediaType.image || asset.sources.isEmpty) continue;
-      if (asset.sources.any((source) => source.url == rawUrl)) {
-        return asset.sources
-            .map((source) => source.url)
-            .toList(growable: false);
-      }
-    }
-    return const [];
+    final asset = imageAssetForUrl(detail, rawUrl);
+    if (asset == null) return const [];
+    if (asset.sources.isEmpty) return [rawUrl];
+    return asset.sources.map((source) => source.url).toList(growable: false);
   }
 
   static List<String> extractAllMedia(ContentDetail detail) {

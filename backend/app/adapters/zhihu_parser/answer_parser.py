@@ -148,7 +148,7 @@ def parse_answer(html_content: str, url: str) -> Optional[ParsedContent]:
         author_id=author.url_token or str(author.id),
         author_avatar_url=author.avatar_url,
         author_url=f"https://www.zhihu.com/people/{author.url_token}" if author.url_token else None,
-        cover_url=answer_data.get('thumbnail') or (media_urls[0] if media_urls else None),
+        cover_url=answer_data.get('thumbnail'),
         media_urls=media_urls,
         published_at=published_at,
         archive_metadata=archive_metadata,

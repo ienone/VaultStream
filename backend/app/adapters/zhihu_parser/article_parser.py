@@ -88,8 +88,6 @@ def parse_article(html_content: str, url: str) -> Optional[ParsedContent]:
     
     # Cover URL logic: titleImage -> imageUrl -> first image in content
     cover_url = article_data.get('titleImage') or article_data.get('imageUrl')
-    if not cover_url and media_urls:
-        cover_url = media_urls[0]
 
     return ParsedContent(
         platform="zhihu",

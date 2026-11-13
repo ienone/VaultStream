@@ -7,12 +7,11 @@
 - color: 封面颜色提取
 """
 from .extractor import extract_media_urls
-from .processor import store_archive_images, store_archive_videos
+from .processor import archive_media_file
 from .color import extract_cover_color
 
 __all__ = [
     'extract_media_urls',
-    'store_archive_images',
-    'store_archive_videos',
+    'archive_media_file',
     'extract_cover_color',
 ]

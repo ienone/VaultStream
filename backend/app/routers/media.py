@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.media.proxy_cache import find_proxy_cache_file, proxy_cache_location
 from app.core.logging import logger
 from app.core.config import settings
 from app.core.api_errors import build_error_payload
@@ -180,8 +181,6 @@ async def _download_remote_image(
                 )
 
             content_type = resp.headers.get("content-type", "image/jpeg")
-            if not content_type.lower().startswith("image/"):
-                raise HTTPException(status_code=415, detail="上游资源不是图片")
 
             content_length = resp.headers.get("content-length")
             if content_length:
@@ -201,31 +200,6 @@ async def _download_remote_image(
             return b"".join(chunks), content_type, current_url
 
     raise HTTPException(status_code=400, detail="图片重定向次数过多")
-
-
-def _validate_proxy_image_pixels(data: bytes) -> tuple[int | None, int | None]:
-    """Validate decoded image dimensions before transcoding or caching."""
-    try:
-        from PIL import Image  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise HTTPException(status_code=500, detail="图片解码组件不可用") from e
-
-    from io import BytesIO
-
-    try:
-        with Image.open(BytesIO(data)) as image:
-            width, height = image.size
-            pixels = int(width or 0) * int(height or 0)
-            if pixels <= 0:
-                raise HTTPException(status_code=415, detail="图片尺寸无效")
-            if pixels > _MAX_PROXY_IMAGE_PIXELS:
-                raise HTTPException(status_code=413, detail="图片像素尺寸过大")
-            image.verify()
-            return int(width), int(height)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=415, detail="上游资源不是有效图片") from e
 
 
 def _proxy_cache_root(storage: LocalStorageBackend) -> Path:
@@ -281,39 +255,6 @@ async def _enforce_proxy_cache_quota(storage: LocalStorageBackend) -> None:
     await asyncio.to_thread(trim_cache)
 
 
-def _proxy_cache_media_type(path: str) -> str | None:
-    """Infer the media type encoded by a cache filename, never assume WebP."""
-    # Use exactly the formats we write; minimal container MIME tables omit WebP.
-    return {
-        ".webp": "image/webp", ".jpg": "image/jpeg", ".png": "image/png",
-        ".gif": "image/gif", ".avif": "image/avif", ".bmp": "image/bmp",
-        ".tif": "image/tiff",
-    }.get(Path(path).suffix.lower())
-
-
-async def _find_proxy_cache_file(
-    storage: LocalStorageBackend,
-    cache_namespace: str,
-    url_hash: str,
-) -> tuple[str, str] | None:
-    """Find a readable cached image without blocking the event loop."""
-    cache_dir = storage._full_path(cache_namespace)
-
-    def find_file() -> tuple[str, str] | None:
-        if not os.path.exists(cache_dir):
-            return None
-        for filename in sorted(os.listdir(cache_dir)):
-            if not filename.startswith(url_hash):
-                continue
-            cached_file = os.path.join(cache_dir, filename)
-            media_type = _proxy_cache_media_type(cached_file)
-            if media_type and os.path.isfile(cached_file):
-                return cached_file, media_type
-        return None
-
-    return await asyncio.to_thread(find_file)
-
-
 async def _persist_proxy_cache(
     storage: LocalStorageBackend,
     *,
@@ -339,19 +280,6 @@ async def _persist_proxy_cache(
     return "stored"
 
 
-def _raw_proxy_cache_extension(content_type: str) -> str | None:
-    normalized = content_type.split(";", 1)[0].strip().lower()
-    return {
-        "image/jpeg": "jpg",
-        "image/png": "png",
-        "image/gif": "gif",
-        "image/webp": "webp",
-        "image/avif": "avif",
-        "image/bmp": "bmp",
-        "image/tiff": "tif",
-    }.get(normalized)
-
-
 async def _proxy_cache_hit_response(
     storage: LocalStorageBackend,
     cache_namespace: str,
@@ -359,7 +287,7 @@ async def _proxy_cache_hit_response(
     *,
     url: str,
 ) -> FileResponse | None:
-    cached = await _find_proxy_cache_file(storage, cache_namespace, url_hash)
+    cached = await find_proxy_cache_file(storage, cache_namespace, url_hash)
     if cached is None:
         return None
     cached_file, cached_media_type = cached
@@ -368,7 +296,7 @@ async def _proxy_cache_hit_response(
         cached_file,
         media_type=cached_media_type,
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": "private, max-age=300",
             "X-Cache-Status": "HIT",
             "X-Cache-Persist": "stored",
         },
@@ -384,7 +312,7 @@ async def _fetch_proxy_image_response(
 ) -> StreamingResponse:
     """Fetch, validate, transcode and opportunistically cache one cold image."""
     from app.media.processor import (
-        _image_to_webp,
+        _prepare_image,
         _request_headers_for_url,
     )
 
@@ -402,74 +330,23 @@ async def _fetch_proxy_image_response(
             timeout=httpx.Timeout(30.0, connect=15.0),
         ) as client:
             async with asyncio.timeout(120.0):
-                original_data, content_type, final_url = await _download_remote_image(
+                original_data, _, _ = await _download_remote_image(
                     client,
                     url,
                     headers,
                 )
-            await asyncio.to_thread(_validate_proxy_image_pixels, original_data)
-
             try:
-                webp_data, width, height = await asyncio.to_thread(
-                    _image_to_webp,
-                    original_data,
-                    quality=80,
-                )
-                if width is not None and height is not None:
-                    if int(width) * int(height) > _MAX_PROXY_IMAGE_PIXELS:
-                        raise HTTPException(status_code=413, detail="图片像素尺寸过大")
-
-                cache_key = f"{cache_namespace}/{url_hash}.webp"
-                persist_status = await _persist_proxy_cache(
-                    storage,
-                    key=cache_key,
-                    data=webp_data,
-                    content_type="image/webp",
-                )
-
-                logger.info(
-                    f"图片代理已缓存: {final_url} -> {cache_key} "
-                    f"[{len(original_data)//1024}KB原始 -> {len(webp_data)//1024}KB WebP, "
-                    f"{width}x{height}]"
-                )
-
-                return StreamingResponse(
-                    iter([webp_data]),
-                    media_type="image/webp",
-                    headers={
-                        "Cache-Control": "public, max-age=86400",
-                        "X-Cache-Status": "MISS",
-                        "X-Cache-Persist": persist_status,
-                        "X-Original-Size": str(len(original_data)),
-                        "X-Compressed-Size": str(len(webp_data)),
-                    },
-                )
-            except HTTPException:
-                raise
-            except Exception as transcode_error:
-                logger.warning(f"图片转码失败，返回原图: {transcode_error}")
-
-                ext = _raw_proxy_cache_extension(content_type)
-                persist_status = "unsupported-mime"
-                if ext:
-                    cache_key = f"{cache_namespace}/{url_hash}.{ext}"
-                    persist_status = await _persist_proxy_cache(
-                        storage,
-                        key=cache_key,
-                        data=original_data,
-                        content_type=content_type,
-                    )
-
-                return StreamingResponse(
-                    iter([original_data]),
-                    media_type=content_type,
-                    headers={
-                        "Cache-Control": "public, max-age=86400",
-                        "X-Cache-Status": "MISS-RAW",
-                        "X-Cache-Persist": persist_status,
-                        "X-Proxy-Warning": "transcode-failed",
-                    },
-                )
+                data, info = await asyncio.to_thread(_prepare_image, original_data, 80)
+            except (ValueError, OSError, RuntimeError) as exc:
+                raise HTTPException(status_code=415, detail="上游图片无法解码") from exc
+            mime = info["content_type"]
+            persist_status = await _persist_proxy_cache(storage,
+                key=f"{cache_namespace}/{url_hash}.{info['extension']}", data=data, content_type=mime)
+            return StreamingResponse(iter([data]), media_type=mime, headers={
+                "Cache-Control": "private, max-age=300", "X-Cache-Status": "MISS",
+                "X-Cache-Persist": persist_status, "X-Original-Size": str(len(original_data)),
+                "X-Compressed-Size": str(len(data)),
+            })
     except HTTPException:
         raise
     except UnsafeUrlError as exc:
@@ -665,9 +542,9 @@ async def report_local_media_failure(
             asset.archive_status = MediaArchiveStatus.FAILED
         asset.repairable = bool(asset.original_url)
         asset.last_error = f"{report.error_code.value}:variant:{variant.id}"
-        if asset.repairable:
+        if asset.repairable or (variant.variant_kind.value == "thumbnail" and has_other_ready_variant):
             from app.services.media_repair import enqueue_media_repair
-            repair_queued = await enqueue_media_repair(db, asset.content_id)
+            repair_queued = await enqueue_media_repair(db, asset.content_id, asset_id=asset.id)
         await db.commit()
 
     return MediaLocalFailureResult(
@@ -769,7 +646,7 @@ async def proxy_media(
         str(file_path),
         media_type=mime_type,
         headers={
-            "Cache-Control": "public, max-age=31536000, immutable",  # 1年缓存
+            "Cache-Control": "private, no-cache",  # 1年缓存
             "ETag": f'"{key}"',
         }
     )
@@ -782,7 +659,6 @@ async def proxy_image(
     storage: LocalStorageBackend = Depends(get_storage_backend),
 ):
     """读取 manifest 授权的远端图片；缓存命中也校验资源签名。"""
-    import hashlib
 
     try:
         verify_media_signature(f"proxy:{url}", 0, expires, signature)
@@ -792,8 +668,7 @@ async def proxy_image(
 
     # 下载器核验目标地址和每次重定向；已缓存的字节无需重复 DNS 查询。
     # 1. 生成缓存key（使用URL的MD5作为命名空间）
-    url_hash = hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()
-    cache_namespace = f"proxy_cache/{url_hash[:2]}/{url_hash[2:4]}"
+    cache_namespace, url_hash = proxy_cache_location(url)
 
     # 2. 检查是否已缓存（查找任意扩展名的文件）
     cached_response = await _proxy_cache_hit_response(

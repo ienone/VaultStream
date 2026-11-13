@@ -149,7 +149,7 @@ async def parse_article(
             author_id=str(author_mid) if author_mid else None,
             author_avatar_url=author_avatar_url,
             author_url=f"https://space.bilibili.com/{author_mid}" if author_mid else None,
-            cover_url=item.get('banner_url') or (image_urls[0] if image_urls else None),
+            cover_url=item.get('banner_url'),
             media_urls=image_urls,
             published_at=datetime.fromtimestamp(item.get('publish_time')) if item.get('publish_time') else None,
             archive_metadata=archive_metadata,
