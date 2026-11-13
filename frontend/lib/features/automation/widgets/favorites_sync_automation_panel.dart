@@ -338,25 +338,20 @@ class _SyncCommandBar extends ConsumerStatefulWidget {
 class _SyncCommandBarState extends ConsumerState<_SyncCommandBar> {
   String? _progress;
 
-  Future<void> _preview() async {
+  Future<void> _run({required bool previewOnly}) async {
     if (_progress != null) return;
     final router = GoRouter.of(context);
     final sourceUri = router.routeInformationProvider.value.uri;
-    setState(() => _progress = '正在读取收藏…');
+    setState(() => _progress = previewOnly ? '正在读取收藏…' : '正在提交同步…');
     try {
       final actions = ref.read(favoritesSyncActionsProvider);
-      final preview = await actions.previewSync(platform: widget.platform);
-      if (!mounted || router.routeInformationProvider.value.uri != sourceUri) {
+      if (previewOnly) {
+        final preview = await actions.previewSync(platform: widget.platform);
+        if (mounted && router.routeInformationProvider.value.uri == sourceUri) {
+          await _showPreviewDialog(context, preview);
+        }
         return;
       }
-      final confirmed = await _showPreviewDialog(
-        context,
-        preview,
-        canSync: widget.canSync,
-      );
-      if (!confirmed || !mounted) return;
-
-      setState(() => _progress = '正在提交同步…');
       final runId = await actions.triggerSync(platform: widget.platform);
       if (!mounted || router.routeInformationProvider.value.uri != sourceUri) {
         return;
@@ -380,26 +375,25 @@ class _SyncCommandBarState extends ConsumerState<_SyncCommandBar> {
   }
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: FilledButton.icon(
-      onPressed: widget.enabled && _progress == null ? _preview : null,
-      icon: _progress == null
-          ? const Icon(Icons.sync_rounded)
-          : const SizedBox.square(
-              dimension: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-      label: Text(
-        _progress ??
-            (!widget.canSync
-                ? '预览收藏'
-                : widget.platform == null
-                ? '预览并同步全部'
-                : '预览并同步'),
-      ),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final enabled = widget.enabled && _progress == null;
+    return Wrap(
+      spacing: 8,
+      children: [
+        if (widget.canSync)
+          FilledButton.icon(
+            onPressed: enabled ? () => _run(previewOnly: false) : null,
+            icon: const Icon(Icons.sync_rounded),
+            label: Text(widget.platform == null ? '同步全部' : '同步收藏'),
+          ),
+        TextButton(
+          onPressed: enabled ? () => _run(previewOnly: true) : null,
+          child: const Text('预览收藏'),
+        ),
+        if (_progress != null) Text(_progress!),
+      ],
+    );
+  }
 }
 
 class _PlatformStatusGrid extends StatelessWidget {
@@ -603,16 +597,15 @@ class _EmptyPanel extends StatelessWidget {
   }
 }
 
-Future<bool> _showPreviewDialog(
+Future<void> _showPreviewDialog(
   BuildContext context,
-  FavoritesSyncPreview preview, {
-  required bool canSync,
-}) async {
+  FavoritesSyncPreview preview,
+) async {
   final theme = Theme.of(context);
   final label = preview.platform == 'all'
       ? '全平台'
       : _platformLabel(preview.platform);
-  final result = await showDialog<bool>(
+  await showDialog<void>(
     context: context,
     builder: (dialogContext) => AdaptiveFormDialog(
       title: '$label收藏同步预览',
@@ -651,20 +644,13 @@ Future<bool> _showPreviewDialog(
         overflowSpacing: 8,
         children: [
           TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('关闭'),
           ),
-          if (canSync &&
-              preview.platforms.any((item) => item.status == 'success'))
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('确认同步'),
-            ),
         ],
       ),
     ),
   );
-  return result == true;
 }
 
 class _PreviewPlatformSection extends StatelessWidget {
