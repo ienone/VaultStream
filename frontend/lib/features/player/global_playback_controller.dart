@@ -187,6 +187,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
   GlobalPlaybackState build() {
     unawaited(_restorePersistedSession());
     ref.onDispose(() {
+      _generation++;
       _sleepTimer?.cancel();
       final player = _videoController;
       if (player != null) unawaited(player.dispose());
@@ -200,11 +201,13 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     bool startPlaying = false,
   }) async {
     if (state.request?.identity == request.identity) {
+      final generation = _generation;
       state = state.copyWith(request: request);
       if (initialPosition != null) {
         _pendingSeekPosition = initialPosition;
         if (state.initialized && _videoController != null) {
           await seekTo(initialPosition);
+          if (generation != _generation) return;
           if (_pendingSeekPosition == initialPosition) {
             _pendingSeekPosition = null;
           }
@@ -228,6 +231,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     final generation = _generation;
     _handlingRuntimeFailure = false;
     _videoController = null;
+    _sourceSession = null;
     state = state.copyWith(
       request: request,
       queue: remainingQueue,
@@ -313,16 +317,22 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
             targetPosition < duration ? targetPosition : duration,
           );
         }
-        if (_pendingSeekPosition == targetPosition) {
-          _pendingSeekPosition = null;
-        }
         await candidate.setPlaybackSpeed(state.playbackSpeed);
+        if (generation != _generation) {
+          await candidate.dispose();
+          return;
+        }
         if (resumePlaying &&
             !_sleepTimerElapsedDuringLoad &&
             playbackIntent == _playbackIntentVersion) {
           await candidate.play();
           if (_sleepTimerElapsedDuringLoad) await candidate.pause();
         }
+        if (generation != _generation) {
+          await candidate.dispose();
+          return;
+        }
+        if (_pendingSeekPosition == targetPosition) _pendingSeekPosition = null;
         _sleepTimerElapsedDuringLoad = false;
         _videoController = candidate;
         candidate.addListener(_onPlaybackValueChanged);
@@ -341,6 +351,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
             await _refreshExpiredManifest(session, generation)) {
           continue;
         }
+        if (generation != _generation) return;
         if (failure == MediaFailureKind.localMissing) {
           _reportMissing(session, source);
         }
@@ -438,6 +449,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     failedController.removeListener(_onPlaybackValueChanged);
     _videoController = null;
     await failedController.dispose();
+    if (generation != _generation) return;
     _handlingRuntimeFailure = false;
 
     if (!session.currentSignatureExpired() && !session.moveNext()) {
@@ -629,6 +641,7 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
   Future<void> retry() async {
     final session = _sourceSession;
     if (session == null || state.request == null) return;
+    final generation = ++_generation;
     session.resetForManualRetry();
     final old = _videoController;
     _videoController = null;
@@ -636,7 +649,8 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
       old.removeListener(_onPlaybackValueChanged);
       await old.dispose();
     }
-    final generation = ++_generation;
+    if (generation != _generation) return;
+    _handlingRuntimeFailure = false;
     _pendingSeekPosition = null;
     state = state.copyWith(loading: true, initialized: false, failure: null);
     await _initialize(generation, resumeAt: Duration.zero);
@@ -654,12 +668,13 @@ class GlobalPlaybackController extends Notifier<GlobalPlaybackState> {
     _sleepTimer = null;
     _lastProgressPersistedAt = null;
     _sleepTimerElapsedDuringLoad = false;
+    state = const GlobalPlaybackState();
+    final clearing = _removePersistedSession();
     if (player != null) {
       player.removeListener(_onPlaybackValueChanged);
       await player.dispose();
     }
-    state = const GlobalPlaybackState();
-    await _removePersistedSession();
+    await clearing;
   }
 
   Future<void> _restorePersistedSession() async {
