@@ -57,12 +57,6 @@ class PostIngestService:
         result = await generate_summary_for_content(session, content.id)
         return {"summary_present": bool(result.summary)}
 
-    async def schedule_embedding_index(self, content_id: int, *, source: str = "post_ingest") -> None:
-        async with AsyncSessionLocal() as db:
-            content = await db.get(Content, content_id)
-            if content is not None and content.deleted_at is None:
-                await self.run_for_content(db, content, source=source, summary=False, distribution=False)
-
     async def auto_approve_and_enqueue(self, session: AsyncSession, content: Content) -> None:
         from app.services.distribution_topics import tag_distribution_topics
         from app.services.distribution import DistributionService
@@ -110,19 +104,6 @@ async def process_content_task(task: Task) -> None:
                 from app.services.embedding_service import EmbeddingService
                 await db.rollback()
                 return {"indexed": await EmbeddingService().index_content(content_id)}
-            elif task.task_type == "document_extract":
-                from app.services.document_text import extract_content_documents, _SUCCESS
-                await db.rollback()
-                result = await extract_content_documents(content_id)
-                content = await db.get(Content, content_id)
-                if content is not None and content.deleted_at is None:
-                    await pipeline.run_for_content(
-                        db, content, source=data["source"],
-                        summary=bool(result["text_page_count"]), distribution=False,
-                    )
-                if any(item["status"] not in _SUCCESS for item in result["documents"]):
-                    raise ValueError("部分 PDF 未能提取正文，请查看文件状态")
-                return result
         return {}
 
     try:

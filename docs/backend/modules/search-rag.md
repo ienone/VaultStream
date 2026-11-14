@@ -30,9 +30,9 @@ active
 
 ## 实现逻辑
 
-内容入库后按配置生成摘要和语义 chunk，写入 `content_embeddings`。自动索引由 `enable_auto_semantic_indexing` 统一约束，关闭时 post-ingest 在创建 background task run 和调用 embedding provider 前停止；已有索引读取与用户显式发起的重建/失败重试不受该自动化开关影响。异步生成向量期间如果内容已被删除，索引任务在持久化前重新核对内容存在性并以 `indexed=false` 正常终止；提交阶段的删除竞争也按同一语义处理，不写孤立 embedding、不产生虚假失败通知。`GET /search/unified?mode=semantic` 在存在当前模型签名的有效索引时执行向量召回，同时执行 SQLite FTS5/LIKE 召回，并用 RRF 合并；无当前索引时退化为关键词召回。返回的 `match_source` 明确区分 `vector`、`fts` 和 `hybrid`。
+内容入库后按配置生成摘要和语义 chunk，写入 `content_embeddings`。自动索引由 `enable_auto_semantic_indexing` 统一约束，关闭时 post-ingest 在创建 background task run 和调用 embedding provider 前停止；已有索引读取与用户显式发起的重建/失败重试不受该自动化开关影响。异步生成向量期间如果内容已被删除，索引任务在持久化前重新核对内容存在性并以 `indexed=false` 正常终止；提交阶段的删除竞争也按同一语义处理，不写孤立 embedding、不产生虚假失败通知。`GET /search/unified?mode=semantic` 在存在当前模型签名的有效索引时执行向量召回，同时执行 SQLite FTS5/LIKE 召回，并用 RRF 合并；缺少索引或模型密钥时使用关键词召回。返回的 `match_source` 明确区分 `vector`、`fts` 和 `hybrid`。
 
-收藏列表、全局搜索和 Agent 共用 unified service。关键词模式与空内容查询调用 ContentRepository 分页，不触发 embedding。`build_conditions` 统一平台、状态、原子标签、作者、创建时间和收藏/发现范围；向量、FTS、人物、主题、时间点和文档精确召回均在限制候选数量前应用条件，不再各自维护范围过滤器。关键词分页以创建时间和 ID 降序稳定排序；语义仍为有限 top_k 召回。完整 contract 见 [搜索接口](../api/contents-search-media.md#搜索与语义索引)。
+收藏列表、全局搜索和 Agent 共用 unified service。关键词模式与空内容查询调用 ContentRepository 分页，不触发 embedding。`build_conditions` 统一平台、状态、原子标签、作者、创建时间和收藏/发现范围；向量、FTS、人物、主题和时间点精确召回均在限制候选数量前应用条件，不再各自维护范围过滤器。关键词分页以创建时间和 ID 降序稳定排序；语义仍为有限 top_k 召回。完整 contract 见 [搜索接口](../api/contents-search-media.md#搜索与语义索引)。
 
 单分块 retry 在响应前完成 provider 调用和持久化，并以 `SemanticEmbeddingRetryResponse` 返回分块最新状态与必需 `run_id`；它不是后台 accepted 响应。
 
@@ -87,28 +87,24 @@ Agent 的 `search_content` 直接调用同一 unified service，并把内容、�
 
 ## 尚未实现 / 计划扩展
 
-混合检索、显式音视频时间点和 PDF 页码定位已实现。[Bilibili 解析](../../../backend/app/adapters/bilibili_parser/video_media.py)生产平台章节/字幕，[文档提取](../../../backend/app/services/document_text.py)生产经过原件校验的 PDF 原生页；摘要保留这些来源片段。[真实验收](../../issues/2026-09-10-real-world-acceptance.md)包含长文末段语义召回、媒体定位、PDF 模型回答与引用点击，不再沿用“所有时间字段和页码问答未实现”的旧判断。
+音视频章节和字幕参与混合检索，并可定位到相应媒体的播放时间。
 
 尚缺通用 ASR/OCR、稳定来源修订引用、系统化的召回/拒答质量验证和统一模型使用治理。已有局部样本不能外推为全部平台、任意问题或长期质量；演进见[整体方案](../../plans/2026-09-14-product-architecture-review.plan.md#automation)。
 
 主题与时间点的精确候选在同一 SQLite 查询中应用解析状态、收藏/发现范围、平台和日期后再 LIMIT；不再先截断全库 ID 后二次过滤。
 
-## PDF 页码检索（2026-09-10）
-
-统一检索新增 document_pages 分组：SQLite JSON 文本条件按范围过滤候选，并与向量候选合并，最终重新核对资产及原变体身份后返回页码 route。不是独立页级 FTS，规模性能尚未验收。索引生成前同样验证 PDF 页；提取替换时清除该内容旧索引，随后按既有策略重建。摘要更新保留 PDF 原生页及音视频章节/字幕，模型派生块标记 generated=true；模型等待期间内容版本改变则回滚，不提交旧摘要。PDF 摘要读取通过资产/变体校验的原生页，保存说明单独标识；未完整提取时在摘要前固定标注覆盖限制。没有可读页或尚未提取时返回 409，不将保存说明伪装为文档摘要。
-
 摘要服务不再吞掉模型失败后返回旧 Content。缺失配置、模型异常及空摘要均产生失败回执，异常路径回滚，既有摘要和来源切片保留；自动 post-ingest 仍按既有隔离逻辑继续其他后处理。
 
 摘要成功保存时在同一事务撤销已变化或已移除切片的旧向量；分块位置、完整文本与媒体引用指纹一致时保留索引及其原模型签名；索引重建和检索仍严格核对当前模型签名，避免跨模型误用，且摘要本身不依赖 embedding 配置。切片标题仅改变时更新元数据，不重算向量；失败时原摘要、原切片和原索引均保留。手动摘要成功后使用既有 PostIngest 自动索引调度，遵循 enable_auto_semantic_indexing；关闭时不调用 embedding 模型，用户仍可显式重建。摘要成功回执不等于索引已完成。
 
-摘要复用按实际提示词（标题、正文/保存说明、校验后的 PDF 原页及覆盖状态）、模型、API 版本和输出 schema 的 SHA-256 判断，成功时保存 summary_source_hash。不以“已有摘要”代替来源版本判断；输入相同且非 force 时不调用模型、不撤销索引，输入或模型变化则重新生成。历史无指纹结果会在下次请求时重新生成一次。此为本地结果复用，不代表供应商 Prompt Cache 命中。
+摘要复用按实际提示词（标题与正文）、模型、API 版本和输出 schema 的 SHA-256 判断，成功时保存 summary_source_hash。不以“已有摘要”代替来源版本判断；输入相同且非 force 时不调用模型、不撤销索引，输入或模型变化则重新生成。历史无指纹结果会在下次请求时重新生成一次。此为本地结果复用，不代表供应商 Prompt Cache 命中。
 
 ## 模型请求与批量索引
 
 Gemini 使用 SDK 原生异步客户端；一次内容索引只为指纹/模型签名变化的分块请求向量，每批最多 16 项，多个批次复用客户端并在结束时关闭。每项显式包装为独立 Content，避免 Embedding 2 将字符串列表聚合成一个向量。响应数量、维度及有限数值均校验，失败仅标记对应分块/请求批次，成功分块保留。完整索引存在失败分块时返回失败事实，不能把部分失败当作全部成功。
 
-内容级版本校验、PDF 页码/媒体归属、删除保护继续保留。跨内容重建每项提交后才进入下一项的网络等待；API 的 batch_size 仍表示内容处理的节流间隔，与模型请求批次不同。
+内容级版本校验、媒体归属和删除保护继续保留。跨内容重建每项提交后才进入下一项的网络等待；API 的 batch_size 仍表示内容处理的节流间隔，与模型请求批次不同。
 
 SDK 请求结构依据 [Google Embedding 2 文档](https://ai.google.dev/gemini-api/docs/embeddings#embedding-aggregation)。
 
-重建预估调用数按各内容待更新分块数除以 16 向上取整；运行时缓存与相同文本去重可能进一步减少实际请求。
+重建预估调用数按各内容待更新分块数除以 16 向上取整；同批次相同文本去重可能进一步减少实际请求。

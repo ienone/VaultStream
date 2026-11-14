@@ -16,7 +16,8 @@ from app.adapters.errors import (
 )
 from app.adapters.utils import generate_title_from_text
 from app.models import BilibiliContentType
-from .base import clean_text, safe_url, render_markdown, parse_opus_text_nodes, format_request_error
+from app.adapters.utils.text_utils import clean_text, safe_url
+from .base import render_markdown, parse_opus_text_nodes, format_request_error
 import re
 
 

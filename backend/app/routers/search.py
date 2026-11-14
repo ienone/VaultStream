@@ -74,9 +74,9 @@ async def unified_search(
     request: Request,
     q: str = Query("", description="检索词；空查询只允许 contents，返回筛选后的内容列表"),
     top_k: int = Query(20, ge=1, le=100, description="每类结果返回数量"),
-    kind: Literal["all", "contents", "events", "people", "topics", "timepoints", "document_pages"] = Query(
+    kind: Literal["all", "contents", "events", "people", "topics", "timepoints"] = Query(
         "all",
-        description="结果类型：all/contents/events/people/topics/timepoints/document_pages",
+        description="结果类型：all/contents/events/people/topics/timepoints",
     ),
     content_scope: Literal["library", "discovery", "all"] = Query(
         "library",
@@ -150,7 +150,6 @@ async def unified_search(
         content_total=results.content_total,
         content_has_more=results.content_has_more,
         contents=[_serialize_content_hit(hit, manifests.get(hit.content.id, [])) for hit in results.contents],
-        document_pages=results.document_pages,
         events=events,
         people=[
             UnifiedSearchFacetItem(

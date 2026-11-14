@@ -13,7 +13,8 @@ from app.adapters.errors import (
     RetryableAdapterError,
 )
 from app.models import BilibiliContentType
-from .base import safe_url, prune_metadata, format_request_error
+from app.adapters.utils.text_utils import safe_url
+from .base import prune_metadata, format_request_error
 import re
 
 

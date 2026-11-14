@@ -5,9 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_client.dart';
-import '../models/processing_status.dart';
 import 'collection_provider.dart';
-import 'document_text_provider.dart';
 
 part 'content_actions_controller.g.dart';
 
@@ -21,7 +19,6 @@ class ContentActionResult {
     required this.message,
     this.runId,
     this.contentId,
-    this.needsAttention = false,
     this.errorCode,
   });
 
@@ -29,14 +26,7 @@ class ContentActionResult {
     String message, {
     String? runId,
     int? contentId,
-    bool needsAttention = false,
-  }) : this._(
-         ok: true,
-         message: message,
-         runId: runId,
-         contentId: contentId,
-         needsAttention: needsAttention,
-       );
+  }) : this._(ok: true, message: message, runId: runId, contentId: contentId);
 
   const ContentActionResult.failure(String message, {String? errorCode})
     : this._(ok: false, message: message, errorCode: errorCode);
@@ -46,7 +36,6 @@ class ContentActionResult {
   final String? errorCode;
   final String? runId;
   final int? contentId;
-  final bool needsAttention;
 }
 
 /// 正在执行的内容写操作集合。
@@ -120,28 +109,11 @@ class ContentActions extends _$ContentActions {
     return int.tryParse(value?.toString() ?? '');
   }
 
-  int? _contentIdFromError(Object error) {
-    if (error is! DioException || error.response?.data is! Map) return null;
-    return _contentIdOf(error.response!.data);
-  }
-
   void _invalidateDetail(int contentId) {
     ref.invalidate(contentDetailProvider(contentId));
-    ref.invalidate(contentProcessingStatusProvider(contentId));
   }
 
   // --- 内容级动作 ---
-
-  Future<ContentActionResult> extractDocumentText(int contentId) {
-    return _run(contentId, 'extract_document', () async {
-      final response = await ref
-          .read(apiClientProvider)
-          .post('/contents/$contentId/document-text/extract');
-      final runId = _requiredRunIdOf(response.data);
-      ref.invalidate(documentTextProvider(contentId));
-      return ContentActionResult.success('已开始提取 PDF 正文', runId: runId);
-    });
-  }
 
   /// 从统一捕获入口保存分享链接。
   Future<ContentActionResult> createShare({
@@ -155,40 +127,26 @@ class ContentActions extends _$ContentActions {
     Map<String, dynamic>? clientContext,
   }) {
     return _run(0, 'create_share', () async {
-      try {
-        final response = await ref
-            .read(apiClientProvider)
-            .post(
-              '/shares',
-              data: {
-                'url': url,
-                'tags': tags,
-                'tags_text': tagsText,
-                'is_nsfw': isNsfw,
-                'source': source,
-                'layout_type_override': layoutTypeOverride,
-                'note': note,
-                'client_context': clientContext,
-              },
-            );
-        ref.invalidate(collectionProvider);
-        return ContentActionResult.success(
-          '已保存内容，后台将继续解析',
-          contentId: _contentIdOf(response.data),
-        );
-      } catch (error) {
-        final info = parseApiErrorInfo(error);
-        final contentId = _contentIdFromError(error);
-        if (info.code == 'parse_queue_unavailable' && contentId != null) {
-          ref.invalidate(collectionProvider);
-          return ContentActionResult.success(
-            '内容已保存，但解析任务暂未入队',
-            contentId: contentId,
-            needsAttention: true,
+      final response = await ref
+          .read(apiClientProvider)
+          .post(
+            '/shares',
+            data: {
+              'url': url,
+              'tags': tags,
+              'tags_text': tagsText,
+              'is_nsfw': isNsfw,
+              'source': source,
+              'layout_type_override': layoutTypeOverride,
+              'note': note,
+              'client_context': clientContext,
+            },
           );
-        }
-        rethrow;
-      }
+      ref.invalidate(collectionProvider);
+      return ContentActionResult.success(
+        '已收藏',
+        contentId: _contentIdOf(response.data),
+      );
     });
   }
 
@@ -222,46 +180,6 @@ class ContentActions extends _$ContentActions {
       ref.invalidate(collectionProvider);
       return ContentActionResult.success(
         '已保存文本，可在收藏库中继续整理',
-        contentId: _contentIdOf(response.data),
-      );
-    });
-  }
-
-  /// 上传并归档用户选择的原始文件。
-  Future<ContentActionResult> createFile({
-    required XFile file,
-    required List<String> tags,
-    required bool isNsfw,
-    String? title,
-    String source = 'manual_upload',
-    String? note,
-  }) {
-    return _run(0, 'create_file', () async {
-      final length = await file.length();
-      final response = await ref
-          .read(apiClientProvider)
-          .post(
-            '/captures/file',
-            data: FormData.fromMap({
-              'upload': MultipartFile.fromStream(
-                () => file.openRead(),
-                length,
-                filename: file.name,
-                contentType: file.mimeType == null
-                    ? null
-                    : DioMediaType.parse(file.mimeType!),
-              ),
-              if (title != null && title.trim().isNotEmpty)
-                'title': title.trim(),
-              if (tags.isNotEmpty) 'tags_text': tags.join(','),
-              'source': source,
-              if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-              'is_nsfw': isNsfw,
-            }),
-          );
-      ref.invalidate(collectionProvider);
-      return ContentActionResult.success(
-        '已归档原始文件',
         contentId: _contentIdOf(response.data),
       );
     });
@@ -412,94 +330,6 @@ class ContentActions extends _$ContentActions {
       return ContentActionResult.success(
         layoutType == null ? '已恢复系统判定的模板' : '已切换模板',
       );
-    });
-  }
-
-  // --- 后处理阶段动作 ---
-
-  /// 执行一个由后端声明的阶段动作。
-  ///
-  /// 动作种类和目标对象都来自 `/contents/{id}/processing-status` 的
-  /// typed contract，前端不根据状态字符串推断可执行动作。
-  Future<ContentActionResult> runStageAction(
-    int contentId,
-    ProcessingStageAction action,
-  ) {
-    return _run(contentId, action.kind.name, () async {
-      final dio = ref.read(apiClientProvider);
-      switch (action.kind) {
-        case ProcessingActionKind.generateSummary:
-          final response = await dio.post(
-            '/contents/$contentId/generate-summary',
-            queryParameters: {'force': true},
-          );
-          _invalidateDetail(contentId);
-          return ContentActionResult.success(
-            '摘要已生成',
-            runId: _requiredRunIdOf(response.data),
-          );
-
-        case ProcessingActionKind.rebuildSemanticIndex:
-          final response = await dio.post(
-            '/search/semantic/reindex',
-            data: {
-              'scope': 'single',
-              'content_id': contentId,
-              'dry_run': false,
-            },
-          );
-          _invalidateDetail(contentId);
-          return ContentActionResult.success(
-            '已调度语义索引重建',
-            runId: _runIdOf(response.data),
-          );
-
-        case ProcessingActionKind.retrySemanticChunk:
-          if (action.targetIds.isEmpty) {
-            return const ContentActionResult.failure('没有可重试的语义分块');
-          }
-          String? lastRunId;
-          for (final id in action.targetIds) {
-            final response = await dio.post(
-              '/search/semantic/embeddings/$id/retry',
-            );
-            lastRunId = _requiredRunIdOf(response.data);
-          }
-          _invalidateDetail(contentId);
-          return ContentActionResult.success(
-            '已重试 ${action.targetIds.length} 个语义分块',
-            runId: lastRunId,
-          );
-
-        case ProcessingActionKind.retryDistributionItem:
-          if (action.targetIds.isEmpty) {
-            return const ContentActionResult.failure('没有可重试的分发项');
-          }
-          await dio.post(
-            '/distribution-queue/batch-retry',
-            data: {'item_ids': action.targetIds},
-          );
-          _invalidateDetail(contentId);
-          return ContentActionResult.success(
-            '已重试 ${action.targetIds.length} 条分发项',
-          );
-
-        case ProcessingActionKind.rematchDistribution:
-          await dio.post(
-            '/distribution-queue/enqueue/$contentId',
-            data: {'force': true},
-          );
-          _invalidateDetail(contentId);
-          return const ContentActionResult.success('已重新匹配分发规则');
-
-        case ProcessingActionKind.patrolScore:
-          final response = await dio.post('/contents/$contentId/patrol-score');
-          _invalidateDetail(contentId);
-          return ContentActionResult.success(
-            '巡逻评分已完成',
-            runId: _requiredRunIdOf(response.data),
-          );
-      }
     });
   }
 }

@@ -18,7 +18,7 @@ _HASH = re.compile(r"\b[0-9a-f]{64}\b")
 _DELETE_BATCH_SIZE = 16
 _REFERENCE_COLUMNS = (
     Content.body, Content.cover_url, Content.author_avatar_url,
-    Content.media_urls, Content.archive_metadata, Content.rich_payload,
+    Content.media_urls, Content.archive_metadata, Content.rich_payload, Content.context_data,
 )
 
 

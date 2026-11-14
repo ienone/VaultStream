@@ -36,7 +36,7 @@ export function renderResult(result: AgentResult, completion = false): string {
   if (!completion && result.message) pieces.push(result.message)
   for (const c of result.captures) {
     const state = c.status === 'parse_success' ? '已收藏' : c.status === 'parse_failed' ? '已收藏，解析失败'
-      : c.status === 'parse_queue_unavailable' ? '已收藏，解析待处理' : '已收藏，正在解析'
+      : '已收藏，正在解析'
     const body = c.body && c.body.length <= 500 ? c.body : c.summary || c.body
     const label = c.body && c.body.length <= 500 ? '' : c.summary ? '摘要：' : '正文节选：'
     pieces.push([

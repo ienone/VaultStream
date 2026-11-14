@@ -8,7 +8,6 @@ from typing import AsyncIterator
 from app.adapters import AdapterFactory, PlatformAdapter, managed_adapter, close_adapter
 from app.adapters.base import ParsedContent
 from app.adapters.errors import PageExtractionRequired
-from app.core.config import settings
 from app.models import Platform
 from app.services.config_service import ConfigService
 
@@ -28,16 +27,6 @@ async def create_configured_adapter(
         fresh=True,
     )
     cookies = PlatformAdapter.parse_cookie_str(raw_cookie) if raw_cookie else {}
-
-    if platform == Platform.BILIBILI and not cookies:
-        for key, setting_name in (
-            ("SESSDATA", "bilibili_sessdata"),
-            ("bili_jct", "bilibili_bili_jct"),
-            ("buvid3", "bilibili_buvid3"),
-        ):
-            secret = getattr(settings, setting_name, None)
-            if secret:
-                cookies[key] = secret.get_secret_value()
 
     adapter_kwargs = {}
     if platform == Platform.BILIBILI:

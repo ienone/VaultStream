@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.events import event_bus
 from app.core.dependencies import require_api_token
 from app.core.api_errors import build_error_payload
-from app.core.time_utils import utcnow
+from app.services.content_service import ContentService
 from app.utils.text_formatters import strip_markdown
 from app.core.config import settings
 from app.services.background_task_state import (
@@ -132,11 +132,10 @@ def _serialize_source_test_item(item) -> dict:
     }
 
 
-def _apply_inbox_action(item: Content, action: str, now=None) -> None:
-    now = now or utcnow()
+async def _apply_inbox_action(db: AsyncSession, item: Content, action: str) -> None:
     if action == "promote":
-        item.discovery_state = DiscoveryState.PROMOTED
-        item.promoted_at = now
+        item.promote()
+        await ContentService(db).ensure_parse_queued(item, commit=False)
         return
     if action == "ignore":
         item.discovery_state = DiscoveryState.IGNORED
@@ -232,7 +231,7 @@ async def list_discovery_items(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    query = select(Content).where(Content.discovery_state.isnot(None))
+    query = select(Content).where(Content.discovery_state.isnot(None), Content.deleted_at.is_(None))
 
     if state:
         query = query.where(Content.discovery_state == state)
@@ -335,7 +334,7 @@ async def get_discovery_item(
     result = await db.execute(
         select(Content).where(
             Content.id == item_id,
-            Content.discovery_state.isnot(None),
+            Content.discovery_state.isnot(None), Content.deleted_at.is_(None),
         )
     )
     item = result.scalar_one_or_none()
@@ -367,7 +366,7 @@ async def update_discovery_item(
     result = await db.execute(
         select(Content).where(
             Content.id == item_id,
-            Content.discovery_state.isnot(None),
+            Content.discovery_state.isnot(None), Content.deleted_at.is_(None),
         )
     )
     item = result.scalar_one_or_none()
@@ -380,7 +379,7 @@ async def update_discovery_item(
         "snoozed": "snooze",
         "visible": "restore",
     }
-    _apply_inbox_action(item, action_map[body.state])
+    await _apply_inbox_action(db, item, action_map[body.state])
 
     await db.commit()
     await db.refresh(item)
@@ -420,14 +419,13 @@ async def bulk_action(
     result = await db.execute(
         select(Content).where(
             Content.id.in_(body.ids),
-            Content.discovery_state.isnot(None),
+            Content.discovery_state.isnot(None), Content.deleted_at.is_(None),
         )
     )
     items = result.scalars().all()
 
-    now = utcnow()
     for item in items:
-        _apply_inbox_action(item, body.action, now)
+        await _apply_inbox_action(db, item, body.action)
 
     await db.commit()
     for item in items:
@@ -755,13 +753,13 @@ async def get_discovery_stats(
     _: None = Depends(require_api_token),
 ):
     # total
-    total_q = select(func.count()).select_from(Content).where(Content.discovery_state.isnot(None))
+    total_q = select(func.count()).select_from(Content).where(Content.discovery_state.isnot(None), Content.deleted_at.is_(None))
     total = (await db.execute(total_q)).scalar() or 0
 
     # by state
     state_q = (
         select(Content.discovery_state, func.count())
-        .where(Content.discovery_state.isnot(None))
+        .where(Content.discovery_state.isnot(None), Content.deleted_at.is_(None))
         .group_by(Content.discovery_state)
     )
     state_rows = (await db.execute(state_q)).all()
@@ -774,7 +772,7 @@ async def get_discovery_stats(
     # by source
     source_q = (
         select(Content.source_type, func.count())
-        .where(Content.discovery_state.isnot(None))
+        .where(Content.discovery_state.isnot(None), Content.deleted_at.is_(None))
         .group_by(Content.source_type)
     )
     source_rows = (await db.execute(source_q)).all()

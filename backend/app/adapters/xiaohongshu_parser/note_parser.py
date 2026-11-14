@@ -16,7 +16,8 @@ from app.adapters.errors import (
     RetryableAdapterError,
 )
 from app.adapters.utils import ensure_title
-from .base import clean_text, extract_source_tags, strip_tags_from_text
+from app.adapters.utils.text_utils import clean_text, safe_url
+from .base import extract_source_tags, strip_tags_from_text
 from .ssr import extract_initial_state, navigation_headers
 
 
@@ -464,15 +465,3 @@ def build_note_archive(note: Dict[str, Any]) -> Dict[str, Any]:
         archive["images"].append({"url": author_avatar, "type": "avatar"})
     
     return archive
-
-
-def safe_url(url: Any) -> Optional[str]:
-    """安全获取URL"""
-    if not url or not isinstance(url, str):
-        return None
-    u = url.strip()
-    if not u:
-        return None
-    if u.startswith("//"):
-        return "https:" + u
-    return u

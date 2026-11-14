@@ -33,7 +33,6 @@ import 'components/rich_content.dart';
 import 'components/tags_section.dart';
 import 'components/unified_stats.dart';
 import 'detail_sections.dart';
-import 'document_reader.dart';
 import 'gallery/gallery_navigation.dart';
 
 /// 模板渲染所需的上下文。
@@ -793,7 +792,7 @@ class _ArticleBody extends StatelessWidget {
   }
 }
 
-/// 原文件、用户说明与按页提取的 PDF 文本分别呈现。
+/// 显示附件与保存说明。
 class _DocumentBody extends StatelessWidget {
   const _DocumentBody({required this.ctx});
 
@@ -850,7 +849,6 @@ class _DocumentBody extends StatelessWidget {
               ],
             ),
           ),
-        DocumentReader(contentId: ctx.detail.id),
       ],
     );
   }
@@ -1198,13 +1196,13 @@ class _ShortPostBody extends StatelessWidget {
       key: const ValueKey('short-post-compact-body'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _AttachedPlayback(ctx: ctx),
-        if (ctx.images.isNotEmpty) ...[
-          _PagedMediaViewer(ctx: ctx),
-          const SizedBox(height: AppSpacing.lg),
-        ],
         if (ctx.detail.hasBody || (quoted == null && ctx.images.isEmpty))
           _BodyText(ctx: ctx, emptyMessage: '没有帖子内容'),
+        _AttachedPlayback(ctx: ctx),
+        if (ctx.images.isNotEmpty) ...[
+          if (ctx.detail.hasBody) const SizedBox(height: AppSpacing.md),
+          _PagedMediaViewer(ctx: ctx),
+        ],
         if (quoted != null) ...[
           const SizedBox(height: AppSpacing.md),
           _QuotedContent(raw: quoted),

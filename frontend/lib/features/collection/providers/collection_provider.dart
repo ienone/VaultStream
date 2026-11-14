@@ -14,7 +14,6 @@ import '../../../core/network/sse_service.dart';
 import '../../search/search_models.dart';
 import '../../search/search_provider.dart';
 import '../models/content.dart';
-import '../models/processing_status.dart';
 import 'collection_filter_provider.dart';
 
 part 'collection_provider.g.dart';
@@ -60,19 +59,7 @@ class Collection extends _$Collection {
     );
     return _readingSnapshot(
       key,
-      () async {
-        final result = await fetchUnifiedSearch(
-          ref.read(apiClientProvider),
-          request,
-        );
-        return ShareCardListResponse(
-          items: result.contents.map((hit) => hit.card).toList(),
-          total: result.contentTotal,
-          page: result.page,
-          size: result.size,
-          hasMore: result.contentHasMore,
-        );
-      },
+      () => fetchCollectionPage(ref.read(apiClientProvider), request),
       ShareCardListResponse.fromJson,
       (value) => value.toJson(),
     );
@@ -154,15 +141,4 @@ Future<T> _readingSnapshot<T>(
     if (cached == null) rethrow;
     return parse(jsonDecode(utf8.decode(cached)));
   }
-}
-
-/// 后处理状态使用正式 contract，不推断后台任务是否完成。
-@riverpod
-Future<ContentProcessingStatus> contentProcessingStatus(Ref ref, int id) async {
-  refreshOnEvents(ref, (event) => affectsContent(event, id));
-  final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/contents/$id/processing-status');
-  return ContentProcessingStatus.fromJson(
-    Map<String, dynamic>.from(response.data as Map),
-  );
 }

@@ -8,76 +8,10 @@ B站解析器公共工具模块
 - Markdown渲染
 """
 import re
-import html as _html
 from typing import Any, Optional, Dict, List
-from app.core.logging import logger
 
 
-def clean_text(text: Any) -> str:
-    """
-    清洗文本内容
-    
-    功能：
-    - HTML 反转义
-    - 去除零宽字符和不可见字符
-    - 统一换行符
-    - 去除行尾空白
-    - 压缩多余空行
-    
-    Args:
-        text: 待清洗的文本
-        
-    Returns:
-        str: 清洗后的文本
-    """
-    if text is None:
-        return ""
-    if not isinstance(text, str):
-        text = str(text)
-
-    # HTML反转义
-    val = _html.unescape(text)
-    
-    # 去除常见零宽/不可见字符
-    val = val.replace("\u200b", "").replace("\ufeff", "")
-    
-    # 统一换行符
-    val = val.replace("\r\n", "\n").replace("\r", "\n")
-    
-    # 去掉每行的首尾空白
-    val = "\n".join([ln.strip() for ln in val.split("\n")])
-    
-    # 压缩连续空行（最多保留1个空行）
-    val = re.sub(r"\n{3,}", "\n\n", val)
-    
-    return val.strip()
-
-
-def safe_url(url: Any) -> Optional[str]:
-    """
-    安全获取URL
-    
-    处理协议相对URL（如//i0.hdslb.com/...）
-    过滤无效URL
-    
-    Args:
-        url: URL字符串或其他类型
-        
-    Returns:
-        Optional[str]: 有效的URL字符串，无效则返回None
-    """
-    if not url or not isinstance(url, str):
-        return None
-    
-    u = url.strip()
-    if not u:
-        return None
-    
-    # 将协议相对URL转换为绝对URL
-    if u.startswith("//"):
-        return "https:" + u
-    
-    return u
+from app.adapters.utils.text_utils import clean_text, safe_url
 
 
 def prune_metadata(item: Dict[str, Any]) -> Dict[str, Any]:

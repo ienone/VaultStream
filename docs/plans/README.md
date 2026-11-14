@@ -19,7 +19,6 @@
 - [UI 与动效续作](2026-09-12-ui-motion-continuation.plan.md) · [进展](2026-09-12-ui-motion-continuation.process.md)
 - [统一媒体访问](2026-07-26-unified-media-access.plan.md)
 - [Bilibili 媒体与时间点](2026-09-10-bilibili-real-media.plan.md) · [进展](2026-09-10-bilibili-real-media.process.md)
-- [文档原生文本](2026-09-10-document-native-text.plan.md) · [进展](2026-09-10-document-native-text.process.md)
 
 是否仍有未完成工作，以各计划的具体范围、当前代码和最新证据核对，不从旧状态标签推断。
 

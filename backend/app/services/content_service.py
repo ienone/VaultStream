@@ -7,8 +7,7 @@ from datetime import datetime
 from typing import AsyncIterable, List, Optional
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_, or_, func, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select, update, or_, func, text
 from app.models import (
     Content,
     ContentStatus,
@@ -26,12 +25,8 @@ from app.models import (
     ReviewStatus,
 )
 from app.adapters.storage import LocalStorageBackend
-from app.adapters import AdapterFactory, open_adapter
-from app.utils.url_utils import (
-    extract_primary_url_candidate,
-    is_url_like_input,
-    normalize_share_url_input,
-)
+from app.services.content_identity import ContentLink
+from app.utils.attachments import is_pdf_attachment
 from app.utils.tags import normalize_tags
 from app.core.queue import task_queue
 from app.core.logging import logger
@@ -51,10 +46,6 @@ class CaptureFileInput:
     chunks: AsyncIterable[bytes]
     filename: str
     mime_type: Optional[str] = None
-
-
-class InvalidShareInput(ValueError):
-    """The supplied text contains no supported link or platform identifier."""
 
 
 class ContentService:
@@ -110,143 +101,40 @@ class ContentService:
         """核心分享创建业务逻辑"""
         client_context = await authorize_chat_capture(source_name, client_context)
         normalized_tags = normalize_tags(tags, tags_text)
-        raw_url = (url or "").strip()
-        extracted_input = extract_primary_url_candidate(raw_url)
-        if not is_url_like_input(extracted_input):
-            raise InvalidShareInput("未识别到链接，请粘贴网址或平台分享内容")
-
-        # 1. 规范化
-        url_for_detect = normalize_share_url_input(raw_url)
-
-        # 2. 平台检测
-        platform = AdapterFactory.detect_platform(url_for_detect)
-        if not platform:
-            raise ValueError("Unsupported platform URL")
-
-        # 3. 计算唯一标识
-        async with open_adapter(platform) as adapter:
-            canonical_url = await adapter.clean_url(url_for_detect)
-        
-        # 4. 去重查询
-        await self.db.execute(update(Content).where(
-            Content.platform == platform, Content.canonical_url == canonical_url,
-        ).values(updated_at=Content.updated_at))
-        stmt = select(Content).where(
-            and_(Content.platform == platform, Content.canonical_url == canonical_url)
-        )
-        content = (await self.db.execute(stmt)).scalar_one_or_none()
-
-        is_new = False
-        if content is None:
-            content = Content(
-                platform=platform,
-                url=url_for_detect,
-                canonical_url=canonical_url,
-                tags=normalized_tags,
-                source=source_name,
-                is_nsfw=is_nsfw,
-                status=ContentStatus.UNPROCESSED,
-                layout_type_override=layout_type_override,
-            )
+        link = await ContentLink.resolve(url)
+        # Acquire SQLite's writer lock before matching, including the first insertion.
+        await self.db.execute(update(Content).where(link.matches()).values(updated_at=Content.updated_at))
+        content = await self.db.scalar(select(Content).where(link.matches()))
+        is_new = content is None
+        if is_new:
+            content = Content(platform=link.platform, canonical_url=link.canonical,
+                              url=link.url, tags=normalized_tags, source=source_name,
+                              is_nsfw=is_nsfw, status=ContentStatus.UNPROCESSED,
+                              layout_type_override=layout_type_override)
             self.db.add(content)
             await self.db.flush()
-            is_new = True
         else:
-            # 存量合并：标签合并
-            existing_tags = set(content.tags or [])
-            incoming_tags = set(normalized_tags)
-            content.tags = list(existing_tags.union(incoming_tags))
-            if content.url != url_for_detect:
-                content.url = url_for_detect
+            if content.discovery_state is not None:
+                content.promote()
+            content.tags = list(dict.fromkeys([*(content.tags or []), *normalized_tags]))
+            content.url = link.url
             if source_name:
                 content.source = source_name
-            # 如果提供了 override，更新它
             if layout_type_override:
                 content.layout_type_override = layout_type_override
-
-        # 5. 记录来源流水
-        self.db.add(
-            ContentSource(
-                content_id=content.id,
-                source=source_name,
-                tags_snapshot=normalized_tags,
-                note=note,
-                client_context=client_context,
-            )
-        )
-
-        try:
+        self.db.add(ContentSource(content_id=content.id, source=source_name,
+                                  tags_snapshot=normalized_tags, note=note, client_context=client_context))
+        if content.status == ContentStatus.PARSE_SUCCESS:
+            await PostIngestService().run_for_content(self.db, content, source=source_name or "share", commit=False)
+        else:
             await self.ensure_parse_queued(content, commit=False)
-            await self.db.commit()
-        except IntegrityError:
-            # 并发竞态：两个请求同时通过去重查询，第二个触发唯一约束冲突
-            await self.db.rollback()
-            logger.info(f"去重唯一约束冲突，回读已有记录: platform={platform}, canonical_url={canonical_url}")
-            stmt = select(Content).where(
-                and_(Content.platform == platform, Content.canonical_url == canonical_url)
-            )
-            content = (await self.db.execute(stmt)).scalar_one_or_none()
-            if content is None:
-                raise
-            # 合并标签
-            existing_tags = set(content.tags or [])
-            incoming_tags = set(normalized_tags)
-            content.tags = list(existing_tags.union(incoming_tags))
-            if content.url != url_for_detect:
-                content.url = url_for_detect
-            if source_name:
-                content.source = source_name
-            
-            # 显式标记为 dirty 确保更新被提交
-            self.db.add(content)
-            
-            # 重新记录来源流水
-            self.db.add(
-                ContentSource(
-                    content_id=content.id,
-                    source=source_name,
-                    tags_snapshot=normalized_tags,
-                    note=note,
-                    client_context=client_context,
-                )
-            )
-            await self.ensure_parse_queued(content, commit=False)
-            await self.db.commit()
-            is_new = False
-
+        await self.db.commit()
         await self.db.refresh(content)
-        await self._record_capture_receipt(
-            content,
-            source_name=source_name,
-            capture_kind="link",
-            client_context=client_context,
-        )
-
-        # 6. 异步入队（新增内容，或存量仍处于待解析状态）
-        should_enqueue_parse = is_new or content.status in (
-            ContentStatus.UNPROCESSED,
-            ContentStatus.PARSE_FAILED,
-        )
-        if should_enqueue_parse:
-            logger.info(f"New content enqueued: {content.id}")
-            
-            # 广播新增事件
-            await event_bus.publish("content_created", {
-                "id": content.id,
-                "url": content.url,
-                "platform": content.platform.value if content.platform else None,
-                "status": content.status.value if content.status else None,
-            })
-        elif content.status == ContentStatus.PARSE_SUCCESS:
-            await PostIngestService().run_for_content(
-                self.db,
-                content,
-                source=source_name or "share",
-                summary=True,
-                embedding=True,
-                distribution=True,
-            )
-
+        await self._record_capture_receipt(content, source_name=source_name, capture_kind="link", client_context=client_context)
+        await event_bus.publish("content_created" if is_new else "content_updated", {
+            "id": content.id, "platform": content.platform.value, "url": content.url,
+            "status": content.status.value if content.status else None,
+        })
         return content
 
     async def create_text_capture(
@@ -328,42 +216,6 @@ class ContentService:
         )
         return content
 
-    async def create_file_capture(
-        self,
-        chunks: AsyncIterable[bytes],
-        *,
-        filename: str,
-        mime_type: str = None,
-        title: str = None,
-        tags: List[str] = None,
-        tags_text: str = None,
-        source_name: str = "manual_upload",
-        note: str = None,
-        is_nsfw: bool = False,
-        layout_type_override: str = None,
-        storage: LocalStorageBackend,
-        max_bytes: int,
-    ) -> Content:
-        """保存一个用户上传文件；单文件与多文件共享同一持久化规则。"""
-        return await self.create_files_capture(
-            [
-                CaptureFileInput(
-                    chunks=chunks,
-                    filename=filename,
-                    mime_type=mime_type,
-                )
-            ],
-            title=title,
-            tags=tags,
-            tags_text=tags_text,
-            source_name=source_name,
-            note=note,
-            is_nsfw=is_nsfw,
-            layout_type_override=layout_type_override,
-            storage=storage,
-            max_bytes=max_bytes,
-        )
-
     async def create_files_capture(
         self,
         files: List[CaptureFileInput],
@@ -405,6 +257,8 @@ class ContentService:
                         or "application/octet-stream"
                     )
 
+                if is_pdf_attachment(display_filename, normalized_mime):
+                    raise ValueError("不支持保存 PDF 文件")
                 if normalized_mime.startswith("image/"):
                     media_type = MediaType.IMAGE
                     media_role = MediaRole.GALLERY
@@ -420,7 +274,7 @@ class ContentService:
                     media_role = MediaRole.BODY
                     item_content_type = "audio"
                     item_layout_type = LayoutType.AUDIO
-                elif normalized_mime == "application/pdf" or normalized_mime.startswith("text/"):
+                elif normalized_mime.startswith("text/"):
                     media_type = MediaType.DOCUMENT
                     media_role = MediaRole.ATTACHMENT
                     item_content_type = "document"
@@ -436,6 +290,9 @@ class ContentService:
                     content_type=normalized_mime,
                     max_bytes=max_bytes,
                 ))
+                with open(temp_path, "rb") as upload:
+                    if upload.read(5) == b"%PDF-":
+                        raise ValueError("不支持保存 PDF 文件")
                 stored_files.append(
                     {
                         "filename": display_filename,
@@ -543,20 +400,14 @@ class ContentService:
                 for item in stored_files:
                     if await storage.publish_staged(item["stored"], item["temp_path"]):
                         published_keys.append(item["stored"].key)
-                has_pdf = any(item["mime_type"] == "application/pdf" for item in stored_files)
                 await PostIngestService().run_for_content(
                     self.db,
                     content,
                     source=normalized_source,
-                    summary=bool(normalized_note) and not has_pdf,
-                    embedding=not has_pdf,
+                    summary=bool(normalized_note),
                     distribution=True,
                     commit=False,
                 )
-                if has_pdf:
-                    task_queue.add(self.db, "document_extract", {
-                        "content_id": content.id, "source": normalized_source, "trigger": "auto",
-                    })
                 await self.db.commit()
             except BaseException:
                 await self.db.rollback()
@@ -596,6 +447,7 @@ class ContentService:
         if content is None:
             raise ValueError("Content not found")
 
+        changed_fields = set()
         enqueue_parse = False
         manual_fields = set(content.manual_edit_fields or [])
         for field, value in updates.items():
@@ -605,6 +457,7 @@ class ContentService:
             if previous_value == value:
                 continue
 
+            changed_fields.add(field)
             if field == "cover_url":
                 from app.services.media_backfill import set_content_cover
                 await set_content_cover(self.db, content, value)
@@ -625,6 +478,7 @@ class ContentService:
                     manual_fields.add(field)
 
         content.manual_edit_fields = sorted(manual_fields)
+        await self._refresh_search(content, changed_fields)
         if enqueue_parse:
             await self.ensure_parse_queued(content, commit=False)
         await self.db.commit()
@@ -658,6 +512,7 @@ class ContentService:
         if field not in fields:
             raise ValueError("Parse candidate field not found")
 
+        previous_value = getattr(content, field)
         manual_fields = set(content.manual_edit_fields or [])
         if action == "accept_parsed":
             value = fields[field]
@@ -679,6 +534,8 @@ class ContentService:
             from app.media.color import extract_cover_color
             content.cover_color = await extract_cover_color(content.cover_url)
 
+        if previous_value != getattr(content, field):
+            await self._refresh_search(content, {field})
         fields.pop(field)
         content.manual_edit_fields = sorted(manual_fields)
         content.parse_candidate = (
@@ -696,6 +553,27 @@ class ContentService:
             "platform": content.platform.value if content.platform else None,
         })
         return content
+
+    async def _refresh_search(self, content: Content, changed: set[str]) -> None:
+        if not changed.intersection({"title", "body", "tags", "author_name", "summary"}):
+            return
+        regenerate = bool(changed.intersection({"title", "body"}))
+        if regenerate:
+            # Generated chunks describe the previous text and cannot be searched until replaced.
+            payload = dict(content.rich_payload or {})
+            payload.pop("summary_source_hash", None)
+            if isinstance(payload.get("chunks"), list):
+                payload["chunks"] = [chunk for chunk in payload["chunks"]
+                                     if isinstance(chunk, dict) and not chunk.get("generated")
+                                     and chunk.get("segment_type") in {"transcript", "chapter"}]
+            content.rich_payload = payload
+            content.summary = None
+        from app.services.embedding_service import EmbeddingService
+        await EmbeddingService().invalidate_changed_units(content, self.db)
+        if content.status == ContentStatus.PARSE_SUCCESS:
+            await PostIngestService().run_for_content(
+                self.db, content, source="content_edit", summary=regenerate, distribution=False, commit=False,
+            )
 
     # --- 内容删除（含媒体清理 + 引用计数） ---
 
@@ -798,6 +676,7 @@ class ContentService:
 
         await self.db.execute(ContentSource.__table__.delete().where(ContentSource.content_id == content_id))
         await self.db.execute(PushedRecord.__table__.delete().where(PushedRecord.content_id == content_id))
+        await self.db.execute(update(Content).where(Content.parent_id == content_id).values(parent_id=None))
         await self.db.delete(content)
         await self.db.commit()
         await safely_resolve_bot_capture_notification(content_id)
@@ -806,6 +685,8 @@ class ContentService:
         if storage_keys:
             from app.adapters.storage import get_storage_backend
             storage = get_storage_backend()
+            # The reference check and unlink must exclude concurrent capture commits.
+            await self.db.execute(text("BEGIN IMMEDIATE"))
             for key in storage_keys:
                 try:
                     if await self._is_media_referenced(key, content_id):
@@ -815,6 +696,8 @@ class ContentService:
                         deleted_storage_count += 1
                 except Exception as e:
                     logger.warning(f"清理媒体文件失败: key={key}, err={e}")
+
+            await self.db.commit()
 
         logger.info(
             f"内容已删除: content_id={content_id}, "

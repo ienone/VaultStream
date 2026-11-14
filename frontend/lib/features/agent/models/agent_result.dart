@@ -92,7 +92,7 @@ class AgentConfirmation {
   final Map<String, dynamic> args;
 }
 
-enum AgentCitationKind { content, event, timepoint, documentPage }
+enum AgentCitationKind { content, event, timepoint }
 
 class AgentCitation {
   const AgentCitation({
@@ -105,7 +105,6 @@ class AgentCitation {
     this.contentTitle,
     this.startSeconds,
     this.endSeconds,
-    this.pageNumber,
     this.url = '',
     this.chunkTitle,
     this.sourceText,
@@ -127,19 +126,14 @@ class AgentCitation {
       contentId: json['content_id']?.toString() ?? '',
       eventId: json['event_id']?.toString() ?? '',
       mediaAssetId: json['media_asset_id']?.toString() ?? '',
-      title: kind == AgentCitationKind.documentPage
-          ? json['filename'] as String
-          : json['title']?.toString() ?? '',
-      pageNumber: json['page_number'] as int?,
+      title: json['title']?.toString() ?? '',
       contentTitle: json['content_title']?.toString(),
       startSeconds: (json['start_seconds'] as num?)?.toDouble(),
       endSeconds: (json['end_seconds'] as num?)?.toDouble(),
       url: json['url']?.toString() ?? '',
       matchSource: json['match_source']?.toString() ?? '',
       chunkTitle: json['chunk_title']?.toString(),
-      sourceText: kind == AgentCitationKind.documentPage
-          ? json['excerpt'] as String
-          : json['source_text']?.toString(),
+      sourceText: json['source_text']?.toString(),
     );
   }
 
@@ -151,7 +145,6 @@ class AgentCitation {
   final String? contentTitle;
   final double? startSeconds;
   final double? endSeconds;
-  final int? pageNumber;
   final String url;
   final String matchSource;
   final String? chunkTitle;
@@ -159,20 +152,6 @@ class AgentCitation {
 
   String? get appRoute {
     switch (kind) {
-      case AgentCitationKind.documentPage:
-        if (contentId.isEmpty ||
-            mediaAssetId.isEmpty ||
-            pageNumber == null ||
-            pageNumber! < 1) {
-          return null;
-        }
-        return Uri(
-          path: '/collection/$contentId',
-          queryParameters: {
-            'document_asset': mediaAssetId,
-            'page': '$pageNumber',
-          },
-        ).toString();
       case AgentCitationKind.content:
         return contentId.isEmpty ? null : '/collection/$contentId';
       case AgentCitationKind.event:
@@ -194,8 +173,6 @@ class AgentCitation {
 
   String get displayLabel {
     switch (kind) {
-      case AgentCitationKind.documentPage:
-        return pageNumber == null ? title : '$title（第 $pageNumber 页）';
       case AgentCitationKind.content:
         return contentId.isEmpty ? title : '#$contentId $title';
       case AgentCitationKind.event:
@@ -258,18 +235,6 @@ List<AgentCitation> citationsFromToolResult(Map<String, dynamic> event) {
   final result = event['result'];
   if (result is! Map<String, dynamic>) return const [];
   if (event['tool'] == 'read_content' &&
-      result['source_kind'] == 'pdf_native_text') {
-    return [
-      AgentCitation.fromJson({
-        'content_id': result['content_id'],
-        'media_asset_id': result['document_asset_id'],
-        'page_number': result['page_number'],
-        'filename': result['filename'],
-        'excerpt': result['text'],
-      }, fallbackKind: AgentCitationKind.documentPage),
-    ];
-  }
-  if (event['tool'] == 'read_content' &&
       result['source_kind'] == 'stored_original') {
     return [
       AgentCitation.fromJson({
@@ -296,7 +261,6 @@ List<AgentCitation> citationsFromToolResult(Map<String, dynamic> event) {
     ('items', AgentCitationKind.content),
     ('events', AgentCitationKind.event),
     ('timepoints', AgentCitationKind.timepoint),
-    ('document_pages', AgentCitationKind.documentPage),
   ]) {
     final items = result[group.$1];
     if (items is! List) continue;

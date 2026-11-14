@@ -33,7 +33,7 @@ def register_search_tool(registry: AgentToolRegistry) -> None:
     registry.register(
         name="search_content",
         description=(
-            "检索内容库、知识事件、文档页码和音视频时间点，支持按平台和内容创建时间过滤。"
+            "检索内容库、知识事件和音视频时间点，支持按平台和内容创建时间过滤。"
         ),
         args_model=SearchContentArgs,
         result_schema={
@@ -45,7 +45,6 @@ def register_search_tool(registry: AgentToolRegistry) -> None:
                 "items",
                 "events",
                 "timepoints",
-                "document_pages",
             ],
             "properties": {
                 "query": {"type": "string"},
@@ -65,7 +64,6 @@ def register_search_tool(registry: AgentToolRegistry) -> None:
                         "音视频时间点证据；route 可直接定位播放位置。"
                     ),
                 },
-                "document_pages": {"type": "array", "description": "经过文件归属校验的 PDF 页码证据，包含可直接进入原页的 route。"},
             },
         },
         permission_level="read",
@@ -101,7 +99,7 @@ async def _search_content_tool(args: Dict[str, Any], context: AgentToolContext) 
     results = await UnifiedSearchService(context.db).search(
         query=query,
         top_k=top_k,
-        kind="all",
+        kind={"contents", "events", "timepoints"},
         content_scope="library",
         platforms=[platform] if platform else None,
         date_from=date_from,
@@ -169,9 +167,8 @@ async def _search_content_tool(args: Dict[str, Any], context: AgentToolContext) 
     return {
         "query": query,
         "top_k": top_k,
-        "count": len(items) + len(events) + len(timepoints) + len(results.document_pages),
+        "count": len(items) + len(events) + len(timepoints),
         "items": items,
         "events": events,
         "timepoints": timepoints,
-        "document_pages": [page.model_dump() for page in results.document_pages],
     }

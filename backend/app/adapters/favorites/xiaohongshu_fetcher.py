@@ -175,7 +175,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
             retryable=True,
         )
 
-    async def _get_self_user_id(self, cookies: dict[str, str]) -> Optional[str]:
+    async def current_user_id(self, cookies: dict[str, str]) -> Optional[str]:
         data = await self._request_signed_get("/api/sns/web/v2/user/me", cookies=cookies)
         if not data.get("success"):
             code = data.get("code")
@@ -219,7 +219,7 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
                 auth_required=True,
             )
 
-        user_id = await self._get_self_user_id(cookies)
+        user_id = await self.current_user_id(cookies)
         if not user_id:
             logger.warning("[xhs favorites] failed to resolve current user")
             raise FavoritesFetchError(

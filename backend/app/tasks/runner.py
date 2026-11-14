@@ -57,7 +57,7 @@ class TaskWorker:
             from app.services.media_repair import process_media_repair_task
             await process_media_repair_task(claimed_task)
             return
-        if claimed_task.task_type in {"content_scoring", "content_summary", "content_distribution", "content_embedding", "document_extract"}:
+        if claimed_task.task_type in {"content_scoring", "content_summary", "content_distribution", "content_embedding"}:
             from app.services.post_ingest import process_content_task
             await process_content_task(claimed_task)
             return

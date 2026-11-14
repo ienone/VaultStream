@@ -17,8 +17,7 @@ active
 - `POST /api/v1/shares` 接收分享链接并创建或合并内容。`tags` 与 `tags_text` 会在服务端统一拆分、去空和去重。
 - `/shares` 成功响应包含可直接进入详情的内容 `id`。内容、来源与待解析任务在同一数据库事务提交；重复链接复用内容和待处理任务。
 - `POST /api/v1/captures/text` 接收原始文本、可选标题、标签和来源。正文直接保存为 `parse_success` 的 `universal/note` 内容，不调用网页适配器；标题留空时使用正文第一条非空行。摘要和语义索引仍是后处理结果，不得覆盖或冒充原文。
-- `POST /api/v1/captures/file` 接收 `multipart/form-data` 原始文件，以及可选标题、标签、说明和 NSFW 标记。服务端边接收边计算 SHA-256，写入仓库配置的本地 storage，并以统一 `MediaAsset` / 原始 `MediaVariant` 暴露签名访问；图片、视频、音频和文档使用明确的内容类型，不经过网页适配器。空文件返回 `400 capture_file_empty`，超过 `CAPTURE_UPLOAD_MAX_BYTES`（默认 512 MiB）返回 `413 capture_file_too_large`。
-- `POST /api/v1/captures/files` 接收同一次分享中的 1–32 个 `uploads`。所有文件归入同一个内容对象并按顺序建立独立 `MediaAsset`；多张图片形成 gallery，其他混合文件形成带附件的 document。单个文件仍受 `CAPTURE_UPLOAD_MAX_BYTES` 限制；来源说明和 `client_context_json` 写入同一条 `ContentSource`，无效上下文返回稳定错误码。
+- `POST /api/v1/captures/files` 接收同一次分享中的 1–32 个 `uploads`。PDF 附件返回 400，整批上传不会写入部分文件。支持的文件归入同一个内容对象并按顺序建立独立 `MediaAsset`；多张图片形成 gallery，其他混合文件形成带附件的 document。单个文件仍受 `CAPTURE_UPLOAD_MAX_BYTES` 限制；来源说明和 `client_context_json` 写入同一条 `ContentSource`，无效上下文返回稳定错误码。
 - `GET /api/v1/contents` 提供分页、平台、状态、标签、作者、日期、关键词和 NSFW 筛选。
 - `GET /api/v1/contents/{content_id}` 返回单条内容详情。编辑器传入 `for_edit=true` 时，正文与封面返回存储的可编辑引用；阅读端可传入 `asset_refs=true`，正文及结构化内容中的已登记图片按 `asset://image/{id}` 对应同一响应的 media_assets，下载地址与时效由清单提供。默认响应兼容既有客户端。若 `rich_payload.chunks[]` 含显式章节/转写时间点，响应会额外返回经过媒体归属、类型和时长校验的 `media_segments`；调用方不应自行解析原始 payload 猜测可播放位置。
 - `media_segments[].excerpt` 是至多 280 字的预览，`full_text` 是同一已校验切片的完整原文，供逐字稿展开阅读。两者均不代表模型校正后的事实；无原文时为空字符串。
@@ -45,7 +44,7 @@ active
 ## 搜索与语义索引
 
 - `GET /api/v1/search/unified` 是收藏列表与全局搜索共用的检索接口；旧 `GET /search/semantic` 已移除，索引管理接口不变。内容返回 `content_type`、`effective_layout_type`、作者头像与 CARD 用途的 `media_assets`，前端复用普通内容卡片模型。
-- `kind=all|contents|events|people|topics|timepoints|document_pages` 选择结果域。`content_scope=library|discovery|all` 约束内容及其派生结果，不影响事件。library 包含普通收藏与 promoted；discovery 包含 ingested/scored/visible；all 是二者并集，不包含 snoozed/ignored/merged/expired。
+- `kind=all|contents|events|people|topics|timepoints` 选择结果域。`content_scope=library|discovery|all` 约束内容及其派生结果，不影响事件。library 包含普通收藏与 promoted；discovery 包含 ingested/scored/visible；all 是二者并集，不包含 snoozed/ignored/merged/expired。
 - `mode=keyword|semantic`：关键词不调用 embedding，内容使用 `page>=1`、`size=1..100` 分页，返回准确的 `content_total` 与 `content_has_more`。非空语义查询使用 `top_k=1..100`，只接受 page=1；其 total 表示本次召回数量而非语料总数，has_more=false。`q` 为空只允许 kind=contents，按筛选浏览并分页，不调用 embedding。
 - 重复参数 `platform`、`status`、`tag` 表示多选（同类条件 OR，不同类条件 AND）；标签保持原子字符串，不按逗号拆分。`author` 匹配作者名称，`date_from`/`date_to` 为创建时间的包含边界；有偏移的 ISO 时间先转为 UTC，无时区输入按 UTC 解释。筛选统一在分页、FTS/向量候选与精确字段召回的数量限制之前执行。枚举、日期区间和分页无效返回 422。
 - 内容保留 `browse|fts|vector|hybrid`，事件保留 `title|description|member` 匹配来源，调用方不得把两种检索解释成同一语义能力。除内容外的分组由 top_k 限制；内容分页不意味着人物/主题聚合是全量统计。
@@ -84,19 +83,9 @@ active
 - API 字段或状态码变化必须同时更新 OpenAPI、前端类型和本分册。
 - 不允许在前端通过猜测多个响应形态维持兼容。
 
-## PDF 原生阅读（2026-09-10）
-
-- GET `/api/v1/contents/{content_id}/document-text` 返回 DocumentTextResponse：content_id 与 documents；每份文件含 media_asset_id、filename、status、page_count、text_page_count、pages。页面包含 chunk_index、从 1 起的 page_number、完整 text 与固定 source_kind=pdf_native_text。只返回当前所属 PDF 原变体校验通过的页码。
-- POST `/api/v1/contents/{content_id}/document-text/extract` 无请求体，返回 202 DocumentExtractionAcceptedResponse（content_id、非空 run_id、status=processing）。不存在内容返回 404，没有归档 PDF 返回 400。结果以 document_extract 账本和重新读取的文档状态为准。
-- 文件状态为 pending/ready/partial/no_text/encrypted/invalid_pdf/limit_exceeded/timeout/missing/source_changed/failed；ready 仅表示原生文本提取成功，不表示视觉版面或 OCR 识别完成。
-- unified search 新增 kind=document_pages 与 document_pages 数组。每条含内容、文件资产、filename、page_number、excerpt、match_source、score、route。route 绑定 document_asset 与 page，不猜测其他文件的同页码。
-- 摘要生成期间源内容改变返回 409；既有 PDF 原页、章节和字幕不会被新摘要的模型切片替换。
-
-文件捕获对缺省、无效或通用 application/octet-stream MIME 使用文件名推断格式；明确的具体 MIME 保留。PDF 提取仍检查真实文件头与校验和，扩展名不被视为内容已解析的证据。
+文件捕获对缺省、无效或通用 application/octet-stream MIME 使用文件名推断格式；明确的具体 MIME 保留。
 
 手动生成摘要失败时不返回成功回执：未配置摘要密钥返回 503，模型调用失败或空摘要返回 502，运行账本记为 error；原有摘要及切片保留。供应商请求细节不进入 API 错误文本或运行错误字段。
-
-PDF 摘要在正文尚未提取或没有可读取页面时返回 409，提示先提取或无法生成；部分可读文档的摘要固定注明未覆盖页面/附件。
 
 摘要成功保存时在同一事务撤销已变化或已移除切片的旧向量；分块位置、完整文本与媒体引用指纹一致时保留索引及其原模型签名；索引重建和检索仍严格核对当前模型签名，避免跨模型误用，且摘要本身不依赖 embedding 配置。切片标题仅改变时更新元数据，不重算向量；失败时原摘要、原切片和原索引均保留。手动摘要成功后使用既有 PostIngest 自动索引调度，遵循 enable_auto_semantic_indexing；关闭时不调用 embedding 模型，用户仍可显式重建。摘要成功回执不等于索引已完成。
 

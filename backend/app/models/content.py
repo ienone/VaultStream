@@ -132,7 +132,7 @@ class Content(Base):
     
     pushed_records = relationship("PushedRecord", back_populates="content")
     sources = relationship("ContentSource", back_populates="content")
-    discovery_links = relationship("ContentDiscoveryLink", back_populates="content")
+    discovery_links = relationship("ContentDiscoveryLink", back_populates="content", cascade="all, delete-orphan")
     media_assets = relationship(
         "MediaAsset",
         back_populates="content",
@@ -140,10 +140,16 @@ class Content(Base):
         order_by="MediaAsset.position",
     )
 
+    def promote(self) -> None:
+        self.discovery_state = DiscoveryState.PROMOTED
+        self.promoted_at = self.promoted_at or utcnow()
+        self.expire_at = None
+        self.deleted_at = None
+
     @property
     def clean_url(self) -> Optional[str]:
         """External original link; ingestion identities are not reader-facing URLs."""
-        for value in (self.resolved_url, self.canonical_url, self.url):
+        for value in (self.resolved_url, self.url, self.canonical_url):
             if value and urlsplit(value).scheme in {"http", "https"} and urlsplit(value).hostname:
                 return value
         return None

@@ -206,7 +206,7 @@ def build_media_manifest(
         last_error=asset.last_error,
         repairable=asset.repairable,
         metadata={key: value for key, value in (asset.asset_metadata or {}).items()
-                  if key not in {"document_text", "previous_keys"}},
+                  if key != "previous_keys"},
         purpose=purpose,
         sources=sources,
         generated_at=datetime.fromtimestamp(issued_at, timezone.utc),

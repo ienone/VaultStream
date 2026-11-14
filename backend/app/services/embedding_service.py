@@ -52,11 +52,10 @@ class EmbeddingService:
     _SIGNATURE_VERSION = "vaultstream_rag_v1"
     _REQUEST_BATCH_SIZE = 16
     _REMOTE_CONCURRENCY = 2
-    _EMBED_CACHE: dict[str, list[float]] = {}
     _REMOTE_SEMAPHORE = asyncio.Semaphore(_REMOTE_CONCURRENCY)
 
     async def embed_query(self, query: str) -> list[float]:
-        return await self._embed_text(self._prefix_query(query))
+        return await self._embed_query(query, await self._get_embedding_config())
 
     async def search(
         self,
@@ -246,7 +245,7 @@ class EmbeddingService:
         content: Content,
         model_signature: str,
     ) -> int:
-        units = await self._validated_embedding_units(content, session)
+        units = self._content_embedding_units(content)
         if not units:
             return 0
         existing_rows = (
@@ -383,7 +382,7 @@ class EmbeddingService:
 
         units = {
             chunk_index: (text_part, media_refs, title)
-            for chunk_index, text_part, media_refs, title in await self._validated_embedding_units(content, session)
+            for chunk_index, text_part, media_refs, title in self._content_embedding_units(content)
         }
         unit = units.get(embedding.chunk_index)
         if unit is None:
@@ -434,7 +433,7 @@ class EmbeddingService:
         if content is None:
             return False
 
-        units = await self._validated_embedding_units(content, session)
+        units = self._content_embedding_units(content)
         source_updated_at = content.updated_at
         logger.info(f"Indexing {len(units)} semantic units for content_id={content_id}")
         try:
@@ -498,17 +497,17 @@ class EmbeddingService:
         )
         return guard.rowcount == 1
 
-    async def _validated_embedding_units(self, content: Content, session: AsyncSession):
-        from app.services.document_text import build_document_text_items, document_assets
-        chunks = (content.rich_payload or {}).get("chunks", [])
-        document_indexes = set()
-        if isinstance(chunks, list) and any(isinstance(c, dict) and c.get("source_kind") == "pdf_native_text" for c in chunks):
-            document_indexes = {page.chunk_index
-                for document in build_document_text_items(content, await document_assets(session, content.id))
-                for page in document.pages}
-        return self._content_embedding_units(content, document_chunk_indexes=document_indexes)
+    async def invalidate_changed_units(self, content: Content, session: AsyncSession) -> None:
+        fingerprints = {index: self._hash_text(text + "".join(refs))
+                        for index, text, refs, _ in self._content_embedding_units(content)}
+        rows = await session.execute(select(
+            ContentEmbedding.id, ContentEmbedding.chunk_index, ContentEmbedding.text_hash,
+        ).where(ContentEmbedding.content_id == content.id))
+        outdated = [row.id for row in rows if fingerprints.get(row.chunk_index) != row.text_hash]
+        if outdated:
+            await session.execute(delete(ContentEmbedding).where(ContentEmbedding.id.in_(outdated)))
 
-    def _content_embedding_units(self, content: Content, *, document_chunk_indexes: set[int] | None = None) -> list[tuple[int, str, list[str], str]]:
+    def _content_embedding_units(self, content: Content) -> list[tuple[int, str, list[str], str]]:
         units: list[tuple[int, str, list[str], str]] = []
         global_payload = self._build_content_text(content)
         if global_payload:
@@ -529,8 +528,6 @@ class EmbeddingService:
         if isinstance(chunks, list):
             for idx, chunk in enumerate(chunks):
                 if not isinstance(chunk, dict):
-                    continue
-                if chunk.get("source_kind") == "pdf_native_text" and idx not in (document_chunk_indexes or set()):
                     continue
                 text_part = str(chunk.get("content") or "").strip()
                 if not text_part:
@@ -620,11 +617,13 @@ class EmbeddingService:
         candidate_limit = max(50, top_k * 6)
 
         vector_ranked = []
-        if await self._has_current_index(session=session, filters=filters):
-            query_vec = await self.embed_query(query)
+        config = await self._get_embedding_config()
+        signature = self._document_signature(config)
+        if config.api_key and await self._has_current_index(session=session, filters=filters, signature=signature):
+            query_vec = await self._embed_query(query, config)
             vector_ranked = await self._vector_rank_ids(
                 session=session,
-                query_vec=query_vec,
+                query_vec=query_vec, signature=signature,
                 filters=filters,
                 limit=candidate_limit,
             )
@@ -691,15 +690,14 @@ class EmbeddingService:
         ).info("Semantic search completed")
         return results
 
-    async def _has_current_index(self, *, session: AsyncSession, filters: list) -> bool:
-        model_signature = await self._get_document_embedding_signature()
+    async def _has_current_index(self, *, session: AsyncSession, filters: list, signature: str) -> bool:
         stmt = (
             select(ContentEmbedding.id)
             .join(Content, Content.id == ContentEmbedding.content_id)
             .where(
                 and_(
                     *filters,
-                    ContentEmbedding.embedding_model_signature == model_signature,
+                    ContentEmbedding.embedding_model_signature == signature,
                     ContentEmbedding.index_status == "indexed",
                 )
             )
@@ -713,6 +711,7 @@ class EmbeddingService:
         *,
         session: AsyncSession,
         query_vec: list[float],
+        signature: str,
         filters: list,
         limit: int,
     ) -> list[tuple[int, int]]:
@@ -726,7 +725,7 @@ class EmbeddingService:
             .join(Content, Content.id == ContentEmbedding.content_id)
             .where(
                 *filters,
-                ContentEmbedding.embedding_model_signature == await self._get_document_embedding_signature(),
+                ContentEmbedding.embedding_model_signature == signature,
                 ContentEmbedding.index_status == "indexed",
                 func.length(ContentEmbedding.embedding) == len(query_blob),
             )
@@ -762,7 +761,7 @@ class EmbeddingService:
         content = await session.get(Content, content_id)
         if content is None or content.status != ContentStatus.PARSE_SUCCESS:
             return False
-        if not await self._validated_embedding_units(content, session):
+        if not self._content_embedding_units(content):
             return False
         missing = await self._count_stale_embedding_units(
             session=session,
@@ -802,8 +801,8 @@ class EmbeddingService:
     def _hash_text(self, text_value: str) -> str:
         return hashlib.sha256(text_value.encode("utf-8")).hexdigest()
 
-    async def _embed_text(self, text_value: str) -> list[float]:
-        results = await self._embed_texts([text_value], await self._get_embedding_config())
+    async def _embed_query(self, query: str, config: EmbeddingAIConfig) -> list[float]:
+        results = await self._embed_texts([self._prefix_query(query)], config)
         if isinstance(results[0], Exception):
             raise results[0]
         return results[0]
@@ -820,46 +819,39 @@ class EmbeddingService:
 
         model = self._normalize_embedding_model(config.model)
         dimension = self._normalize_embedding_output_dimensionality(config.output_dimensionality)
-        keys = [self._hash_text(f"{model}|dim={dimension}|{text.strip()}") for text in texts]
-        missing = {key: text.strip() for key, text in zip(keys, texts) if key not in self._EMBED_CACHE}
+        keys = [text.strip() for text in texts]
+        pending = list(dict.fromkeys(keys))
         values: dict[str, list[float] | Exception] = {}
-        if missing:
-            # One client per operation, shared by all batches and always closed.
-            async with genai.Client(api_key=config.api_key).aio as client:
-                pending = list(missing.items())
-                for start in range(0, len(pending), self._REQUEST_BATCH_SIZE):
-                    batch = pending[start:start + self._REQUEST_BATCH_SIZE]
-                    try:
-                        async with self._REMOTE_SEMAPHORE:
-                            response = await client.models.embed_content(
-                                model=model,
-                                # Separate Content objects prevent Embedding 2 from
-                                # aggregating multiple source texts into one vector.
-                                contents=[types.Content(parts=[types.Part.from_text(text=text)]) for _, text in batch],
-                                config=types.EmbedContentConfig(output_dimensionality=dimension),
-                            )
-                        embeddings = response.embeddings or []
-                        if len(embeddings) != len(batch):
-                            raise RuntimeError("Gemini 返回的向量数量与输入不一致")
-                        for (key, _), embedding in zip(batch, embeddings, strict=True):
-                            vector = embedding.values or []
-                            if len(vector) != dimension or not all(math.isfinite(v) for v in vector) or not any(vector):
-                                values[key] = RuntimeError("Gemini 返回了无效向量")
-                            else:
-                                normalized = self._normalize_vector(vector)
-                                self._EMBED_CACHE[key] = normalized
-                                values[key] = normalized
-                    except Exception as exc:
-                        for key, _ in batch:
-                            values[key] = exc
-        return [list(self._EMBED_CACHE[key]) if key in self._EMBED_CACHE else values[key] for key in keys]
+        # One client per operation, shared by all batches and always closed.
+        async with genai.Client(api_key=config.api_key).aio as client:
+            for start in range(0, len(pending), self._REQUEST_BATCH_SIZE):
+                batch = pending[start:start + self._REQUEST_BATCH_SIZE]
+                try:
+                    async with self._REMOTE_SEMAPHORE:
+                        response = await client.models.embed_content(
+                            model=model,
+                            # Separate Content objects prevent Embedding 2 from
+                            # aggregating multiple source texts into one vector.
+                            contents=[types.Content(parts=[types.Part.from_text(text=text)]) for text in batch],
+                            config=types.EmbedContentConfig(output_dimensionality=dimension),
+                        )
+                    embeddings = response.embeddings or []
+                    if len(embeddings) != len(batch):
+                        raise RuntimeError("Gemini 返回的向量数量与输入不一致")
+                    for key, embedding in zip(batch, embeddings, strict=True):
+                        vector = embedding.values or []
+                        if len(vector) != dimension or not all(math.isfinite(v) for v in vector) or not any(vector):
+                            values[key] = RuntimeError("Gemini 返回了无效向量")
+                        else:
+                            normalized = self._normalize_vector(vector)
+                            values[key] = normalized
+                except Exception as exc:
+                    for key in batch:
+                        values[key] = exc
+        return [values[key] for key in keys]
 
     async def _get_embedding_config(self) -> EmbeddingAIConfig:
         return await ConfigService().get_embedding_ai_config()
-
-    async def _get_embedding_model(self) -> str:
-        config = await self._get_embedding_config()
-        return self._normalize_embedding_model(config.model)
 
     def _normalize_embedding_model(self, model: object) -> str:
         if isinstance(model, str) and model.strip():
@@ -869,19 +861,6 @@ class EmbeddingService:
         if normalized != self._SUPPORTED_MODEL:
             raise RuntimeError(f"Only {self._SUPPORTED_MODEL} is supported")
         return normalized
-
-    async def _get_embedding_api_key(self) -> Optional[str]:
-        config = await self._get_embedding_config()
-        key = config.api_key
-        if isinstance(key, str) and key.strip():
-            return key.strip()
-        return None
-
-    async def _get_embedding_output_dimensionality(self) -> int:
-        config = await self._get_embedding_config()
-        return self._normalize_embedding_output_dimensionality(
-            config.output_dimensionality
-        )
 
     def _normalize_embedding_output_dimensionality(self, value: object) -> int:
         try:
@@ -894,8 +873,11 @@ class EmbeddingService:
         return self._DEFAULT_OUTPUT_DIMENSIONALITY
 
     async def _get_document_embedding_signature(self) -> str:
-        model = await self._get_embedding_model()
-        dimension = await self._get_embedding_output_dimensionality()
+        return self._document_signature(await self._get_embedding_config())
+
+    def _document_signature(self, config: EmbeddingAIConfig) -> str:
+        model = self._normalize_embedding_model(config.model)
+        dimension = self._normalize_embedding_output_dimensionality(config.output_dimensionality)
         return f"{model}|dim={dimension}|prefix={self._SIGNATURE_VERSION}|role=document"
 
     def _prefix_document(self, text_value: str) -> str:

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from telethon import TelegramClient, errors, functions, types, utils
 from telethon.extensions import html
+from app.utils.attachments import is_pdf_attachment
 from app.adapters.telegram_text import telegram_html_to_markdown
 
 
@@ -67,6 +68,8 @@ def assemble_posts(messages: list[types.Message]) -> list[TelegramPost]:
     groups: dict[tuple[int, int, bool], list[types.Message]] = {}
     for message in sorted(messages, key=lambda item: item.id):
         if message.action or not (message.message or message.media):
+            continue
+        if message.file and is_pdf_attachment(message.file.name, message.file.mime_type):
             continue
         key = (utils.get_peer_id(message.peer_id), message.grouped_id or message.id, bool(message.grouped_id))
         groups.setdefault(key, []).append(message)

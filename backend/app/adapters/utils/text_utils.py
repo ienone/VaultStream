@@ -3,7 +3,23 @@ Text Processing Utilities
 
 Provides common text processing functions for all platform adapters.
 """
+import html
+import re
 from typing import Optional
+
+
+def clean_text(text: object) -> str:
+    if text is None:
+        return ""
+    value = html.unescape(str(text)).replace("\u200b", "").replace("\ufeff", "")
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(line.strip() for line in value.split("\n"))).strip()
+
+
+def safe_url(url: object) -> str | None:
+    if not isinstance(url, str) or not (value := url.strip()):
+        return None
+    return "https:" + value if value.startswith("//") else value
 
 
 # 常见中英文标点符号和分隔符

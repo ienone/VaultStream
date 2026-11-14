@@ -14,7 +14,8 @@ from app.adapters.errors import (
     RetryableAdapterError,
 )
 from app.models import BilibiliContentType
-from .base import clean_text, safe_url, format_request_error
+from app.adapters.utils.text_utils import clean_text, safe_url
+from .base import format_request_error
 import re
 from markdownify import markdownify as md
 from bs4 import BeautifulSoup

@@ -4,31 +4,10 @@
 提供所有小红书解析器共用的工具函数
 """
 import re
-import html as _html
 from typing import Any, List
 
 
-def clean_text(text: Any) -> str:
-    """
-    清洗文本
-    
-    Args:
-        text: 待清洗的文本
-        
-    Returns:
-        str: 清洗后的文本
-    """
-    if text is None:
-        return ""
-    if not isinstance(text, str):
-        text = str(text)
-    
-    val = _html.unescape(text)
-    val = val.replace("\u200b", "").replace("\ufeff", "")
-    val = val.replace("\r\n", "\n").replace("\r", "\n")
-    val = "\n".join([ln.strip() for ln in val.split("\n")])
-    val = re.sub(r"\n{3,}", "\n\n", val)
-    return val.strip()
+from app.adapters.utils.text_utils import clean_text
 
 
 def extract_source_tags(note: dict) -> List[str]:

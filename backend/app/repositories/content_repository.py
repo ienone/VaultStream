@@ -25,7 +25,7 @@ class ContentRepository:
         scope: str = "library",
     ) -> list:
         """共享内容范围；过滤在分页、向量候选和字段召回截断前执行。"""
-        conditions: list = []
+        conditions: list = [Content.deleted_at.is_(None)]
         if platforms:
             conditions.append(Content.platform.in_(platforms))
         if statuses:
@@ -61,8 +61,7 @@ class ContentRepository:
 
         if q:
             conditions.append(
-                or_(await build_fts_or_like_condition(
-                    session=self.db,
+                or_(build_fts_or_like_condition(
                     query=q,
                     like_columns=(Content.title, Content.summary, Content.body, Content.author_name),
                 ), select(1).select_from(tag_values)

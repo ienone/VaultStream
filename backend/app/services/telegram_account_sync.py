@@ -273,9 +273,7 @@ class TelegramAccountSync:
                 db.add(ContentSource(content_id=content.id, source=saved_source,
                     client_context={"platform": "telegram", **address.as_dict()}))
                 newly_saved = True
-            content.discovery_state = DiscoveryState.PROMOTED
-            content.promoted_at = content.promoted_at or utcnow()
-            content.expire_at = None
+            content.promote()
         return content, action, newly_saved
 
     async def _prepare_author_avatar(self, peer_id, config):

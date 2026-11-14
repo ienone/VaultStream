@@ -1,6 +1,6 @@
 """Unified search across persisted contents and human-curated knowledge events."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import select, text
@@ -17,8 +17,6 @@ from app.repositories.content_repository import ContentRepository
 from app.repositories.knowledge_event_repository import KnowledgeEventRepository
 from app.services.embedding_service import EmbeddingService, SemanticSearchHit
 from app.services.media_segments import extract_media_segments
-from app.services.document_text import build_document_text_items, document_assets
-from app.schemas.document import DocumentPageSearchItem
 
 
 @dataclass(slots=True)
@@ -58,7 +56,6 @@ class UnifiedSearchResultSet:
     people: list[UnifiedContentFacetHit]
     topics: list[UnifiedContentFacetHit]
     timepoints: list[UnifiedTimepointSearchHit]
-    document_pages: list[DocumentPageSearchItem] = field(default_factory=list)
     content_total: int = 0
     content_has_more: bool = False
 
@@ -72,7 +69,7 @@ class UnifiedSearchService:
         *,
         query: str,
         top_k: int,
-        kind: str,
+        kind: str | set[str],
         content_scope: str,
         platforms: list[str] | None = None,
         date_from: datetime | None = None,
@@ -84,6 +81,8 @@ class UnifiedSearchService:
         page: int = 1,
         size: int = 20,
     ) -> UnifiedSearchResultSet:
+        kinds = ({"contents", "events", "people", "topics", "timepoints"} if kind == "all"
+                 else {kind} if isinstance(kind, str) else kind)
         query = query.strip()
         repo = ContentRepository(self.db)
         content_total = 0
@@ -95,7 +94,7 @@ class UnifiedSearchService:
                 [ContentStatus.PARSE_SUCCESS] if mode == "semantic" and query else None
             ), tags=tags, author=author, start_date=date_from, end_date=date_to,
         )
-        if kind in {"all", "contents", "people", "topics", "timepoints", "document_pages"}:
+        if kinds & {"contents", "people", "topics", "timepoints"}:
             if mode == "keyword" or not query:
                 rows, content_total = await repo.list_contents(
                     q=query, page=page, size=size, scope=content_scope,
@@ -113,7 +112,7 @@ class UnifiedSearchService:
                     scope=content_scope, session=self.db,
                 )
                 content_total = len(contents)
-        if query and kind in {"all", "events"}:
+        if query and "events" in kinds:
             rows = await KnowledgeEventRepository(self.db).search_events(
                 query=query,
                 limit=top_k,
@@ -126,7 +125,7 @@ class UnifiedSearchService:
                 for event in rows
             ]
         people = []
-        if kind in {"all", "people"}:
+        if "people" in kinds:
             people_candidates = self._merge_content_hits(
                 contents,
                 await self._exact_people_contents(
@@ -141,7 +140,7 @@ class UnifiedSearchService:
                 limit=top_k,
             )
         topics = []
-        if kind in {"all", "topics"}:
+        if "topics" in kinds:
             topic_candidates = self._merge_content_hits(
                 contents,
                 await self._exact_topic_contents(
@@ -158,58 +157,18 @@ class UnifiedSearchService:
                 filters=filters,
                 limit=top_k,
             )
-            if kind in {"all", "timepoints"}
+            if "timepoints" in kinds
             else []
         )
-        document_pages = await self._document_page_hits(
-            contents, query=query, filters=filters, limit=top_k,
-        ) if kind in {"all", "document_pages"} else []
         return UnifiedSearchResultSet(
-            contents=contents if kind in {"all", "contents"} else [],
+            contents=contents if "contents" in kinds else [],
             events=events,
             people=people,
             topics=topics,
             timepoints=timepoints,
-            document_pages=document_pages,
-            content_total=content_total if kind in {"all", "contents"} else 0,
-            content_has_more=content_has_more if kind in {"all", "contents"} else False,
+            content_total=content_total if "contents" in kinds else 0,
+            content_has_more=content_has_more if "contents" in kinds else False,
         )
-
-    async def _document_page_hits(self, hits, *, query, filters, limit):
-        candidates = {hit.content.id: hit for hit in hits}
-        exact = (await self.db.scalars(select(Content).where(
-            *filters,
-            text("""EXISTS (
-                SELECT 1 FROM json_each(contents.rich_payload, '$.chunks') AS chunk
-                WHERE json_extract(chunk.value, '$.source_kind') = 'pdf_native_text'
-                AND instr(lower(COALESCE(json_extract(chunk.value, '$.content'), '')), lower(:document_query)) > 0
-            )"""),
-        ).order_by(Content.updated_at.desc(), Content.id.desc()).limit(max(50, limit * 6))
-          .params(document_query=query.strip()))).all()
-        for content in exact:
-            candidates.setdefault(content.id, SemanticSearchHit(content=content, score=0, match_source="fts"))
-        needle = query.strip().casefold()
-        results = []
-        for hit in candidates.values():
-            chunks = (hit.content.rich_payload or {}).get("chunks", [])
-            if not isinstance(chunks, list) or not any(isinstance(c, dict) and c.get("source_kind") == "pdf_native_text" for c in chunks):
-                continue
-            for document in build_document_text_items(hit.content, await document_assets(self.db, hit.content.id)):
-                for page in document.pages:
-                    position = page.text.casefold().find(needle) if needle else -1
-                    semantic = page.chunk_index == hit.chunk_index and hit.match_source in {"vector", "hybrid"}
-                    if not page.text.strip() or (position < 0 and not semantic):
-                        continue
-                    start = max(0, position - 80)
-                    results.append(DocumentPageSearchItem(
-                        content_id=hit.content.id, content_title=hit.content.title,
-                        media_asset_id=document.media_asset_id, filename=document.filename,
-                        page_number=page.page_number, excerpt=page.text[start:start + 280],
-                        match_source=hit.match_source if semantic else "text", score=hit.score,
-                        route=f"/collection/{hit.content.id}?document_asset={document.media_asset_id}&page={page.page_number}",
-                    ))
-        results.sort(key=lambda item: (-item.score, item.content_id, item.media_asset_id, item.page_number))
-        return results[:limit]
 
     @staticmethod
     def _event_match_source(event: KnowledgeEvent, query: str) -> str:

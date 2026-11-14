@@ -39,24 +39,22 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
             
-            <!-- 接收单个媒体或 PDF，复用统一文件捕获流程 -->
+            <!-- 接收单个媒体，复用统一文件捕获流程 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
                 <data android:mimeType="audio/*" />
-                <data android:mimeType="application/pdf" />
             </intent-filter>
             
-            <!-- 接收同类媒体或 PDF 的批量分享 -->
+            <!-- 接收同类媒体 的批量分享 -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="image/*" />
                 <data android:mimeType="video/*" />
                 <data android:mimeType="audio/*" />
-                <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
         <service

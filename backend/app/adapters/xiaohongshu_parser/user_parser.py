@@ -13,18 +13,8 @@ from app.adapters.errors import (
 )
 import httpx
 from urllib.parse import quote
-from .base import clean_text
+from app.adapters.utils.text_utils import clean_text, safe_url
 from .ssr import extract_initial_state, navigation_headers
-
-
-def safe_url(url: Any) -> Optional[str]:
-    """安全获取URL"""
-    if not url or not isinstance(url, str):
-        return None
-    u = url.strip()
-    if u.startswith("//"):
-        return "https:" + u
-    return u if u else None
 
 
 def parse_count(count: Any) -> int:

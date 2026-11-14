@@ -288,6 +288,8 @@ class ContentParser:
         )
         await enqueue_media_repair(session, content.id)
 
+        from app.services.embedding_service import EmbeddingService
+        await EmbeddingService().invalidate_changed_units(content, session)
         await PostIngestService().run_for_content(
             session,
             content,

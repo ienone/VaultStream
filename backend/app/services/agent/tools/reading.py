@@ -6,14 +6,11 @@ from app.models.media import MediaAsset, MediaType, MediaRole
 from app.services.agent.content_evidence import PARSE_ERROR_SCHEMA, content_parse_error
 from app.services.agent.tool_registry import AgentToolContext, AgentToolError, AgentToolRegistry
 from app.services.media_segments import extract_media_segments
-from app.services.document_text import build_document_text_items, document_assets
 
 class ReadContentArgs(BaseModel):
     content_id: int = Field(gt=0)
     start_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     end_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
-    document_asset_id: int | None = Field(default=None, gt=0)
-    page_number: int | None = Field(default=None, gt=0)
     offset: int = Field(default=0, ge=0, description='正文字符或筛选后时间片的分页偏移')
     limit: int = Field(default=10, ge=1, le=30, description='时间片每页数量')
 
@@ -21,18 +18,14 @@ class ReadContentArgs(BaseModel):
     def validate_interval(self):
         if self.start_seconds is not None and self.end_seconds is not None and self.end_seconds <= self.start_seconds:
             raise ValueError('end_seconds must be greater than start_seconds')
-        if (self.document_asset_id is None) != (self.page_number is None):
-            raise ValueError('document_asset_id and page_number must be provided together')
-        if self.document_asset_id is not None and (self.start_seconds is not None or self.end_seconds is not None):
-            raise ValueError('document pages and media time ranges cannot be read together')
         return self
 
 
 def register_reading_tool(registry: AgentToolRegistry) -> None:
     registry.register(name='read_content', description=(
         '读取收藏原文或视频字幕。找到视频章节后，用 content_id 与 start_seconds/end_seconds '
-        '读取对应时间段的完整字幕，不要反复搜索章节标题。PDF 使用 document_asset_id 与 page_number '
-        '读取指定文件的原生文本页；offset 可继续读取超长页。返回可点击 route、内容 status，'
+        '读取对应时间段的完整字幕。'
+        'offset 可继续读取超长正文。返回可点击 route、内容 status，'
         '解析失败时返回原始 parse_error（message/type/at），用于核对实际失败原因。'),
         args_model=ReadContentArgs, result_schema={'type': 'object', 'properties': {
             'status': {'type': ['string', 'null']}, 'parse_error': PARSE_ERROR_SCHEMA}},
@@ -45,18 +38,6 @@ async def read_content(args: dict, context: AgentToolContext) -> dict:
         raise AgentToolError(error_code='content_not_found', message='收藏内容不存在', retryable=False)
     evidence = {'status': content.status.value if content.status else None,
                 'parse_error': content_parse_error(content)}
-    documents = build_document_text_items(content, await document_assets(context.db, content.id))
-    if args.get('document_asset_id') is not None:
-        document = next((d for d in documents if d.media_asset_id == args['document_asset_id']), None)
-        page = next((p for p in document.pages if p.page_number == args.get('page_number')), None) if document else None
-        if page is None:
-            raise AgentToolError(error_code='document_page_not_found', message='该文件页不存在或尚未提取正文', retryable=False)
-        offset = args.get('offset', 0)
-        return {**evidence, 'content_id': content.id, 'document_asset_id': document.media_asset_id,
-                'page_number': page.page_number, 'filename': document.filename,
-                'source_kind': 'pdf_native_text', 'text': page.text[offset:offset + 12000],
-                'next_offset': offset + 12000 if offset + 12000 < len(page.text) else None,
-                'route': f'/collection/{content.id}?document_asset={document.media_asset_id}&page={page.page_number}'}
     assets = list((await context.db.scalars(select(MediaAsset).where(MediaAsset.content_id == content.id))).all())
     segments = extract_media_segments(content_id=content.id, rich_payload=content.rich_payload, assets=assets)
     start, end = args.get('start_seconds'), args.get('end_seconds')
@@ -67,8 +48,6 @@ async def read_content(args: dict, context: AgentToolContext) -> dict:
     chunks = (content.rich_payload or {}).get('chunks', [])
     page = selected[offset:offset + limit]
     result = {**evidence, 'content_id': content.id, 'title': content.title, 'author': content.author_name,
-        'documents': [{'document_asset_id': d.media_asset_id, 'filename': d.filename,
-                       'status': d.status, 'page_count': d.page_count, 'text_page_count': d.text_page_count} for d in documents],
         'route': f'/collection/{content.id}', 'source_kind': 'stored_original', 'segments': [
             {'segment_type': s.segment_type, 'media_asset_id': s.media_asset_id,
              'start_seconds': s.start_seconds, 'end_seconds': s.end_seconds,

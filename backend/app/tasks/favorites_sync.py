@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from sqlalchemy import and_, or_, select
 
-from app.adapters import AdapterFactory, open_adapter
+from app.services.content_identity import ContentLink
 from app.adapters.favorites import (
     BaseFavoritesFetcher,
     FavoriteItem,
@@ -14,7 +14,7 @@ from app.adapters.favorites import (
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.database import AsyncSessionLocal
 from app.core.logging import ensure_task_id, log_context, logger
-from app.models import Content, ContentSource, ContentStatus
+from app.models import Content, ContentSource, ContentStatus, DiscoveryState
 from app.core.time_utils import utcnow
 from app.services.background_task_state import (
     record_task_run_error,
@@ -397,19 +397,8 @@ class FavoritesSyncTask:
 
     @staticmethod
     async def _find_favorite_content(session, url: str) -> Content | None:
-        platform = AdapterFactory.detect_platform(url)
-        canonical_url = url
-        if platform is not None:
-            try:
-                async with open_adapter(platform) as adapter:
-                    canonical_url = await adapter.clean_url(url)
-            except Exception:
-                canonical_url = url
-
-        stmt = select(Content).where(Content.canonical_url == canonical_url)
-        if platform is not None:
-            stmt = stmt.where(Content.platform == platform)
-        return (await session.execute(stmt)).scalar_one_or_none()
+        link = await ContentLink.resolve(url)
+        return await session.scalar(select(Content).where(link.matches()))
 
     @classmethod
     async def _favorite_item_exists(cls, session, url: str) -> bool:
@@ -479,7 +468,8 @@ class FavoritesSyncTask:
                         ContentSource.client_context["platform"].as_string() == platform,
                         ContentSource.client_context["collection_id"].as_string() == item.collection_id,
                     ).limit(1))).scalar_one_or_none() is not None
-                if existing is not None and (duplicate_strategy == "skip" or same_source):
+                if (existing is not None and existing.discovery_state in {None, DiscoveryState.PROMOTED}
+                        and (duplicate_strategy == "skip" or same_source)):
                     if existing.status in (ContentStatus.UNPROCESSED, ContentStatus.PARSE_FAILED):
                         await source_reading.wait(platform, lane="enqueue")
                         await svc.ensure_parse_queued(existing)
@@ -739,10 +729,3 @@ class FavoritesSyncTask:
             import_result["skipped"],
         )
         return result
-
-    @classmethod
-    def normalize_duplicate_strategy(cls, value: Any) -> str:
-        strategy = str(value or cls._DEFAULT_DUPLICATE_STRATEGY).strip().lower()
-        if strategy not in cls._DUPLICATE_STRATEGIES:
-            return cls._DEFAULT_DUPLICATE_STRATEGY
-        return strategy

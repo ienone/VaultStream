@@ -3,14 +3,12 @@ from __future__ import annotations
 import re
 from typing import Iterable, Sequence
 
-from loguru import logger
-from sqlalchemy import and_, or_, select, text
+from sqlalchemy import column, or_, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Content
 
-_fts_warning_emitted = False
 
 
 def build_like_condition(query: str, *, columns: Sequence[ColumnElement]) -> ColumnElement:
@@ -19,7 +17,7 @@ def build_like_condition(query: str, *, columns: Sequence[ColumnElement]) -> Col
         terms = [query]
     return or_(
         *[
-            col.ilike(f"%{term}%")
+            col.icontains(term, autoescape=True)
             for term in terms
             for col in columns
             if term.strip()
@@ -54,77 +52,28 @@ def _fts_query(query: str) -> str:
     return " OR ".join(f'"{term}"' for term in escaped)
 
 
-async def fetch_fts_content_ids(
-    *,
-    session: AsyncSession,
-    query: str,
-    limit: int | None = None,
-    filters: Iterable = (),
-) -> list[int]:
-    stmt = select(Content.id).where(
-        Content.id.in_(text("SELECT content_id FROM contents_fts WHERE contents_fts MATCH :q")),
-        *filters,
-    )
-    if limit is not None:
-        stmt = stmt.limit(limit)
-    global _fts_warning_emitted
-    try:
-        return list(await session.scalars(stmt, {"q": _fts_query(query)}))
-    except Exception as e:
-        if not _fts_warning_emitted:
-            logger.warning("FTS search unavailable, falling back to LIKE queries: {}", e)
-            _fts_warning_emitted = True
-        return []
+_FTS = table("contents_fts", column("rowid"), column("rank"))
 
 
-async def build_fts_or_like_condition(
-    *,
-    session: AsyncSession,
-    query: str,
-    like_columns: Sequence[ColumnElement],
-) -> ColumnElement:
-    fts_ids = await fetch_fts_content_ids(session=session, query=query)
-    like_cond = build_like_condition(query, columns=like_columns)
-    if fts_ids:
-        return or_(Content.id.in_(fts_ids), like_cond)
-    return like_cond
+def build_fts_or_like_condition(*, query: str, like_columns: Sequence[ColumnElement]) -> ColumnElement:
+    matches = select(_FTS.c.rowid).where(column("contents_fts").match(_fts_query(query)))
+    return or_(Content.id.in_(matches), build_like_condition(query, columns=like_columns))
 
 
 async def rank_ids_by_fts_or_like(
-    *,
-    session: AsyncSession,
-    query: str,
-    filters: Iterable,
-    limit: int,
-    like_columns: Sequence[ColumnElement],
-    order_by: ColumnElement | None = None,
+    *, session: AsyncSession, query: str, filters: Iterable, limit: int,
+    like_columns: Sequence[ColumnElement], order_by: ColumnElement | None = None,
 ) -> list[int]:
-    """
-    Return ranked Content IDs using FTS when available, else fallback to LIKE ranking.
-
-    - FTS path: apply content filters before limiting candidates.
-    - Fallback path: query by LIKE over `like_columns` with `filters`, order by `order_by` (default created_at desc).
-    """
-    ranked = await fetch_fts_content_ids(
-        session=session, query=query, limit=limit, filters=filters,
-    )
-    if len(ranked) >= limit:
-        return ranked
-
-    like_cond = build_like_condition(query, columns=like_columns)
-    if order_by is None:
-        order_by = Content.created_at.desc()
-
-    fallback_ids = (
-        await session.execute(
-            select(Content.id)
-            .where(and_(*filters, like_cond))
-            .order_by(order_by)
-            .limit(int(limit))
-        )
-    ).scalars().all()
-    for cid in fallback_ids:
-        cid = int(cid)
-        if cid not in ranked:
-            ranked.append(cid)
-    return ranked[:limit]
+    ranked = list(await session.scalars(
+        select(Content.id).join(_FTS, _FTS.c.rowid == Content.id)
+        .where(column("contents_fts").match(_fts_query(query)), *filters)
+        .order_by(_FTS.c.rank, Content.id).limit(limit)
+    ))
+    remaining = limit - len(ranked)
+    if remaining:
+        fallback = select(Content.id).where(*filters, build_like_condition(query, columns=like_columns))
+        if ranked:
+            fallback = fallback.where(Content.id.not_in(ranked))
+        fallback = fallback.order_by(order_by if order_by is not None else Content.created_at.desc(), Content.id)
+        ranked.extend(await session.scalars(fallback.limit(remaining)))
+    return ranked

@@ -17,10 +17,6 @@ class AgentCitationTile extends StatelessWidget {
 
   String get _location {
     switch (citation.kind) {
-      case AgentCitationKind.documentPage:
-        return citation.pageNumber == null
-            ? '文档'
-            : '第 ${citation.pageNumber} 页';
       case AgentCitationKind.timepoint:
         final seconds = citation.startSeconds;
         if (seconds == null) return '音视频片段';
@@ -43,7 +39,6 @@ class AgentCitationTile extends StatelessWidget {
       AgentCitationKind.content => Icons.article_outlined,
       AgentCitationKind.event => Icons.timeline_outlined,
       AgentCitationKind.timepoint => Icons.play_circle_outline_rounded,
-      AgentCitationKind.documentPage => Icons.description_outlined,
     };
     final excerpt = citation.sourceText?.trim().isNotEmpty == true
         ? citation.sourceText!

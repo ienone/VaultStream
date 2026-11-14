@@ -1,10 +1,8 @@
 import json
-import asyncio
 import hashlib
-from typing import Optional, List
+from typing import List
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import update
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -63,26 +61,7 @@ async def generate_summary_for_content(
 
     source_revision = content.updated_at
 
-    from app.services.document_text import build_document_text_items, document_assets
-    documents = build_document_text_items(content, await document_assets(session, content_id))
     source_text = content.body or ""
-    coverage_notice = ""
-    if documents:
-        if any(document.status == "pending" for document in documents):
-            raise SummaryGenerationError("PDF 正文尚未提取，请先提取正文再生成摘要", status_code=409)
-        if not any(page.text.strip() for document in documents for page in document.pages):
-            raise SummaryGenerationError("PDF 没有可读取的正文，无法生成文档摘要", status_code=409)
-        sections = [f"用户保存说明（不代表文档正文）：\n{source_text}"]
-        incomplete = False
-        for document in documents:
-            sections.append(f"文档：{document.filename}；共 {document.page_count} 页，"
-                            f"可读取 {document.text_page_count} 页；状态 {document.status}")
-            incomplete |= document.status != "ready" or document.text_page_count != document.page_count
-            for page in document.pages:
-                sections.append(f"第 {page.page_number} 页：\n{page.text if page.text.strip() else '[未读取到原生文本]'}")
-        source_text = "\n\n".join(sections)
-        if incomplete:
-            coverage_notice = "【仅概括已提取的 PDF 文本，部分页面或附件未读取】"
 
     gemini_key, summary_model, summary_api_version = await _get_summary_llm_config()
 
@@ -101,7 +80,6 @@ async def generate_summary_for_content(
         "{\"summary\": \"...\", \"tags\": [\"tag1\", \"tag2\"], \"rag_chunks\": [{\"title\": \"...\", \"content\": \"...\", \"media_refs\": [\"local://...\"]}]}"
         "\n\n"
         f"标题：{content.title or '无标题'}\n"
-        "仅依据下列来源材料概括，不把保存说明当作文档原文，不能推断未读取页面。\n"
         f"正文内容：\n{source_text}"
     )
     source_hash = hashlib.sha256(json.dumps(
@@ -112,94 +90,50 @@ async def generate_summary_for_content(
             (content.rich_payload or {}).get("summary_source_hash") == source_hash):
         return content
 
+    from google import genai
+    from google.genai import types
+
     try:
-        # 使用原生 Gemini SDK (2026 最新版本写法)
-        from google import genai
-        from google.genai import types
-        
-        # 显式初始化 Client 并指定 api_version；模型名来自 summary_model 设置。
-        client = genai.Client(
-            api_key=gemini_key,
-            http_options={'api_version': summary_api_version}
-        )
-        
-        def _call():
-            return client.models.generate_content(
-                model=summary_model,
-                contents=prompt,
+        async with genai.Client(api_key=gemini_key, http_options={"api_version": summary_api_version}).aio as client:
+            response = await client.models.generate_content(
+                model=summary_model, contents=prompt,
                 config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    # 显式传入 Schema 以确保 100% 结构化成功率
-                    response_json_schema=ContentIntelligence.model_json_schema()
-                )
+                    response_mime_type="application/json", response_json_schema=ContentIntelligence.model_json_schema(),
+                ),
             )
+        intelligence = ContentIntelligence.model_validate(
+            response.parsed if response.parsed is not None else json.loads(response.text)
+        )
+        if not intelligence.summary.strip():
+            raise ValueError("模型返回的摘要为空")
+    except Exception as exc:
+        logger.error("摘要模型请求失败: content_id={}, error_type={}", content_id, type(exc).__name__)
+        raise SummaryGenerationError("摘要生成失败，请检查模型服务后重试") from exc
 
-        response = await asyncio.to_thread(_call)
-        
-        # 处理 Gemini 3 返回的结构化响应
-        if response.parsed:
-            # 如果是 Pydantic 模型，尝试转换为字典
-            try:
-                intelligence_dict = response.parsed.model_dump()
-            except AttributeError:
-                try:
-                    intelligence_dict = response.parsed.dict()
-                except AttributeError:
-                    intelligence_dict = response.parsed
-        else:
-            intelligence_dict = json.loads(response.text)
-
-
-
-        intelligence_dict = ContentIntelligence.model_validate(intelligence_dict).model_dump()
-        if not intelligence_dict["summary"].strip():
-            raise ValueError("Model returned an empty summary")
-        # Source-derived document pages and media segments must survive a new
-        # AI summary. Also reject responses generated against an older revision.
-        with session.no_autoflush:
-            guard = await session.execute(update(Content).where(
-                Content.id == content_id, Content.updated_at == source_revision,
-            ).values(updated_at=Content.updated_at).execution_options(synchronize_session=False))
-        if guard.rowcount != 1:
-            raise StaleDataError("原文已变化，请重新生成摘要")
-
-        # 更新内容字段
-        content.summary = coverage_notice + intelligence_dict.get("summary", "")
-        # 合并标签
-        existing_tags = set(content.tags or [])
-        new_tags = set(intelligence_dict.get("tags", []))
-        content.tags = list(existing_tags.union(new_tags))
-        
-        # 存储语义切片到 rich_payload
-        if not content.rich_payload:
-            content.rich_payload = {}
-        
-        source_chunks = [chunk for chunk in content.rich_payload.get("chunks", [])
-                         if isinstance(chunk, dict) and (chunk.get("source_kind") == "pdf_native_text"
-                         or chunk.get("segment_type") in {"chapter", "transcript"})]
-        content.rich_payload["chunks"] = source_chunks + [
-            {**chunk, "generated": True} for chunk in intelligence_dict["rag_chunks"]
-        ]
-        content.rich_payload["summary_source_hash"] = source_hash
-        
-        # 标记 JSON 字段已修改
-        flag_modified(content, "rich_payload")
-        flag_modified(content, "tags")
-
-        # Replace changed interpretations atomically, while keeping vectors for
-        # unchanged source text and positions, with their original model identity.
-        from app.services.embedding_service import EmbeddingService
-        await EmbeddingService().invalidate_changed_units(content, session)
-        
-        await session.commit()
-        logger.info(f"AI 深度理解完成: content_id={content_id}, 生成切片数={len(content.rich_payload['chunks'])}")
-
-    except StaleDataError:
+    guard = await session.execute(update(Content).where(
+        Content.id == content_id, Content.updated_at == source_revision,
+    ).values(updated_at=Content.updated_at).execution_options(synchronize_session=False))
+    if guard.rowcount != 1:
         await session.rollback()
-        raise
-    except Exception as e:
-        await session.rollback()
-        logger.error("摘要生成失败: content_id={}, error_type={}", content_id, type(e).__name__)
-        raise SummaryGenerationError("摘要生成失败，请检查模型服务后重试") from e
-        
+        raise StaleDataError("原文已变化，请重新生成摘要")
+
+    from app.services.embedding_service import EmbeddingService
+    from app.services.post_ingest import PostIngestService
+
+    content.summary = intelligence.summary
+    content.tags = list(dict.fromkeys([*(content.tags or []), *intelligence.tags]))
+    payload = content.rich_payload or {}
+    source_chunks = [
+        chunk for chunk in payload.get("chunks", [])
+        if isinstance(chunk, dict) and chunk.get("segment_type") in {"chapter", "transcript"}
+    ]
+    content.rich_payload = {
+        **payload, "summary_source_hash": source_hash,
+        "chunks": [*source_chunks, *({**chunk.model_dump(), "generated": True} for chunk in intelligence.rag_chunks)],
+    }
+    await EmbeddingService().invalidate_changed_units(content, session)
+    await PostIngestService().run_for_content(
+        session, content, source="summary", summary=False, distribution=False, commit=False,
+    )
+    await session.commit()
     return content

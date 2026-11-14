@@ -7,20 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.runnables import Runnable
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.core.time_utils import utcnow
 from app.core.llm_factory import LLMFactory
 from app.core.logging import logger
 from app.models.content import Content
 from app.models.base import DiscoveryState
-from app.services.background_task_state import (
-    record_task_run_error,
-    record_task_run_started,
-    record_task_run_success,
-)
 from app.services.config_service import ConfigService
 
 
@@ -60,10 +54,6 @@ class PatrolService:
 
     async def _get_score_threshold(self) -> float:
         return float(await self._config_service.get_value("discovery_score_threshold", 6.0))
-
-    async def _get_interest_profile(self) -> str:
-        value = await self._config_service.get_value("discovery_interest_profile", "")
-        return str(value or "")
 
     def _build_system_prompt(self, interest_profile: str) -> str:
         """Build system prompt combining base scoring criteria + user interest profile."""
@@ -126,7 +116,9 @@ class PatrolService:
                          type(e).__name__, getattr(e, "status_code", None))
             return False
 
-        state = DiscoveryState.VISIBLE if parsed.score >= threshold else DiscoveryState.IGNORED
+        state = content.discovery_state
+        if state in {DiscoveryState.INGESTED, DiscoveryState.VISIBLE, DiscoveryState.SCORED}:
+            state = DiscoveryState.VISIBLE if parsed.score >= threshold else DiscoveryState.IGNORED
         with db.no_autoflush:
             result = await db.execute(update(Content).where(
                 Content.id == content.id, Content.updated_at == revision,
@@ -144,87 +136,3 @@ class PatrolService:
             f"score={parsed.score}, state={content.discovery_state.value}"
         )
         return True
-
-    async def score_batch(
-        self, items: list[Content], interest_profile: str = "", *, db: AsyncSession
-    ) -> int:
-        """
-        Score sequentially using one client and configuration snapshot per batch.
-        Returns count of successfully scored items.
-        """
-        if not items:
-            return 0
-        scorer = await self._get_scorer()
-        if scorer is None:
-            return 0
-        threshold = await self._get_score_threshold()
-        scored = 0
-        for item in items:
-            try:
-                ok = await self._score_item(
-                    item, interest_profile, db=db, scorer=scorer, threshold=threshold,
-                )
-            except StaleDataError:
-                continue
-            if not ok:
-                # Provider/configuration failure must not repeat for every pending item.
-                return scored
-            scored += 1
-        return scored
-
-    async def score_pending(self, db: AsyncSession) -> int:
-        """
-        Query all contents with discovery_state=INGESTED, load settings, and score them.
-        This is the entry point called by background tasks.
-        """
-        stmt = select(Content).where(
-            Content.discovery_state == DiscoveryState.INGESTED,
-            Content.deleted_at.is_(None),
-            (Content.expire_at.is_(None) | (Content.expire_at >= utcnow())),
-        ).order_by(Content.id).limit(100)
-        result = await db.execute(stmt)
-        items = list(result.scalars().all())
-
-        if not items:
-            logger.debug("巡逻评分: 没有待评分内容")
-            return 0
-
-        run = await record_task_run_started(
-            "discovery_patrol",
-            trigger="auto",
-            candidate_count=len(items),
-        )
-        run_id = run["run_id"]
-
-        try:
-            interest_profile = await self._get_interest_profile()
-
-            logger.info(f"巡逻评分: 开始处理 {len(items)} 条待评分内容")
-            scored = await self.score_batch(items, interest_profile=interest_profile, db=db)
-
-            await db.commit()
-            metadata = dict(
-                trigger="auto",
-                candidate_count=len(items),
-                scored_count=scored,
-                failed_count=max(0, len(items) - scored),
-                interest_profile_present=bool(interest_profile.strip()),
-            )
-            if scored < len(items):
-                await record_task_run_error(
-                    "discovery_patrol", run_id, "部分候选评分失败，未评分候选保留待处理", **metadata,
-                )
-            else:
-                await record_task_run_success("discovery_patrol", run_id, **metadata)
-            logger.info(f"巡逻评分: 完成, 成功 {scored}/{len(items)}")
-            return scored
-        except Exception as e:
-            await db.rollback()
-            await record_task_run_error(
-                "discovery_patrol",
-                run_id,
-                e,
-                trigger="auto",
-                candidate_count=len(items),
-            )
-            raise

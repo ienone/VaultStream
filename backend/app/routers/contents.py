@@ -52,10 +52,10 @@ from app.core.logging import logger
 from app.core.config import settings
 from app.core.queue import task_queue
 from app.core.dependencies import require_api_token, get_content_service, get_content_repo
+from app.services.content_identity import InvalidShareInput
 from app.services.content_service import (
     CaptureFileInput,
     ContentService,
-    InvalidShareInput,
 )
 from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
 from app.repositories.content_repository import ContentRepository
@@ -75,10 +75,6 @@ from app.services.media_manifest import (
     resolve_media_base_url,
 )
 from app.services.media_manifest import media_preview_url
-from app.schemas.document import DocumentTextResponse, DocumentExtractionAcceptedResponse
-from app.services.document_text import (
-    document_assets, original_pdf, build_document_text_items, schedule_document_extraction,
-)
 from app.adapters.storage import LocalStorageBackend, get_storage_backend
 from app.adapters.storage.manager import (
     StorageObjectEmptyError,
@@ -727,75 +723,6 @@ async def create_text_capture(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/captures/file", response_model=ShareResponse)
-async def create_file_capture(
-    upload: UploadFile = File(...),
-    title: Optional[str] = Form(None, max_length=500),
-    tags_text: Optional[str] = Form(None, max_length=2000),
-    source: str = Form("manual_upload", max_length=100),
-    note: Optional[str] = Form(None, max_length=2000),
-    is_nsfw: bool = Form(False),
-    layout_type_override: Optional[LayoutType] = Form(None),
-    service: ContentService = Depends(get_content_service),
-    storage: LocalStorageBackend = Depends(get_storage_backend),
-    _: None = Depends(require_api_token),
-):
-    """保存一个用户上传文件，并建立可读取的媒体资产。"""
-    max_bytes = max(1, settings.capture_upload_max_bytes)
-
-    async def upload_chunks():
-        while chunk := await upload.read(1024 * 1024):
-            yield chunk
-
-    try:
-        content = await service.create_file_capture(
-            upload_chunks(),
-            filename=upload.filename or "未命名文件",
-            mime_type=upload.content_type,
-            title=title,
-            tags_text=tags_text,
-            source_name=source,
-            note=note,
-            is_nsfw=is_nsfw,
-            layout_type_override=layout_type_override,
-            storage=storage,
-            max_bytes=max_bytes,
-        )
-        return ShareResponse(
-            id=content.id,
-            platform=content.platform,
-            url=content.url,
-            status=content.status,
-            created_at=content.created_at,
-        )
-    except StorageObjectTooLargeError as error:
-        raise HTTPException(
-            status_code=413,
-            detail=build_error_payload(
-                message="上传文件超过大小限制",
-                code="capture_file_too_large",
-                extra={"max_bytes": error.max_bytes},
-            ),
-        ) from error
-    except StorageObjectEmptyError as error:
-        raise HTTPException(
-            status_code=400,
-            detail=build_error_payload(
-                message="上传文件不能为空",
-                code="capture_file_empty",
-            ),
-        ) from error
-    except HTTPException:
-        raise
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except Exception:
-        logger.exception("Failed to create file capture")
-        raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        await upload.close()
-
-
 @router.post("/captures/files", response_model=ShareResponse)
 async def create_files_capture(
     uploads: List[UploadFile] = File(...),
@@ -950,35 +877,6 @@ async def get_content_detail(
     return await build_content_detail(db, content, base_url, for_edit=for_edit, asset_refs=asset_refs)
 
 
-@router.get("/contents/{content_id}/document-text", response_model=DocumentTextResponse)
-async def get_document_text(
-    content_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    content = await db.get(Content, content_id)
-    if content is None:
-        raise HTTPException(status_code=404, detail="Content not found")
-    return DocumentTextResponse(content_id=content_id, documents=build_document_text_items(
-        content, await document_assets(db, content_id),
-    ))
-
-
-@router.post("/contents/{content_id}/document-text/extract", status_code=202,
-             response_model=DocumentExtractionAcceptedResponse)
-async def extract_document_text(
-    content_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    if await db.get(Content, content_id) is None:
-        raise HTTPException(status_code=404, detail="Content not found")
-    if not any(original_pdf(a) for a in await document_assets(db, content_id)):
-        raise HTTPException(status_code=400, detail="没有已归档的 PDF 原文件")
-    run_id = await schedule_document_extraction(content_id, source="document_detail", trigger="manual")
-    return DocumentExtractionAcceptedResponse(content_id=content_id, run_id=run_id)
-
-
 @router.get(
     "/contents/{content_id}/processing-status",
     response_model=ContentProcessingStatus,
@@ -1103,8 +1001,6 @@ async def generate_content_summary(
             chunk_count=len(chunks) if isinstance(chunks, list) else 0,
             tag_count=len(content.tags or []),
         )
-        from app.services.post_ingest import PostIngestService
-        await PostIngestService().schedule_embedding_index(content_id, source="manual_summary")
         return {"summary": content.summary, "content_id": content_id, "run_id": run["run_id"]}
     except SummaryGenerationError as e:
         await record_task_run_error(

@@ -15,7 +15,8 @@ from app.adapters.errors import (
     RetryableAdapterError,
 )
 from app.models import BilibiliContentType
-from .base import clean_text, safe_url, prune_metadata, format_request_error
+from app.adapters.utils.text_utils import clean_text, safe_url
+from .base import prune_metadata, format_request_error
 from .video_media import read_video_media
 
 

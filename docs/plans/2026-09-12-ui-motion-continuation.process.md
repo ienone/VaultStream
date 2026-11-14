@@ -64,19 +64,6 @@ in_progress。对应 [实施计划](2026-09-12-ui-motion-continuation.plan.md)�
 
 代表证据：[全屏控件](../issues/assets/2026-09-12-ui-motion/gallery-controls-fullscreen.png)、[缩放连续操作](../issues/assets/2026-09-12-ui-motion/gallery-toolbar-motion.mp4)、[旋转过程](../issues/assets/2026-09-12-ui-motion/gallery-rotation-motion.mp4)。
 
-## PDF 与系统文档分享
-
-- 资源读取与引擎渲染失败分别反馈，未知异常不暴露原始签名 URL。
-- 使用真实归档的 24 页样本（验收时内容 22／资产 54）验证末页、目录、横屏大字号及原页／文本切换状态。旧内容 19／20 的对象缺失不归因为 PDFium 故障。
-- 移除包住原页阅读器的整页 SelectionArea，消除文本选择与双指缩放竞争；文字区域仍可选择。手势结束按倍率重绘，最高 300 DPI；同页切换文本模式保留变换，切页重置。
-- 页码跳转用实际页数校验；翻页与目录／缩略工具按宽度字号分组。96 页多级长中文目录使用受控样本验证布局，不冒充真实归档。
-- 目录和缩略页裁切遵循圆角，页码、目录、缩略页支持返回预览；只关闭工具，不改变文档页码。软键盘打开时首次返回只收键盘并保留输入。
-- Android externalstorage 分享由 ContentResolver 读取授权流，每份文件使用独立随机缓存目录，避免无权读取 `/sdcard` 及同名文件覆盖；未新增存储权限。
-- **分享读取补丁按用户要求位于本机 receive_sharing_intent 1.8.1 缓存源码，不在仓库内。重装依赖不会自动获得修复；上游 1.9.0 当时仍有同一分支。** 不可把本机 APK 通过写成干净环境可复现。
-- 冷启动分享归档及 SHA-256 对照通过；额外内容 23 清理，24 页基准样本保留。原生缩放／平移／缩回已通过，不再列为待开发。
-
-代表证据：[PDF 缩放](../issues/assets/2026-09-12-ui-motion/android-pdf-pinch-pan.png)、[缩略页集成](../issues/assets/2026-09-12-ui-motion/pdf-integrated-thumbnails.png)、[页码返回](../issues/assets/2026-09-12-ui-motion/pdf-page-jump-native-back.mp4)、[文档分享回执](../issues/assets/2026-09-12-ui-motion/android-externalstorage-share-saved.png)。
-
 ## 播放器、后台控制与画中画
 
 - 队列使用同一滚动容器的 SliverReorderableList，支持长队列边缘滚动，DragBoundary 保持浮层在安全区。30 项受控样本证明排序／取消／跨屏触控，不证明 30 份媒体解码。

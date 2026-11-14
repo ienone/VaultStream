@@ -31,7 +31,7 @@ active
 
 原始文本通过 `POST /captures/text` 直接保存为 `universal/note` 内容：正文是权威原文，状态从 `parse_success` 开始，不伪造外部 URL，也不进入网页解析队列；随后仍复用摘要、语义索引和自动分发后处理。每次文本捕获创建独立内容，不按正文猜测去重。
 
-原始文件通过 `POST /captures/file` 或 `POST /captures/files` 流式写入内容寻址 storage，并创建 ready 的 `MediaAsset` 与 original archive `MediaVariant`。同一次系统分享的多个文件保留在一个内容对象中：多张图片使用 gallery，混合附件使用 document，并按分享顺序保存资产。单文件标题默认取净化后的文件名；多文件使用数量标题，用户说明保存在正文中，分享时间等来源上下文保存在 `ContentSource`。上传链路不等待 OCR 或转码，也不伪造已提取正文。
+原始文件通过 `POST /captures/files` 流式写入内容寻址 storage，并创建 ready 的 `MediaAsset` 与 original archive `MediaVariant`。同一次系统分享的多个文件保留在一个内容对象中：多张图片使用 gallery，混合附件使用 document，并按分享顺序保存资产。单文件标题默认取净化后的文件名；多文件使用数量标题，用户说明保存在正文中，分享时间等来源上下文保存在 `ContentSource`。上传链路不等待 OCR 或转码，也不伪造已提取正文。
 
 Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、文件、音视频或语音时，Bot 先通过 Telegram 文件接口取得原件，再以单项 multipart 调用 `/captures/files`，保留 `telegram_bot` 来源和消息上下文。自然语言收藏由 Agent loop 选择保存工具并提供当前外层授权原文；疑问句、其他普通聊天和群聊文本不自动归档。Bot 不自行写内容、媒体表或 storage，也不把已监控 chat 的 discovery 缓冲混入用户主动归档。
 
@@ -71,7 +71,7 @@ Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、
 
 ## API 接口
 
-详见 `../api.md` 中内容管理 API，包括 `/shares`、`/captures/text`、`/captures/file`、`/contents`、`/contents/{id}`、`/contents/{id}/re-parse`、`/contents/{id}/parse-candidate/resolve` 等。
+详见 `../api.md` 中内容管理 API，包括 `/shares`、`/captures/text`、`/captures/files`、`/contents`、`/contents/{id}`、`/contents/{id}/re-parse`、`/contents/{id}/parse-candidate/resolve` 等。
 
 ## 配置与策略
 
@@ -88,10 +88,6 @@ Telegram Bot 的显式 `/save` 也是该 contract 的生产者：回复图片、
 
 文件捕获先暂存整批、再统一发布；超限/空文件/读取失败会移除整批暂存，发布失败只回收本次新建且未被提交内容引用的对象。删除事件唯一成员内容返回 409 `knowledge_event_requires_member`，要求先为事件补充另一条内容；与事件成员移除共用事务内约束。
 
-## PDF 原生正文（2026-09-10）
-
-PDF 上传提交原件后调度 document_extract；提取期间不占用上传事务，原文按资产与页码保存，body 仍是用户保存说明。原生文本生成后再按自动索引开关调度 embedding。详情和手动重新提取使用独立 document-text contract。自动摘要移至 PDF 提取后执行，仍受 enable_auto_summary 控制；摘要读取可用原生页，随后建立索引。扫描 OCR 与复杂版面仍未完成，见文档原生文本执行记录。
-
 粉丝、关注、回答数等平台指标只进入 `extra_stats`，不再占用浏览/分享/评论字段；点赞、评论等标准计数不重复保存平台别名。展示用 `clean_url` 由去重身份和可选解析落地地址生成，重复分享不覆盖已解析的落地地址。
 
 ### 详情媒体引用（2026-09-26）
@@ -100,7 +96,7 @@ PDF 上传提交原件后调度 document_extract；提取期间不占用上传�
 
 `url` 保留入库身份；`clean_url` 只返回有效的 HTTP(S) 外部原文链接，没有原文时为空。推送和书签展示不得把内部身份作为原文链接。
 
-自动摘要开关按统一 `coerce_bool` 读取。评分、摘要、分发规则匹配与索引分别使用持久 Task，同内容串行执行；某阶段失败不回退正文或重放其他阶段。内容版本检查保留，人工编辑仍写入解析候选。文件捕获将 PDF 提取任务与文件元数据一起提交；来源同步在推进游标前提交后处理任务。
+自动摘要开关按统一 `coerce_bool` 读取。评分、摘要、分发规则匹配与索引分别使用持久 Task，同内容串行执行；某阶段失败不回退正文或重放其他阶段。内容版本检查保留，人工编辑仍写入解析候选。来源同步在推进游标前提交后处理任务。
 
 ### 缺失标题提取（2026-09-30）
 

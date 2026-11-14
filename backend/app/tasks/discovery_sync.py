@@ -7,7 +7,7 @@ import asyncio
 from datetime import timedelta
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import update, select
 
 from app.adapters.discovery.base import BaseDiscoveryScraper
 from app.adapters.discovery.rss import RSSDiscoveryScraper
@@ -25,7 +25,6 @@ from app.models import (
     DiscoverySourceKind,
     DiscoveryState,
     LayoutType,
-    Platform,
 )
 from app.services.embedding_service import EmbeddingService
 from app.services.post_ingest import PostIngestService
@@ -37,7 +36,7 @@ from app.services.background_task_state import (
 from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService, coerce_bool
 from app.services.settings_service import get_setting_value
-from app.utils.url_utils import normalize_url_for_dedup
+from app.services.content_identity import ContentLink, InvalidShareInput
 from app.utils.datetime_utils import normalize_datetime_for_db
 
 SUPPORTED_DISCOVERY_SOURCE_KINDS = {
@@ -209,12 +208,16 @@ class DiscoverySyncTask:
                 work["embedding"] = work["embedding"] or embedding
                 work["distribution"] = work["distribution"] or distribution
 
+            resolved = []
             for item in items:
-                canonical = normalize_url_for_dedup(item.url)
-                # 检查 URL 是否已存在（主库或发现流）
-                stmt = select(Content).where(Content.canonical_url == canonical).limit(1)
-                result = await db.execute(stmt)
-                existing_content = result.scalars().first()
+                try:
+                    link = await ContentLink.resolve(item.url)
+                except InvalidShareInput:
+                    continue
+                resolved.append((item, link))
+            for item, link in resolved:
+                await db.execute(update(Content).where(link.matches()).values(updated_at=Content.updated_at))
+                existing_content = await db.scalar(select(Content).where(link.matches()))
 
                 if existing_content is not None:
                     # 检查关联是否已存在
@@ -232,10 +235,13 @@ class DiscoverySyncTask:
                             url=item.url,
                         ))
 
+                    media_changed = False
                     if item.cover_url and not existing_content.cover_url:
+                        media_changed = True
                         existing_content.cover_url = item.cover_url
 
                     if item.media_urls and not existing_content.media_urls:
+                        media_changed = True
                         existing_content.media_urls = item.media_urls
 
                     has_summary_chunks = bool(
@@ -259,7 +265,8 @@ class DiscoverySyncTask:
                             distribution=False,
                         )
 
-                    await replace_content_media_assets(db, existing_content, get_storage_backend(), source="discovery")
+                    if media_changed:
+                        await replace_content_media_assets(db, existing_content, get_storage_backend(), source="discovery")
                     continue
 
                 retention_days_raw = await get_setting_value("discovery_retention_days", 7)
@@ -269,9 +276,9 @@ class DiscoverySyncTask:
                     retention_days = 7
 
                 content = Content(
-                    platform=Platform.UNIVERSAL,
+                    platform=link.platform,
                     url=item.url,
-                    canonical_url=canonical,
+                    canonical_url=link.canonical,
                     title=item.title,
                     body=item.content if item.content else None,
                     author_name=item.author,

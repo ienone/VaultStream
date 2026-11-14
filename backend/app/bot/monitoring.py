@@ -5,14 +5,15 @@
 """
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from telegram import Update
 
 from app.core.logging import logger
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.time_utils import utcnow
-from app.models import Content, BotChat, DiscoveryState, Platform, ContentStatus
-from app.utils.url_utils import extract_urls_from_text, normalize_url_for_dedup
+from app.models import Content, BotChat, DiscoveryState, ContentStatus
+from app.utils.url_utils import extract_urls_from_text
+from app.services.content_identity import ContentLink, InvalidShareInput
 
 _DEFAULT_RETENTION_DAYS = 7
 
@@ -62,23 +63,21 @@ async def handle_monitored_message(update: Update, context) -> None:
             now = utcnow()
             title_snippet = (message.text[:100] if len(message.text) > 100 else message.text)
 
+            links = []
             for url in urls:
-                canonical = normalize_url_for_dedup(url)
-
-                # 去重：同平台 + 相同 canonical_url 则跳过
-                dup = await db.execute(
-                    select(Content.id).where(
-                        Content.canonical_url == canonical,
-                    ).limit(1)
-                )
-                if dup.scalars().first() is not None:
-                    logger.debug(f"监控去重跳过: {canonical}")
+                try:
+                    links.append(await ContentLink.resolve(url))
+                except InvalidShareInput:
+                    continue
+            for link in links:
+                await db.execute(update(Content).where(link.matches()).values(updated_at=Content.updated_at))
+                if await db.scalar(select(Content.id).where(link.matches())) is not None:
                     continue
 
                 content = Content(
-                    platform=Platform.UNIVERSAL,
-                    url=url,
-                    canonical_url=canonical,
+                    platform=link.platform,
+                    url=link.url,
+                    canonical_url=link.canonical,
                     status=ContentStatus.UNPROCESSED,
                     source_type="telegram_bot",
                     discovery_state=DiscoveryState.INGESTED,
