@@ -11,13 +11,9 @@ class CollectionWorkspace extends StatelessWidget {
     required this.list,
     required this.selectedId,
     required this.onClose,
-    this.emptyDetail,
     this.preview,
-    this.defaultSelection = false,
   });
   final Widget list;
-  final Widget? emptyDetail;
-  final bool defaultSelection;
   final int? selectedId;
   final ShareCard? preview;
   final VoidCallback onClose;
@@ -31,15 +27,14 @@ class CollectionWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AppListDetailWorkspace(
     list: list,
-    emptyDetail: emptyDetail,
     selectedId: selectedId,
-    onClose: defaultSelection ? null : onClose,
+    onClose: onClose,
     detailBuilder: (deferBody, focused, toggleFocus) => ContentDetailPage(
       contentId: selectedId!,
       preview: preview,
       deferBody: deferBody,
       onClose: onClose,
-      showBackButton: !defaultSelection,
+      showBackButton: true,
       focused: focused,
       onToggleFocus: toggleFocus,
     ),

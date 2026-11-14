@@ -17,12 +17,12 @@ Root Shell 主导航分支：
 - `/collection?item=ID`: 收藏库内选中内容；宽屏列表与阅读器并排，窄屏显示阅读器，关闭或返回恢复列表。
 - `/collection/:id`: 独立收藏内容详情，用于外部深链和跨页面结果。
 - `/collection/:id/edit`: 内容编辑，位于详情的根 Navigator 子路由。
-- `/sources`: 订阅来源、名称搜索和类型／启停筛选；全局筛选保留策略位于 `/settings?tab=discovery`。
+- `/sources`: 订阅列表，支持名称搜索与类型／启停筛选；点添加或选中订阅后才打开编辑器；全局筛选保留策略位于 `/settings?tab=discovery`。
 - `/sources/chats`: 机器人会话监听，管理作为输入来源的群组与频道。
 - `/accounts`: 来源工作区的账号页签。
-- `/sources/sync`: 来源工作区的收藏同步页签。
+- `/sources/sync`: 收藏同步；可用 `?platform=zhihu` 等参数定位具体平台。
 - `/settings?tab=processing`: 内容处理策略。
-- `/automation/distribution`: 待发送队列；其下 history、rules 与规则编辑共用同一个分发 Shell，只更新右侧内容。
+- `/automation/distribution`: 待发送队列；其下 history、rules 与规则编辑共用同一个分发 Shell，只有选中记录或规则时才打开第二栏。
 - `/automation/distribution/rules`: 自动规则列表，编辑地址保持不变。
 - `/automation/distribution/history`: 推送历史。
 - `/automation/distribution/targets`: 跨平台推送目标。

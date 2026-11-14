@@ -33,7 +33,7 @@ class NavigationSidebar extends ConsumerWidget {
     required this.onDestinationSelected,
     this.closeDrawer,
   });
-  static const compactWidth = 88.0;
+  static const compactWidth = 72.0;
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
   final VoidCallback? closeDrawer;
@@ -47,8 +47,7 @@ class NavigationSidebar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final unread = ref.watch(
-      notificationInboxProvider(defaultNotificationQuery)
-          .select((value) => value.value?.unreadCount ?? 0),
+      notificationUnreadCountProvider.select((value) => value.value ?? 0),
     );
     Widget icon(int index, IconData data) =>
         Badge(isLabelVisible: index == 4 && unread > 0, child: Icon(data));
@@ -83,7 +82,7 @@ class NavigationSidebar extends ConsumerWidget {
           NavigationDrawerDestination(
             icon: const Icon(Icons.auto_awesome_outlined),
             selectedIcon: const Icon(Icons.auto_awesome_rounded),
-            label: const Text('Agent'),
+            label: const Text('助手'),
           ),
           NavigationDrawerDestination(
             icon: icon(4, Icons.notifications_none_rounded),
@@ -112,10 +111,49 @@ class NavigationSidebar extends ConsumerWidget {
       );
     }
     final active = _destinations.indexWhere((item) => item.$1 == selectedIndex);
+    if (MediaQuery.sizeOf(context).height /
+            (MediaQuery.textScalerOf(context).scale(16) / 16) <
+        560) {
+      final tools = {5: '助手', 4: '消息', 6: '设置'};
+      return Material(
+        color: colors.surfaceContainerLowest,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                for (final item in _destinations)
+                  _ShortRailButton(
+                    label: item.$2,
+                    icon: item.$3,
+                    selected: item.$1 == selectedIndex,
+                    onPressed: () => select(item.$1),
+                  ),
+                PopupMenuButton<int>(
+                  tooltip: '更多',
+                  icon: Badge(
+                    isLabelVisible: unread > 0,
+                    child: const Icon(Icons.more_horiz_rounded),
+                  ),
+                  onSelected: select,
+                  itemBuilder: (_) => [
+                    for (final entry in tools.entries)
+                      CheckedPopupMenuItem(
+                        value: entry.key,
+                        checked: selectedIndex == entry.key,
+                        child: Text(entry.value),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return NavigationRail(
       minWidth: compactWidth,
       backgroundColor: colors.surfaceContainerLowest,
-      labelType: NavigationRailLabelType.selected,
+      labelType: NavigationRailLabelType.all,
       selectedIndex: active < 0 ? null : active,
       scrollable: true,
       groupAlignment: -1,
@@ -138,7 +176,7 @@ class NavigationSidebar extends ConsumerWidget {
             for (final tool in [
               (
                 5,
-                'Agent',
+                '助手',
                 Icons.auto_awesome_outlined,
                 Icons.auto_awesome_rounded,
               ),
@@ -176,6 +214,57 @@ class NavigationSidebar extends ConsumerWidget {
             if (selectedIndex == 6)
               Text('设置', style: Theme.of(context).textTheme.labelMedium),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShortRailButton extends StatelessWidget {
+  const _ShortRailButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onPressed;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected
+        ? theme.colorScheme.onSecondaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Material(
+          color: selected
+              ? theme.colorScheme.secondaryContainer
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 21, color: color),
+                  Text(
+                    label,
+                    style: theme.textTheme.labelMedium?.copyWith(color: color),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

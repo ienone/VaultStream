@@ -298,6 +298,7 @@ GoRouter goRouter(Ref ref) {
                   ShellRoute(
                     observers: [backObserver()],
                     builder: (context, state, child) => SourcesPage(
+                      syncPlatform: state.uri.queryParameters['platform'],
                       tab:
                           state.uri.queryParameters['from'] == 'sync' &&
                               const {
@@ -312,7 +313,6 @@ GoRouter goRouter(Ref ref) {
                           : state.uri.path == '/sources/chats'
                           ? SourcesSection.monitoring
                           : SourcesSection.subscriptions,
-                      highlightRunId: state.uri.queryParameters['run'],
                       editor: state.uri.queryParameters['edit'],
                       platform: state.pathParameters['platform'],
                       accountDetail: child,
@@ -360,6 +360,12 @@ GoRouter goRouter(Ref ref) {
                       ),
                       GoRoute(
                         path: '/sources/sync',
+                        redirect: (context, state) {
+                          final runId = state.uri.queryParameters['run'];
+                          return runId == null || runId.isEmpty
+                              ? null
+                              : '/tasks/${Uri.encodeComponent(runId)}';
+                        },
                         pageBuilder: (context, state) =>
                             const NoTransitionPage(child: SizedBox.shrink()),
                       ),
@@ -380,6 +386,8 @@ GoRouter goRouter(Ref ref) {
                       final configuring = state.uri.path.contains('/rules');
                       final targets = state.uri.path.endsWith('/targets');
                       return DistributionPage(
+                        unsentOnly:
+                            state.uri.queryParameters['status'] == 'filtered',
                         initialTab: targets
                             ? 'targets'
                             : configuring

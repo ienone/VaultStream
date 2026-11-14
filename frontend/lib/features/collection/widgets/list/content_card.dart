@@ -22,6 +22,8 @@ class ContentCard extends ConsumerStatefulWidget {
   const ContentCard({
     super.key,
     required this.content,
+    required this.imageFailed,
+    required this.onImageFailureChanged,
     this.onTap,
     this.onDeleted,
     this.onLongPress,
@@ -35,6 +37,8 @@ class ContentCard extends ConsumerStatefulWidget {
   });
 
   final ShareCard content;
+  final bool imageFailed;
+  final ValueChanged<bool> onImageFailureChanged;
   final VoidCallback? onTap;
   final VoidCallback? onDeleted;
   final VoidCallback? onLongPress;
@@ -133,6 +137,8 @@ class _ContentCardState extends ConsumerState<ContentCard> {
                 children: [
                   CollectionCardPreview(
                     content: widget.content,
+                    imageFailed: widget.imageFailed,
+                    onImageFailureChanged: widget.onImageFailureChanged,
                     onTap: widget.onTap == null ? null : _handleTap,
                     isHovered: !widget.isSelectionMode && _isHovered,
                     transparentSurface: widget.isSelectionMode,

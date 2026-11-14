@@ -109,12 +109,12 @@ class _SourceEditorState extends State<SourceEditor> {
           leading: widget.showBackButton
               ? BackButton(onPressed: _busy ? null : widget.onClose)
               : null,
-          title: Text(widget.initialSource == null ? '添加来源' : '编辑来源'),
+          title: Text(widget.initialSource == null ? '添加订阅' : '编辑订阅'),
         ),
         body: AppPageBody(
           maxWidth: 720,
           child: ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             children: [
               AbsorbPointer(
                 absorbing: _busy,
@@ -135,7 +135,7 @@ class _SourceEditorState extends State<SourceEditor> {
                       )
                     else
                       Text(
-                        '来源类型：${meta.label}',
+                        meta.label,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),

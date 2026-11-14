@@ -27,8 +27,10 @@ class NetworkThumbnail extends ConsumerStatefulWidget {
     this.maxWidthDiskCache,
     this.errorIcon = Icons.hide_image_outlined,
     this.failureBuilder,
+    this.refreshBeforeLoad = false,
   });
 
+  final bool refreshBeforeLoad;
   final String imageUrl;
   final List<String> fallbackUrls;
   final MediaAsset? mediaAsset;
@@ -58,6 +60,7 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
   void initState() {
     super.initState();
     _resetResolver();
+    if (widget.refreshBeforeLoad) unawaited(_refreshManifest());
   }
 
   @override
@@ -233,17 +236,16 @@ class _NetworkThumbnailState extends ConsumerState<NetworkThumbnail> {
   Widget _buildImage(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final source = _session.current;
+    if (_refreshing) return _LoadingThumbnail(colorScheme: colorScheme);
     if (source == null &&
         _session.asset != null &&
         !_session.automaticRefreshAttempted) {
-      if (!_refreshing) {
-        final session = _session;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && identical(session, _session)) {
-            unawaited(_refreshManifest());
-          }
-        });
-      }
+      final session = _session;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(session, _session)) {
+          unawaited(_refreshManifest());
+        }
+      });
       return _LoadingThumbnail(colorScheme: colorScheme);
     }
     if (source == null) {
@@ -431,13 +433,20 @@ class _ErrorThumbnail extends StatelessWidget {
 }
 
 class CardMediaPreview extends StatelessWidget {
-  const CardMediaPreview({super.key, required this.asset, this.failureBuilder});
+  const CardMediaPreview({
+    super.key,
+    required this.asset,
+    this.failureBuilder,
+    this.refreshBeforeLoad = false,
+  });
+  final bool refreshBeforeLoad;
   final MediaAsset asset;
   final Widget Function(BuildContext, VoidCallback?)? failureBuilder;
   @override
   Widget build(BuildContext context) {
     final image = NetworkThumbnail(
       mediaAsset: asset,
+      refreshBeforeLoad: refreshBeforeLoad,
       purpose: MediaPurpose.card,
       borderRadius: AppShape.cardMediaBorder,
       failureBuilder: failureBuilder,

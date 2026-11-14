@@ -91,9 +91,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         Toast.show(
           context,
           result.message,
-          icon: result.needsAttention
-              ? Icons.warning_amber_rounded
-              : Icons.check_circle_outline_rounded,
+          icon: Icons.check_circle_outline_rounded,
         );
       }
     } finally {
@@ -223,9 +221,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                       MediaQuery.viewInsetsOf(context).bottom > 0
                   ? null
                   : NavigationBar(
+                      height: 64,
                       selectedIndex: widget.navigationShell.currentIndex,
                       labelBehavior:
-                          NavigationDestinationLabelBehavior.onlyShowSelected,
+                          NavigationDestinationLabelBehavior.alwaysShow,
                       onDestinationSelected: _onDestinationSelected,
                       destinations: const [
                         NavigationDestination(

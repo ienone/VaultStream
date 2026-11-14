@@ -482,7 +482,9 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
 
   Widget _buildReadingPane(TemplateContext ctx, bool supporting) {
     final article = ctx.detail.template == ContentTemplate.article;
-    final events = ref.watch(knowledgeEventsProvider(ctx.detail.id));
+    final events = ref.watch(
+      knowledgeEventsProvider((page: 1, title: '', contentId: ctx.detail.id)),
+    );
     supporting =
         supporting &&
         (widget.onToggleFocus == null || widget.focused) &&

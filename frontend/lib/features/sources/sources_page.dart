@@ -2,7 +2,6 @@ import '../../core/layout/app_page_body.dart';
 import '../../core/layout/app_list_detail_workspace.dart';
 import '../../core/network/api_client.dart';
 import '../discovery/providers/discovery_sources_provider.dart';
-import '../accounts/account_detail_page.dart';
 import 'source_editor.dart';
 
 import 'package:material_ui/material_ui.dart';
@@ -15,7 +14,6 @@ import '../automation/widgets/favorites_sync_automation_panel.dart';
 import 'subscriptions_view.dart';
 import '../settings/presentation/tabs/push_tab.dart';
 import '../settings/presentation/tabs/connection_tab.dart';
-import '../settings/providers/platform_health_provider.dart';
 
 enum SourcesSection {
   subscriptions('订阅源', '/sources'),
@@ -32,7 +30,7 @@ class SourcesPage extends ConsumerStatefulWidget {
   const SourcesPage({
     super.key,
     this.tab = SourcesSection.subscriptions,
-    this.highlightRunId,
+    this.syncPlatform,
     this.editor,
     this.platform,
     this.accountDetail,
@@ -41,7 +39,7 @@ class SourcesPage extends ConsumerStatefulWidget {
   final String? platform;
   final Widget? accountDetail;
   final SourcesSection tab;
-  final String? highlightRunId;
+  final String? syncPlatform;
 
   @override
   ConsumerState<SourcesPage> createState() => _SourcesPageState();
@@ -50,10 +48,6 @@ class SourcesPage extends ConsumerStatefulWidget {
 class _SourcesPageState extends ConsumerState<SourcesPage>
     with SingleTickerProviderStateMixin {
   late final _visitedTabs = <SourcesSection>{widget.tab};
-  late int? _lastSourceId = int.tryParse(widget.editor ?? '');
-  late String? _lastAccount = _isMessageAccount(widget.platform)
-      ? widget.platform
-      : null;
   int _editorRevision = 0;
 
   static bool _isMessageAccount(String? platform) =>
@@ -67,9 +61,6 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
   @override
   void didUpdateWidget(SourcesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final sourceId = int.tryParse(widget.editor ?? '');
-    if (sourceId != null) _lastSourceId = sourceId;
-    if (_isMessageAccount(widget.platform)) _lastAccount = widget.platform;
     if (oldWidget.tab != widget.tab) {
       _tabs.index = widget.tab.index;
       _visitedTabs.add(widget.tab);
@@ -94,27 +85,11 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
         context,
         availableSize: constraints.biggest,
       );
-      var editor = widget.editor;
-      if (editor == null &&
-          widget.tab == SourcesSection.subscriptions &&
-          wide) {
-        final sources = ref.watch(discoverySourcesProvider).value;
-        if (sources != null && sources.isNotEmpty) {
-          final remembered = sources
-              .where((source) => source.id == _lastSourceId)
-              .firstOrNull;
-          _lastSourceId = remembered?.id ?? sources.first.id;
-          editor = '$_lastSourceId';
-        }
-      }
-      final explicitAccount = _isMessageAccount(widget.platform);
-      final platform = explicitAccount
+      final editor = widget.editor;
+      final platform = _isMessageAccount(widget.platform)
           ? widget.platform
-          : widget.tab == SourcesSection.accounts && wide
-          ? _lastAccount ?? 'telegram'
           : null;
       final selectedId = editor ?? platform;
-      final explicitSelection = widget.editor != null || explicitAccount;
       void closeAccount() => context.go(
         GoRouterState.of(context).uri.queryParameters['from'] == 'sync'
             ? '/sources/sync'
@@ -123,23 +98,17 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
       return Scaffold(
         appBar: wide ? _workspaceHeader(context) : null,
         body: AppListDetailWorkspace(
-          emptyDetail: widget.tab == SourcesSection.subscriptions
-              ? WorkspacePlaceholder(
-                  loading: ref.watch(discoverySourcesProvider).isLoading,
-                  label: '选择订阅查看详情',
-                )
-              : null,
           selectedId: selectedId,
-          onClose: !explicitSelection
+          onClose: selectedId == null
               ? null
-              : widget.editor != null
+              : editor != null
               ? _closeEditor
               : closeAccount,
           list: _buildOverview(
             context,
             wide: wide,
             editor: editor,
-            platform: widget.platform ?? platform,
+            platform: widget.platform,
           ),
           detailBuilder: (_, _, _) => editor != null
               ? _buildEditor(
@@ -147,9 +116,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
                   editor,
                   showBackButton: widget.editor != null,
                 )
-              : explicitAccount
-              ? widget.accountDetail!
-              : AccountDetailPage(platform: platform!, showBackButton: false),
+              : widget.accountDetail ?? const SizedBox.shrink(),
         ),
       );
     },
@@ -233,14 +200,6 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
 
   PreferredSizeWidget _workspaceHeader(BuildContext context) => WorkspaceAppBar(
     title: '来源',
-    actions: [
-      if (widget.tab == SourcesSection.accounts)
-        IconButton(
-          tooltip: '刷新账号状态',
-          onPressed: () => ref.invalidate(platformHealthProvider),
-          icon: const Icon(Icons.refresh_rounded),
-        ),
-    ],
     tabs: WorkspaceTabs(
       controller: _tabs,
       labels: [for (final section in SourcesSection.values) section.label],
@@ -290,7 +249,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
             ? TickerMode(
                 enabled: widget.tab == SourcesSection.sync,
                 child: FavoritesSyncAutomationPanel(
-                  highlightRunId: widget.highlightRunId,
+                  initialPlatform: widget.syncPlatform,
                 ),
               )
             : const SizedBox.shrink(),

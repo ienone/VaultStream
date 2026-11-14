@@ -11,6 +11,7 @@ import 'collection_card_text.dart';
 class CollectionGridMetrics {
   CollectionGridMetrics(
     List<ShareCard> items,
+    Set<int> failedImageIds,
     double overviewWidth,
     double listWidth,
     double scale,
@@ -20,7 +21,9 @@ class CollectionGridMetrics {
     final imageHeight =
         ((overviewWidth - 24 - 8 * (columns - 1)) / columns - 24) / 2.4;
     for (final item in items) {
-      final hasImage = item.mediaAssets.cardImage != null;
+      final asset = item.mediaAssets.previewFor(item.contentType);
+      final imageFailed = failedImageIds.contains(asset?.id);
+      final hasImage = asset != null && !imageFailed;
       final status =
           item.isNsfw ||
           ['parse_failed', 'processing', 'unprocessed'].contains(item.status);
@@ -56,7 +59,10 @@ class CollectionGridMetrics {
           ? 0
           : 8 + measure(copy.supporting, textTheme.bodySmall!, 2);
       final statusHeight = status ? 16 + 16 * scale : 0;
-      final text = primaryHeight + supportingHeight + statusHeight;
+      final controlsHeight =
+          statusHeight +
+          (imageFailed ? CollectionCardText.retryHeight(scale) : 0);
+      final text = primaryHeight + supportingHeight + controlsHeight;
       final listTextWidth =
           (listWidth -
                   48 -
@@ -78,7 +84,7 @@ class CollectionGridMetrics {
                       2,
                       width: listTextWidth,
                     )) +
-          statusHeight;
+          controlsHeight;
       final base = 24 + 32 * scale + 8;
       listHeights.add(base + math.max(hasImage ? 64 : 0, listText) + 4);
       gridHeights.add(

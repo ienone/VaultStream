@@ -11,14 +11,12 @@ import '../../../../theme/design_tokens.dart';
 import '../../models/content.dart';
 import '../../../../core/media/media_asset.dart';
 
-/// 收藏卡片。
-///
-/// 信息层级固定为三层，所有模板共用同一套来源与状态语义：
-/// 来源身份与时间、原始标题和正文摘录、实际媒体与必要处理状态。
-class CollectionCardPreview extends StatelessWidget {
+class CollectionCardPreview extends StatefulWidget {
   const CollectionCardPreview({
     super.key,
     required this.content,
+    required this.imageFailed,
+    required this.onImageFailureChanged,
     this.onTap,
     this.isHovered = false,
     this.isEmphasized = false,
@@ -28,6 +26,8 @@ class CollectionCardPreview extends StatelessWidget {
   });
 
   final ShareCard content;
+  final bool imageFailed;
+  final ValueChanged<bool> onImageFailureChanged;
   final VoidCallback? onTap;
   final bool isHovered;
   final bool isEmphasized;
@@ -36,85 +36,11 @@ class CollectionCardPreview extends StatelessWidget {
   final bool isList;
 
   @override
-  Widget build(BuildContext context) {
-    return _CardSurface(
-      content: content,
-      onTap: onTap,
-      mediaAsset: content.mediaAssets.cardImage,
-      isList: isList,
-      isHovered: isHovered,
-      isEmphasized: isEmphasized,
-      trailingSpace: trailingSpace,
-      transparentSurface: transparentSurface,
-    );
-  }
+  State<CollectionCardPreview> createState() => _CollectionCardPreviewState();
 }
 
-class _CardSurface extends StatefulWidget {
-  const _CardSurface({
-    required this.content,
-    required this.onTap,
-    required this.mediaAsset,
-    required this.isHovered,
-    required this.isEmphasized,
-    required this.trailingSpace,
-    required this.transparentSurface,
-    required this.isList,
-  });
-
-  final ShareCard content;
-  final VoidCallback? onTap;
-  final MediaAsset? mediaAsset;
-  final bool isHovered;
-  final bool isEmphasized;
-  final double trailingSpace;
-  final bool transparentSurface;
-  final bool isList;
-
-  @override
-  State<_CardSurface> createState() => _CardSurfaceState();
-}
-
-class _CardSurfaceState extends State<_CardSurface> {
-  bool _imageFailed = false;
-  int _imageRevision = 0;
-  VoidCallback? _retryImage;
-
-  @override
-  void didUpdateWidget(_CardSurface oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.content.id != widget.content.id ||
-        oldWidget.mediaAsset != widget.mediaAsset) {
-      _imageRevision++;
-      _imageFailed = false;
-      _retryImage = null;
-    }
-  }
-
-  Widget _failedMedia(BuildContext context, VoidCallback? retry) {
-    if (!_imageFailed) {
-      final revision = _imageRevision;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || revision != _imageRevision || _imageFailed) return;
-        setState(() {
-          _imageFailed = true;
-          _retryImage = retry;
-        });
-      });
-    }
-    return const SizedBox.shrink();
-  }
-
-  void _retryFailedImage() {
-    final retry = _retryImage;
-    if (retry == null) return;
-    setState(() {
-      _imageRevision++;
-      _imageFailed = false;
-      _retryImage = null;
-    });
-    retry();
-  }
+class _CollectionCardPreviewState extends State<CollectionCardPreview> {
+  int? _retryAssetId;
 
   @override
   Widget build(BuildContext context) {
@@ -122,7 +48,10 @@ class _CardSurfaceState extends State<_CardSurface> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final copy = CollectionCardText(content);
+    final asset = content.mediaAssets.previewFor(content.contentType);
+    final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
 
+    final updateImageFailure = widget.onImageFailureChanged;
     final metadata = _CardMeta(content: content);
     final text = Column(
       mainAxisSize: MainAxisSize.min,
@@ -148,19 +77,42 @@ class _CardSurfaceState extends State<_CardSurface> {
             ),
           ),
         ],
+        if (widget.imageFailed && asset != null)
+          SizedBox(
+            height: CollectionCardText.retryHeight(scale),
+            child: TextButton(
+              onPressed: () {
+                _retryAssetId = asset.id;
+                widget.onImageFailureChanged(false);
+              },
+              style: TextButton.styleFrom(
+                minimumSize: const Size(48, 0),
+                padding: const EdgeInsetsDirectional.only(end: AppSpacing.xs),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: theme.textTheme.labelMedium,
+              ),
+              child: const Text('重试图片'),
+            ),
+          ),
         if (_statusLabel != null) ...[
           const SizedBox(height: AppSpacing.xs),
           _StatusChip(label: _statusLabel!, isError: _statusIsError),
         ],
       ],
     );
-    final media = widget.mediaAsset == null
+    final media = asset == null || widget.imageFailed
         ? null
         : ClipRRect(
             borderRadius: AppShape.cardMediaBorder,
             child: CardMediaPreview(
-              asset: widget.mediaAsset!,
-              failureBuilder: _failedMedia,
+              asset: asset,
+              refreshBeforeLoad: _retryAssetId == asset.id,
+              failureBuilder: (imageContext, _) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (imageContext.mounted) updateImageFailure(true);
+                });
+                return const SizedBox.shrink();
+              },
             ),
           );
     return AnimatedContainer(
@@ -252,51 +204,14 @@ class _CardSurfaceState extends State<_CardSurface> {
                               right: 0,
                               width: mediaWidth,
                               height: mediaHeight,
-                              child: IgnorePointer(
-                                child: Opacity(
-                                  opacity: _imageFailed ? 0 : 1,
-                                  child: media,
-                                ),
-                              ),
+                              child: IgnorePointer(child: media),
                             ),
                             Positioned(
-                              top: _imageFailed ? 0 : textTop,
+                              top: textTop,
                               left: 0,
                               right: (88 + AppSpacing.sm) * progress,
                               child: text,
                             ),
-                            if (_imageFailed && _retryImage != null)
-                              Positioned(
-                                right: 0,
-                                bottom: 0,
-                                width: 112 + (88 - 112) * progress,
-                                height: 48,
-                                child: progress >= .5 || textScale > 1.4
-                                    ? Align(
-                                        alignment: Alignment.bottomRight,
-                                        child: IconButton(
-                                          onPressed: _retryFailedImage,
-                                          tooltip: '重试图片',
-                                          icon: const Icon(
-                                            Icons.refresh_rounded,
-                                          ),
-                                        ),
-                                      )
-                                    : TextButton.icon(
-                                        onPressed: _retryFailedImage,
-                                        icon: const Icon(
-                                          Icons.refresh_rounded,
-                                          size: 16,
-                                        ),
-                                        label: const Text('重试图片'),
-                                        style: TextButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                          ),
-                                          textStyle: theme.textTheme.labelSmall,
-                                        ),
-                                      ),
-                              ),
                           ],
                         ),
                       );
@@ -339,7 +254,8 @@ class _CardMeta extends StatelessWidget {
     ].contains(Uri.tryParse(content.url)?.scheme);
     final source = switch (content.platform.toLowerCase()) {
       'universal' => '网页',
-      'bilibili' => 'Bilibili',
+      'bilibili' => '哔哩哔哩',
+      'twitter' => 'X',
       'zhihu' => '知乎',
       'xiaohongshu' => '小红书',
       'weibo' => '微博',

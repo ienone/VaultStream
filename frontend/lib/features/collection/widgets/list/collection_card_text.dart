@@ -34,6 +34,9 @@ class CollectionCardText {
   late final String supporting;
   int get maxLines => hasTitle ? 2 : 4;
 
+  static double retryHeight(double scale) =>
+      (24 * scale + 8).clamp(48, double.infinity);
+
   static String _mediaOrSourceLabel(ShareCard content) {
     final types = content.mediaAssets
         .where((asset) => asset.role != MediaRole.avatar)

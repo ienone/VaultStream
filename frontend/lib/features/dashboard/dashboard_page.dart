@@ -1,5 +1,3 @@
-import '../events/event_detail_page.dart';
-import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../core/utils/toast.dart';
@@ -14,7 +12,7 @@ import '../../layout/root_page_actions.dart';
 
 import 'package:material_ui/material_ui.dart';
 
-import '../../core/widgets/app_choice_segments.dart';
+import '../../core/widgets/workspace_tabs.dart';
 
 import '../../core/layout/workspace_geometry.dart';
 
@@ -25,7 +23,6 @@ import '../../core/layout/responsive_layout.dart';
 import '../../core/media/media_asset.dart';
 import '../../core/network/api_client.dart';
 import '../../core/widgets/network_thumbnail.dart';
-import '../../core/widgets/metadata_wrap.dart';
 import '../../theme/design_tokens.dart';
 import '../discovery/models/discovery_models.dart';
 import '../discovery/providers/discovery_feed_provider.dart';
@@ -40,47 +37,10 @@ class DashboardPage extends ConsumerStatefulWidget {
   ConsumerState<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends ConsumerState<DashboardPage> {
+class _DashboardPageState extends ConsumerState<DashboardPage>
+    with SingleTickerProviderStateMixin {
+  late final _tabs = TabController(length: 3, vsync: this);
   ShareCard? _preview;
-  int? _lastReadId;
-  LocalHistoryEntry? _readerHistory;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncHistory();
-    });
-  }
-
-  @override
-  void didUpdateWidget(DashboardPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncHistory();
-    });
-  }
-
-  void _syncHistory() {
-    if (widget.selectedContentId == null) {
-      final entry = _readerHistory;
-      _readerHistory = null;
-      entry?.remove();
-    } else if (_readerHistory == null) {
-      late final LocalHistoryEntry entry;
-      entry = LocalHistoryEntry(
-        impliesAppBarDismissal: false,
-        onRemove: () {
-          if (_readerHistory != entry) return;
-          _readerHistory = null;
-          _closeReader();
-        },
-      );
-      _readerHistory = entry;
-      ModalRoute.of(context)!.addLocalHistoryEntry(entry);
-    }
-  }
-
   void _openItem(DiscoveryItem item, BuildContext sourceContext) {
     if (widget.selectedContentId == item.id) return;
     _preview = ShareCard(
@@ -120,7 +80,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   @override
   void dispose() {
-    _readerHistory = null;
+    _tabs.dispose();
     super.dispose();
   }
 
@@ -128,11 +88,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   final Set<int> _busyItems = <int>{};
   DiscoveryFeedView _view = DiscoveryFeedView.recent;
   bool _showEventUpdates = false;
-  int? _selectedEventId;
+  int _eventsPage = 1;
+  EventPageQuery get _eventsQuery =>
+      (page: _eventsPage, title: '', contentId: null);
 
   Future<void> _refresh() async {
     if (_showEventUpdates) {
-      final _ = await ref.refresh(activeKnowledgeEventsProvider.future);
+      final _ = await ref.refresh(knowledgeEventsProvider(_eventsQuery).future);
       return;
     }
     await ref.read(discoveryFeedProvider.notifier).refresh();
@@ -152,6 +114,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   Future<void> _showView(DiscoveryFeedView view) async {
     if (!_showEventUpdates && _view == view) return;
+    _closeReader();
+    _tabs.animateTo(view == DiscoveryFeedView.recent ? 0 : 1);
     setState(() {
       _showEventUpdates = false;
       _view = view;
@@ -165,6 +129,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   void _showEvents() {
     if (_showEventUpdates) return;
+    _closeReader();
     setState(() => _showEventUpdates = true);
   }
 
@@ -180,10 +145,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           .actOnItem(item.id, stateValue: stateValue);
       if (!mounted) return;
 
+      if (item.id == widget.selectedContentId) _closeReader();
       if (stateValue == 'promoted') {
         Toast.show(
           context,
-          '已收录到收藏库',
+          '已收藏',
           action: SnackBarAction(
             label: '查看',
             onPressed: () => context.push('/collection/${item.id}'),
@@ -192,7 +158,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       } else if (stateValue == 'snoozed') {
         Toast.show(
           context,
-          '已移到稍后处理',
+          '已移到稍后看',
           action: SnackBarAction(
             label: '撤销',
             onPressed: () => _restoreItem(item),
@@ -207,7 +173,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             onPressed: () => _restoreItem(
               item,
               stateValue: 'snoozed',
-              successMessage: '已放回稍后处理',
+              successMessage: '已放回稍后看',
             ),
           ),
         );
@@ -253,55 +219,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) =>
-        _buildWorkspace(context, constraints.biggest),
-  );
-
-  Widget _buildWorkspace(BuildContext context, Size availableSize) {
-    final feed = ref.watch(discoveryFeedProvider);
-    final metrics = WindowMetrics.of(context);
-    final items = feed.value?.items ?? const <DiscoveryItem>[];
-    final previous = items
-        .where((item) => item.id == (_lastReadId ?? _preview?.id))
-        .firstOrNull;
-    final defaultItem = previous ?? items.firstOrNull;
-    final selectedId =
-        widget.selectedContentId ??
-        (!_showEventUpdates &&
-                CollectionWorkspace.supportsSplit(
-                  context,
-                  availableSize: availableSize,
-                )
-            ? defaultItem?.id
-            : null);
-
-    final wideEvents =
-        _showEventUpdates &&
-        CollectionWorkspace.supportsSplit(
-          context,
-          availableSize: availableSize,
-        );
-    final events = wideEvents ? ref.watch(activeKnowledgeEventsProvider) : null;
-    final eventItems = events?.value?.items;
-    final activeEvent =
-        eventItems
-            ?.where((event) => event.id == _selectedEventId)
-            .firstOrNull ??
-        eventItems?.firstOrNull;
+  Widget build(BuildContext context) {
+    final feed = _showEventUpdates ? null : ref.watch(discoveryFeedProvider);
+    final selectedId = widget.selectedContentId;
     final content = _showEventUpdates
         ? _EventUpdatesFeed(
+            page: _eventsPage,
+            onPage: (page) => setState(() => _eventsPage = page),
             onRefresh: _refresh,
-            selectedId: wideEvents ? activeEvent?.id : null,
-            onSelect: (id) {
-              if (wideEvents) {
-                setState(() => _selectedEventId = id);
-              } else {
-                context.push('/events/$id');
-              }
-            },
+            onSelect: (id) => context.push('/events/$id'),
           )
-        : feed.when(
+        : feed!.when(
             loading: () => const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(child: CircularProgressIndicator()),
@@ -368,23 +296,35 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                   ),
                 );
               }
-              children.add(const SizedBox(height: AppSpacing.xxl));
+              children.add(const SizedBox(height: AppSpacing.sm));
               return _FeedSliverList(children: children);
             },
           );
-    if (selectedId != null) _lastReadId = selectedId;
     final list = Builder(
       builder: (context) {
         final split = (WorkspaceGeometry.maybeOf(context)?.progress ?? 0) > 0;
-        final horizontalPadding = split ? 12.0 : 24.0;
+        final horizontalPadding =
+            split || MediaQuery.sizeOf(context).width < 600 ? 12.0 : 24.0;
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            leading: buildRootPageLeading(context),
-            toolbarHeight: metrics.toolbarHeight,
-            title: const Text('动态'),
-            actions: [const RootPageActions()],
+          appBar: WorkspaceAppBar(
+            title: '动态',
+            tabs: WorkspaceTabs(
+              controller: _tabs,
+              labels: const ['最新', '稍后看', '事件'],
+              onTap: (index) {
+                if (index == 2) {
+                  _showEvents();
+                } else {
+                  _showView(
+                    index == 0
+                        ? DiscoveryFeedView.recent
+                        : DiscoveryFeedView.later,
+                  );
+                }
+              },
+            ),
+            actions: const [RootPageActions()],
           ),
           body: RefreshIndicator(
             onRefresh: _refresh,
@@ -400,32 +340,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     horizontalPadding,
                     AppSpacing.xl,
                   ),
-                  sliver: SliverMainAxisGroup(
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 880),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: AppSpacing.sm,
-                                ),
-                                child: _FeedViewSelector(
-                                  view: _view,
-                                  showEvents: _showEventUpdates,
-                                  onChanged: _showView,
-                                  onShowEvents: _showEvents,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      content,
-                    ],
-                  ),
+                  sliver: content,
                 ),
               ],
             ),
@@ -433,65 +348,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         );
       },
     );
-    if (wideEvents) {
-      return AppListDetailWorkspace(
-        list: list,
-        selectedId: activeEvent?.id,
-        emptyDetail: WorkspacePlaceholder(
-          loading: events!.isLoading,
-          label: '暂无事件详情',
-        ),
-        detailBuilder: (_, _, _) =>
-            EventDetailPage(eventId: activeEvent!.id, embedded: true),
-      );
-    }
     return CollectionWorkspace(
-      emptyDetail: _showEventUpdates
-          ? null
-          : WorkspacePlaceholder(loading: feed.isLoading, label: '暂无动态详情'),
       selectedId: selectedId,
-      defaultSelection: widget.selectedContentId == null,
       preview: _preview?.id == selectedId ? _preview : null,
       onClose: _closeReader,
       list: list,
     );
   }
-}
-
-class _FeedViewSelector extends StatelessWidget {
-  const _FeedViewSelector({
-    required this.view,
-    required this.showEvents,
-    required this.onChanged,
-    required this.onShowEvents,
-  });
-
-  final DiscoveryFeedView view;
-  final bool showEvents;
-  final ValueChanged<DiscoveryFeedView> onChanged;
-  final VoidCallback onShowEvents;
-
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 480),
-      child: AppChoiceSegments<int>(
-        options: const {0: '新动态', 1: '稍后处理', 2: '事件变化'},
-        selected: {showEvents ? 2 : (view == DiscoveryFeedView.recent ? 0 : 1)},
-        onChanged: (values) {
-          final next = values.first;
-          if (next == 2) {
-            onShowEvents();
-          } else {
-            onChanged(
-              next == 0 ? DiscoveryFeedView.recent : DiscoveryFeedView.later,
-            );
-          }
-        },
-      ),
-    ),
-  );
 }
 
 class _FeedSliverList extends StatelessWidget {
@@ -501,7 +364,7 @@ class _FeedSliverList extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SliverList.separated(
     itemCount: children.length,
-    separatorBuilder: (_, _) => const SizedBox(height: AppSpacing.sm),
+    separatorBuilder: (_, _) => const SizedBox(height: 4),
     itemBuilder: (context, index) => ContentFlowItem(child: children[index]),
   );
 }
@@ -509,16 +372,22 @@ class _FeedSliverList extends StatelessWidget {
 class _EventUpdatesFeed extends ConsumerWidget {
   const _EventUpdatesFeed({
     required this.onRefresh,
-    required this.selectedId,
+    required this.page,
+    required this.onPage,
+
     required this.onSelect,
   });
-  final int? selectedId;
+  final int page;
+  final ValueChanged<int> onPage;
+
   final ValueChanged<int> onSelect;
   final Future<void> Function() onRefresh;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final events = ref.watch(activeKnowledgeEventsProvider);
+    final events = ref.watch(
+      knowledgeEventsProvider((page: page, title: '', contentId: null)),
+    );
     return events.when(
       loading: () => const SliverFillRemaining(
         hasScrollBody: false,
@@ -538,12 +407,25 @@ class _EventUpdatesFeed extends ConsumerWidget {
           else ...[
             _EventFeedLead(total: data.total),
             for (final event in data.items)
-              _EventUpdateCard(
-                event: event,
-                selected: selectedId == event.id,
-                onTap: () => onSelect(event.id),
-              ),
+              _EventUpdateCard(event: event, onTap: () => onSelect(event.id)),
           ],
+          if (page > 1 || data.hasMore)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  tooltip: '上一页',
+                  icon: const Icon(Icons.chevron_left),
+                  onPressed: page > 1 ? () => onPage(page - 1) : null,
+                ),
+                Text('第 $page 页'),
+                IconButton(
+                  tooltip: '下一页',
+                  icon: const Icon(Icons.chevron_right),
+                  onPressed: data.hasMore ? () => onPage(page + 1) : null,
+                ),
+              ],
+            ),
           const SizedBox(height: AppSpacing.xxl),
         ],
       ),
@@ -568,12 +450,7 @@ class _EventFeedLead extends StatelessWidget {
 }
 
 class _EventUpdateCard extends StatelessWidget {
-  const _EventUpdateCard({
-    required this.event,
-    required this.selected,
-    required this.onTap,
-  });
-  final bool selected;
+  const _EventUpdateCard({required this.event, required this.onTap});
   final VoidCallback onTap;
 
   final KnowledgeEventSummary event;
@@ -583,7 +460,7 @@ class _EventUpdateCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Material(
-      color: selected ? scheme.secondaryContainer : scheme.surfaceContainerLow,
+      color: scheme.surfaceContainerLowest,
       borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -737,52 +614,14 @@ class _FeedCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final asset = item.mediaAssets.cardImage;
+    final asset = item.mediaAssets.previewFor(item.contentType);
     final title = _displayTitle(item);
 
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (title.isNotEmpty)
-          SizedBox(
-            height:
-                MediaQuery.textScalerOf(context)
-                    .scale(theme.textTheme.titleMedium!.fontSize!) *
-                1.35 *
-                2,
-            child: Text(
-              title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-          ),
-        if (_displaySummary(item) case final summary?) ...[
-          if (title.isNotEmpty) const SizedBox(height: AppSpacing.xs),
-          SizedBox(
-            height:
-                MediaQuery.textScalerOf(context)
-                    .scale(theme.textTheme.bodyMedium!.fontSize!) *
-                1.45 *
-                2,
-            child: Text(
-              summary,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: title.isEmpty
-                    ? scheme.onSurface
-                    : scheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
+    final excerpt = _displaySummary(item);
+    final heading = title.isNotEmpty
+        ? title
+        : excerpt ?? Uri.tryParse(item.url)?.host ?? '';
+    final short = WindowMetrics.of(context).isShortLandscape;
     return Material(
       color: selected
           ? scheme.secondaryContainer
@@ -792,62 +631,78 @@ class _FeedCard extends StatelessWidget {
       child: InkWell(
         onTap: busy ? null : () => onOpen(context),
         child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
+          padding: EdgeInsetsDirectional.fromSTEB(16, short ? 8 : 12, 8, 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SourceLine(item: item),
-              const SizedBox(height: AppSpacing.sm),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  if (asset == null) return content;
-                  final textScale =
-                      MediaQuery.textScalerOf(context).scale(16) / 16;
-                  const coverWidth = 88.0;
-                  final stacked =
-                      constraints.maxWidth - coverWidth - AppSpacing.md <
-                      120 * textScale;
-                  final cover = SizedBox(
-                    width: stacked ? constraints.maxWidth : coverWidth,
-                    height: stacked
-                        ? (constraints.maxWidth / 2.4).clamp(80.0, 160.0)
-                        : coverWidth * 0.72,
-                    child: CardMediaPreview(asset: asset),
-                  );
-                  if (stacked) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: 8),
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final showCover =
+                        asset != null &&
+                        box.maxWidth /
+                                MediaQuery.textScalerOf(context).scale(1) >=
+                            220;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        cover,
-                        const SizedBox(height: AppSpacing.sm),
-                        content,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                heading,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (title.isNotEmpty && excerpt != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  excerpt,
+                                  maxLines: short ? 1 : 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (showCover)
+                          _FeedThumbnail(
+                            key: ValueKey(asset),
+                            asset: asset,
+                            short: short,
+                          ),
                       ],
                     );
-                  }
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: content),
-                      const SizedBox(width: AppSpacing.md),
-                      cover,
-                    ],
-                  );
-                },
+                  },
+                ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.xs,
-                runSpacing: AppSpacing.xs,
-                crossAxisAlignment: WrapCrossAlignment.center,
+              Row(
                 children: [
-                  TextButton.icon(
+                  Expanded(child: _SourceLine(item: item)),
+                  IconButton(
+                    tooltip: '收藏',
                     onPressed: busy ? null : onPromote,
-                    icon: const Icon(Icons.bookmark_add_outlined, size: 19),
-                    label: const Text('收录'),
+                    icon: busy
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.bookmark_add_outlined, size: 20),
                   ),
                   PopupMenuButton<String>(
                     tooltip: '更多操作',
                     enabled: !busy,
+                    icon: const Icon(Icons.more_horiz_rounded, size: 20),
                     onSelected: (action) {
                       switch (action) {
                         case 'push':
@@ -862,26 +717,16 @@ class _FeedCard extends StatelessWidget {
                     },
                     itemBuilder: (_) => [
                       if (view == DiscoveryFeedView.recent)
-                        const PopupMenuItem(
-                          value: 'later',
-                          child: Text('稍后处理'),
-                        ),
+                        const PopupMenuItem(value: 'later', child: Text('稍后看')),
                       if (view == DiscoveryFeedView.later)
                         const PopupMenuItem(
                           value: 'restore',
-                          child: Text('移回动态'),
+                          child: Text('移回最新动态'),
                         ),
                       const PopupMenuItem(value: 'push', child: Text('推送')),
                       const PopupMenuItem(value: 'ignore', child: Text('忽略')),
                     ],
                   ),
-                  if (busy) ...[
-                    const SizedBox(width: AppSpacing.xs),
-                    const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ],
                 ],
               ),
             ],
@@ -892,48 +737,69 @@ class _FeedCard extends StatelessWidget {
   }
 }
 
+/// A failed optional thumbnail relinquishes its space to the headline.
+class _FeedThumbnail extends StatefulWidget {
+  const _FeedThumbnail({super.key, required this.asset, required this.short});
+  final MediaAsset asset;
+  final bool short;
+
+  @override
+  State<_FeedThumbnail> createState() => _FeedThumbnailState();
+}
+
+class _FeedThumbnailState extends State<_FeedThumbnail> {
+  bool _failed = false;
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: SizedBox(
+          width: widget.short ? 72 : 76,
+          height: widget.short ? 52 : 58,
+          child: CardMediaPreview(
+            asset: widget.asset,
+            failureBuilder: (_, _) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_failed) setState(() => _failed = true);
+              });
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SourceLine extends StatelessWidget {
   const _SourceLine({required this.item});
-
   final DiscoveryItem item;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final sourceNames = item.sourceNames.take(2);
-    final sources = [
-      if (sourceNames.isNotEmpty)
-        ...sourceNames
-      else
-        _sourceKindLabel(
-          item.sourceKinds.isNotEmpty
-              ? item.sourceKinds.first
-              : item.sourceType,
-        ),
-      if (item.sourceCount > sourceNames.length && item.sourceCount > 1)
-        '共 ${item.sourceCount} 个来源',
-    ].where((source) => source.isNotEmpty).toList(growable: false);
-
-    final sourceLabel = MetadataWrap(
-      items: sources,
+    final names = item.sourceNames.where((name) => name.trim().isNotEmpty);
+    final source =
+        names.firstOrNull ??
+        _sourceKindLabel(item.sourceKinds.firstOrNull ?? item.sourceType);
+    final when = _itemTime(item);
+    final time =
+        '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
+    final fields = [
+      if (source.isNotEmpty) source,
+      if (item.sourceCount > 1) '等 ${item.sourceCount} 个来源',
+      time,
+    ];
+    return Text(
+      fields.join(' · '),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodySmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),
-    );
-    final timeLabel = Text(
-      _relativeTime(_itemTime(item)),
-      style: theme.textTheme.bodySmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    );
-    if (sources.isEmpty) return timeLabel;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: sourceLabel),
-        const SizedBox(width: AppSpacing.sm),
-        timeLabel,
-      ],
     );
   }
 }
@@ -960,7 +826,7 @@ class _EmptyFeed extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            view == DiscoveryFeedView.recent ? '暂时没有新动态' : '没有稍后处理的动态',
+            view == DiscoveryFeedView.recent ? '暂时没有新动态' : '没有稍后看的动态',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
@@ -975,9 +841,7 @@ class _EmptyFeed extends StatelessWidget {
                     ? Icons.add_link_rounded
                     : Icons.arrow_back_rounded,
               ),
-              label: Text(
-                view == DiscoveryFeedView.recent ? '管理信息来源' : '查看新动态',
-              ),
+              label: Text(view == DiscoveryFeedView.recent ? '管理来源' : '查看新动态'),
             ),
           ),
         ],

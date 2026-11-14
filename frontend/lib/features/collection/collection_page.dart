@@ -1,4 +1,3 @@
-import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../layout/root_page_actions.dart';
@@ -55,7 +54,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
   String? _lastAppliedRouteFilterSignature;
-  LocalHistoryEntry? _readerHistory;
   ShareCard? _preview;
 
   @override
@@ -65,7 +63,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyRouteFilters();
       if (mounted) {
-        _syncReaderHistory();
         _syncSearchText(ref.read(collectionFilterProvider).searchQuery);
       }
     });
@@ -76,28 +73,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     super.didUpdateWidget(oldWidget);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyRouteFilters();
-      if (mounted) _syncReaderHistory();
     });
-  }
-
-  void _syncReaderHistory() {
-    if (widget.selectedContentId == null) {
-      final entry = _readerHistory;
-      _readerHistory = null;
-      entry?.remove();
-    } else if (_readerHistory == null) {
-      late final LocalHistoryEntry entry;
-      entry = LocalHistoryEntry(
-        impliesAppBarDismissal: false,
-        onRemove: () {
-          if (_readerHistory != entry) return;
-          _readerHistory = null;
-          _closeReader();
-        },
-      );
-      _readerHistory = entry;
-      ModalRoute.of(context)!.addLocalHistoryEntry(entry);
-    }
   }
 
   void _openContent(ShareCard content, BuildContext sourceContext) {
@@ -184,9 +160,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   @override
   void dispose() {
     // 离开页面时不清空筛选：从详情返回必须恢复原有查询与结果。
-    final entry = _readerHistory;
-    _readerHistory = null;
-    entry?.remove();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
@@ -231,10 +204,6 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
     return CollectionWorkspace(
-      emptyDetail: WorkspacePlaceholder(
-        loading: collectionAsync.isLoading,
-        label: '选择收藏查看详情',
-      ),
       selectedId: widget.selectedContentId,
       preview: _preview?.id == widget.selectedContentId ? _preview : null,
       onClose: _closeReader,

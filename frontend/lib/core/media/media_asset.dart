@@ -181,8 +181,16 @@ class MediaAsset {
 
 extension MediaAssetSelection on Iterable<MediaAsset> {
   // The API orders card assets by cover role and document position.
-  MediaAsset? get cardImage =>
-      where((asset) => asset.mediaType == MediaType.image).firstOrNull;
+  MediaAsset? get cardImage => where(
+    (asset) =>
+        asset.mediaType == MediaType.image && asset.role != MediaRole.avatar,
+  ).firstOrNull;
+
+  MediaAsset? previewFor(String? contentType) =>
+      cardImage ??
+      (contentType == 'user_profile'
+          ? firstFor(role: MediaRole.avatar, type: MediaType.image)
+          : null);
 
   MediaAsset? firstFor({required MediaRole role, MediaType? type}) {
     for (final asset in this) {

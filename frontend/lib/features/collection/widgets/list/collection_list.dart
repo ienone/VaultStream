@@ -11,6 +11,7 @@ import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../../theme/design_tokens.dart';
+import '../../../../core/media/media_asset.dart';
 import '../../models/content.dart';
 import 'content_card.dart';
 
@@ -60,6 +61,7 @@ class _CollectionListState extends State<CollectionList> {
   final _geometry = CollectionGridScrollGeometry();
   final _cards = <int, Widget>{};
   final _keys = <int, GlobalKey>{};
+  Set<int> _failedImageIds = {};
   Offset? _down, _position;
   int? _anchor;
   Set<int> _before = {};
@@ -196,6 +198,13 @@ class _CollectionListState extends State<CollectionList> {
     }
     final ids = widget.items.map((e) => e.id).toSet();
     _keys.removeWhere((id, _) => !ids.contains(id));
+    if (!identical(oldWidget.items, widget.items) &&
+        _failedImageIds.isNotEmpty) {
+      final covers = widget.items.map(
+        (item) => item.mediaAssets.previewFor(item.contentType)?.id,
+      );
+      _failedImageIds = _failedImageIds.where(covers.toSet().contains).toSet();
+    }
   }
 
   @override
@@ -243,6 +252,7 @@ class _CollectionListState extends State<CollectionList> {
               _CollectionGridSliver(
                 items: widget.items,
                 scrollGeometry: _geometry,
+                failedImageIds: _failedImageIds,
                 children: SliverChildBuilderDelegate(
                   (context, index) => KeyedSubtree(
                     key: ValueKey(widget.items[index].id),
@@ -284,6 +294,7 @@ class _CollectionListState extends State<CollectionList> {
 
   Widget _card(int index) {
     final item = widget.items[index];
+    final coverId = item.mediaAssets.previewFor(item.contentType)?.id;
     final selected =
         widget.isSelectionMode && widget.selectedIds.contains(item.id);
     bool selectedAt(int i) =>
@@ -309,6 +320,21 @@ class _CollectionListState extends State<CollectionList> {
       ),
       child: ContentCard(
         content: item,
+        imageFailed: _failedImageIds.contains(coverId),
+        onImageFailureChanged: (failed) {
+          if (coverId == null || failed == _failedImageIds.contains(coverId)) {
+            return;
+          }
+          setState(() {
+            _failedImageIds = {..._failedImageIds};
+            if (failed) {
+              _failedImageIds.add(coverId);
+            } else {
+              _failedImageIds.remove(coverId);
+            }
+            _cards.remove(item.id);
+          });
+        },
         onDeleted: () => widget.onDeleted?.call(item.id),
         isSelectionMode: widget.isSelectionMode,
         isSelected: selected,
@@ -340,9 +366,11 @@ class _CollectionGridSliver extends StatefulWidget {
   const _CollectionGridSliver({
     required this.items,
     required this.scrollGeometry,
+    required this.failedImageIds,
     required this.children,
   });
   final List<ShareCard> items;
+  final Set<int> failedImageIds;
   final CollectionGridScrollGeometry scrollGeometry;
   final SliverChildDelegate children;
 
@@ -352,7 +380,8 @@ class _CollectionGridSliver extends StatefulWidget {
 
 class _CollectionGridSliverState extends State<_CollectionGridSliver> {
   CollectionGridMetrics? _metrics;
-  (List<ShareCard>, double, double, double, TextTheme)? _metricsKey;
+  (List<ShareCard>, Set<int>, double, double, double, TextTheme, TextDirection)?
+  _metricsKey;
 
   @override
   Widget build(BuildContext context) {
@@ -361,15 +390,18 @@ class _CollectionGridSliverState extends State<_CollectionGridSliver> {
     final textTheme = Theme.of(context).textTheme;
     final key = (
       widget.items,
+      widget.failedImageIds,
       pane.overviewWidth,
       pane.listWidth,
       scale,
       textTheme,
+      Directionality.of(context),
     );
     if (_metricsKey != key) {
       _metricsKey = key;
       _metrics = CollectionGridMetrics(
         widget.items,
+        widget.failedImageIds,
         pane.overviewWidth,
         pane.listWidth,
         scale,

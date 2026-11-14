@@ -18,7 +18,6 @@ class AppListDetailWorkspace extends StatefulWidget {
     required this.list,
     required this.selectedId,
     required this.detailBuilder,
-    this.emptyDetail,
     this.onClose,
   });
 
@@ -32,7 +31,6 @@ class AppListDetailWorkspace extends StatefulWidget {
   }
 
   final Widget list;
-  final Widget? emptyDetail;
   final Object? selectedId;
   final VoidCallback? onClose;
   final Widget Function(bool deferBody, bool focused, VoidCallback? toggleFocus)
@@ -224,8 +222,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
         280.0,
         math.min(480.0, constraints.maxWidth - 492),
       );
-      final reserveDetail = wide && widget.emptyDetail != null;
-      final listWidth = wide && (readerVisible || reserveDetail)
+      final listWidth = wide && readerVisible
           ? _listWidth.clamp(280.0, maxListWidth)
           : constraints.maxWidth;
       final readerWidth = wide && !_focused
@@ -243,7 +240,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
         _saveWidth();
       }
 
-      if (!animate || reserveDetail) _readerReady = true;
+      if (!animate) _readerReady = true;
       final readerReady = _readerReady;
       final readerConfiguration = (
         _readerId,
@@ -267,7 +264,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
       return _WorkspaceBackScope(
         register: _registerDetailRoute,
         child: SharedLayoutTransition(
-          value: readerVisible && _previewingBack && !reserveDetail
+          value: readerVisible && _previewingBack
               ? paneWidth + (constraints.maxWidth - paneWidth) * _back.value
               : paneWidth,
           animate: animate && (!_previewingBack || !readerVisible),
@@ -357,32 +354,28 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                           alignment: Alignment.topLeft,
                           minWidth: readerWidth,
                           maxWidth: readerWidth,
-                          child: reserveDetail && !readerVisible
-                              ? widget.emptyDetail!
-                              : TickerMode(
-                                  enabled: readerVisible,
-                                  child: ExcludeFocus(
-                                    excluding: !readerVisible,
-                                    child: ExcludeSemantics(
-                                      excluding: !readerVisible,
-                                      child: IgnorePointer(
-                                        ignoring: !readerVisible,
-                                        child: Semantics(
-                                          container: true,
-                                          child: RepaintBoundary(
-                                            child: _reader,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                          child: TickerMode(
+                            enabled: readerVisible,
+                            child: ExcludeFocus(
+                              excluding: !readerVisible,
+                              child: ExcludeSemantics(
+                                excluding: !readerVisible,
+                                child: IgnorePointer(
+                                  ignoring: !readerVisible,
+                                  child: Semantics(
+                                    container: true,
+                                    child: RepaintBoundary(child: _reader),
                                   ),
                                 ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                if (wide && (readerVisible || reserveDetail) && listVisible)
+                if (wide && readerVisible && listVisible)
                   Positioned(
                     left: paneWidth - 16,
                     top: 0,

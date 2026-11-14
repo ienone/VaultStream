@@ -14,20 +14,20 @@ class WorkspaceAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget tabs;
   final List<Widget> actions;
   @override
-  Size get preferredSize => const Size.fromHeight(64);
+  Size get preferredSize => const Size.fromHeight(52);
   @override
   Widget build(BuildContext context) => AppBar(
     automaticallyImplyLeading: false,
     leading: buildRootPageLeading(context),
-    toolbarHeight: 64,
+    toolbarHeight: 52,
     titleSpacing: 8,
     title: LayoutBuilder(
       builder: (context, box) => Row(
         children: [
-          if (box.maxWidth >= 600) ...[Text(title), const SizedBox(width: 24)],
+          if (box.maxWidth >= 900) ...[Text(title), const SizedBox(width: 24)],
           Expanded(
             child: Align(
-              alignment: Alignment.center,
+              alignment: AlignmentDirectional.centerStart,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 560),
                 child: tabs,
@@ -69,7 +69,7 @@ class WorkspaceTabs extends StatelessWidget {
       return TabBar.secondary(
         controller: controller,
         isScrollable: scrollable,
-        tabAlignment: scrollable ? TabAlignment.center : TabAlignment.fill,
+        tabAlignment: scrollable ? TabAlignment.start : TabAlignment.fill,
         dividerColor: Colors.transparent,
         tabs: [for (final label in labels) Tab(text: label)],
         onTap: onTap,
