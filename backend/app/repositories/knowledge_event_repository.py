@@ -23,8 +23,11 @@ class KnowledgeEventRepository:
         size: int,
         status: KnowledgeEventStatus | None,
         content_id: int | None,
+        query: str = "",
     ) -> tuple[list[KnowledgeEvent], int]:
         filters = []
+        if query:
+            filters.append(KnowledgeEvent.title.icontains(query, autoescape=True))
         if status is not None:
             filters.append(KnowledgeEvent.status == status)
 

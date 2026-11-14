@@ -77,13 +77,9 @@ Agent 工作台可从三个主页的页头工具菜单进入。`search_content` 
 
 - [已关闭问题的历史决策](../../issues/archive/README.md)。
 
-## 文档页码引用（2026-09-10）
-
-PDF 搜索证据卡片按 filename 和 page_number 显示，并用 content_id、media_asset_id 和 page_number 定位到对应文件的提取文本页；不降级为内容首页。样本 DTO 与本地工具读取已验证，真实模型回答仍待验收。
+## 引用来源
 
 内联引用使用可点击阅读条目，不使用单行 Chip 承载长标题。标题可换两行，页码、时间点或对象类型单独显示，避免定位信息被文件名截掉；完整标题和原有上下文可通过提示查看。引用自身不再额外套卡片。跳转继续使用已校验的 appRoute。
-
-PDF 页码引用同时覆盖 search_content 的 document_pages 分组和 read_content 的 pdf_native_text 结果；后者将 document_asset_id、page_number、filename、text 映射到同一引用卡片，不依赖模型自行生成链接。
 
 read_content 的 stored_original 结果生成内容引用，校验后视频片段使用显式 media_asset_id 和起止秒数生成时间点引用；不从 route 字符串推断资产。历史片段缺少该身份时不能视为可播放的时间点。
 

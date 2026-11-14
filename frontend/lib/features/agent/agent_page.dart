@@ -299,7 +299,7 @@ class _AgentPageState extends ConsumerState<AgentPage> {
           actions: [
             if (!supportsSessionPane)
               IconButton(
-                tooltip: '选择 Agent 会话',
+                tooltip: '选择会话',
                 onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
                 icon: const Icon(Icons.forum_outlined),
               ),
@@ -446,17 +446,23 @@ class _ConversationPane extends StatelessWidget {
                   reverse: true,
                   controller: state._scrollController,
                   padding: const EdgeInsets.all(AppSpacing.md),
-                  itemCount: state._timeline.length,
-                  findChildIndexCallback: (key) {
-                    final index = (key as ValueKey<int>).value;
-                    return index < state._timeline.length
-                        ? state._timeline.length - 1 - index
-                        : null;
-                  },
+                  itemCount:
+                      state._timeline.length +
+                      (state._agentState.beforeMessageId == null ? 0 : 1),
                   itemBuilder: (context, reversedIndex) {
+                    if (reversedIndex == state._timeline.length) {
+                      return Center(
+                        child: TextButton(
+                          onPressed: state._agentState.loadingHistory
+                              ? null
+                              : state._controller.loadOlderMessages,
+                          child: const Text('查看更早的消息'),
+                        ),
+                      );
+                    }
                     final index = state._timeline.length - 1 - reversedIndex;
                     return Align(
-                      key: ValueKey(index),
+                      key: ObjectKey(state._timeline[index]),
                       alignment: Alignment.topCenter,
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(
@@ -590,7 +596,7 @@ class _SessionPane extends StatelessWidget {
     final header = AppBar(
       automaticallyImplyLeading: false,
       backgroundColor: theme.colorScheme.surfaceContainerLow,
-      title: Text(closeAfterSelection ? '会话' : 'Agent'),
+      title: Text(closeAfterSelection ? '会话' : '助手'),
       actions: [
         PageAddButton(
           tooltip: '新建会话',
@@ -627,6 +633,15 @@ class _SessionPane extends StatelessWidget {
               },
             ),
           ),
+          if (state._agentState.nextSessionOffset != null)
+            SliverToBoxAdapter(
+              child: TextButton(
+                onPressed: state._agentState.loadingSessions
+                    ? null
+                    : state._controller.loadMoreSessions,
+                child: const Text('更多会话'),
+              ),
+            ),
         ],
       ),
     );

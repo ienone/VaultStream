@@ -416,6 +416,15 @@ def _notification_query():
     ).outerjoin(Content, task_content_join())
 
 
+def _unread_count_query(now: datetime):
+    return select(func.count(NotificationMessage.id)).where(*_unread_conditions(now))
+
+
+async def count_unread_notifications() -> int:
+    async with AsyncSessionLocal() as db:
+        return await db.scalar(_unread_count_query(utcnow()))
+
+
 async def list_notifications(
     *,
     category: str | None = None,
@@ -443,16 +452,7 @@ async def list_notifications(
             )
         ).all()
         total = int((await db.execute(count_query)).scalar() or 0)
-        unread_count = int(
-            (
-                await db.execute(
-                    select(func.count(NotificationMessage.id)).where(
-                        *_unread_conditions(now)
-                    )
-                )
-            ).scalar()
-            or 0
-        )
+        unread_count = await db.scalar(_unread_count_query(now))
     return {
         "items": [
             serialize_notification(row, now=now, task_run=run, content_title=content_title, content_url=content_url)

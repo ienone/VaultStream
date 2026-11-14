@@ -21,7 +21,6 @@ _TASK_TITLES = {
     "content_distribution": "匹配推送规则",
     "content_aggregation": "多来源自动聚合",
     "content_embedding": "建立搜索索引",
-    "document_extract": "提取 PDF 正文",
     "media_repair": "归档媒体",
     "semantic_reindex": "重建搜索索引",
     "discovery_sync": "发现源同步",
@@ -44,7 +43,11 @@ def task_content_subject(title: str | None, url: str | None) -> str | None:
         return title.strip()
     try:
         source = urlsplit(url or "")
-        return source.hostname if source.scheme in {"https", "http"} else None
+        if source.scheme not in {"https", "http"} or not source.hostname:
+            return None
+        # A single host can contain hundreds of failed articles. Never include URL credentials or query tokens.
+        path = source.path.rstrip("/")
+        return f"{source.hostname}{path}" if path else source.hostname
     except ValueError:
         return None
 
@@ -138,10 +141,6 @@ def _summary_for_task(
         return f"已检查 {_int(result.get('input_count'))} 条来源，生成 {count} 篇事件综合；生成结论待核实。"
     if task == "content_embedding":
         return "内容已加入语义索引。" if result.get("indexed") else "语义索引任务已完成，但没有写入索引。"
-    if task == "document_extract":
-        return (f"已检查 {_int(result.get('document_count'))} 份 PDF，"
-                f"{_int(result.get('page_count'))} 页中有 {_int(result.get('text_page_count'))} 页包含原生文本。"
-                "无原生文本的页面尚未识别。")
     if task == "semantic_reindex":
         return (
             f"已索引 {_int(result.get('indexed'))} 个分块，"
@@ -223,13 +222,6 @@ def _sections_for_task(
         if platform_rows:
             sections.append(_section("平台明细", platform_rows))
         return sections
-
-    if task == "document_extract":
-        return [_section("文档正文", [
-            _item("PDF 文件", result.get("document_count")),
-            _item("总页数", result.get("page_count")),
-            _item("含原生文本", result.get("text_page_count")),
-        ])]
 
     if task in {"content_parse", "content_reparse", "content_embedding"}:
         return []
@@ -423,7 +415,7 @@ def _allowed_actions(
 def _task_kind(task: str) -> str:
     if task == "favorites_sync":
         return "favorites_sync"
-    if task in {"content_parse", "content_reparse", "content_summary", "content_scoring", "content_distribution", "content_aggregation", "content_embedding", "document_extract"}:
+    if task in {"content_parse", "content_reparse", "content_summary", "content_scoring", "content_distribution", "content_aggregation", "content_embedding"}:
         return "content_processing"
     if task == "semantic_reindex":
         return "semantic_index"

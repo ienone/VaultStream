@@ -29,7 +29,6 @@ class _NotificationCenterPageState
   String _state = 'active';
   int _offset = 0;
   NotificationInboxItem? _selected;
-  int? _lastSelectedId;
 
   NotificationQuery get _query =>
       (category: _category, state: _state, offset: _offset);
@@ -59,27 +58,11 @@ class _NotificationCenterPageState
     final inbox = ref.watch(notificationInboxProvider(_query));
     return LayoutBuilder(
       builder: (context, constraints) {
-        final items = inbox.value?.items ?? const <NotificationInboxItem>[];
-        final wide = AppListDetailWorkspace.supportsSplit(
-          context,
-          availableSize: constraints.biggest,
-        );
-        final selected =
-            _selected ??
-            (wide
-                ? items
-                          .where((item) => item.id == _lastSelectedId)
-                          .firstOrNull ??
-                      items.firstOrNull
-                : null);
+        final selected = _selected;
         return AppListDetailWorkspace(
           onClose: _selected == null
               ? null
               : () => setState(() => _selected = null),
-          emptyDetail: WorkspacePlaceholder(
-            loading: inbox.isLoading,
-            label: '暂无消息详情',
-          ),
           selectedId: selected?.id,
           list: Scaffold(
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -322,7 +305,6 @@ class _NotificationCenterPageState
     if (mounted) {
       setState(() {
         _selected = item;
-        _lastSelectedId = item.id;
       });
     }
   }

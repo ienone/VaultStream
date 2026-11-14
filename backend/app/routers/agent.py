@@ -135,12 +135,16 @@ async def invoke_agent_tool(
 
 @router.get("/agent/sessions", response_model=AgentSessionListResponse)
 async def list_agent_sessions(
+    offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    sessions = await AgentService(db).list_sessions(limit=limit)
-    return AgentSessionListResponse(sessions=[AgentSessionItem(**item) for item in sessions])
+    sessions = await AgentService(db).list_sessions(limit=limit + 1, offset=offset)
+    return AgentSessionListResponse(
+        sessions=[AgentSessionItem(**item) for item in sessions[:limit]],
+        next_offset=offset + limit if len(sessions) > limit else None,
+    )
 
 
 @router.post("/agent/sessions", response_model=AgentSessionItem)

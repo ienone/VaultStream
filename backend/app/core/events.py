@@ -1,275 +1,113 @@
-
 import asyncio
 import json
-import time
 import uuid
-from typing import Any, AsyncGenerator, List
+from collections.abc import AsyncIterator
+from typing import Any
 
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.db_adapter import AsyncSessionLocal
 from app.core.logging import logger
 
+
 class EventBus:
-    """支持跨实例传播的事件总线（本地内存广播 + SQLite outbox）。"""
-    _subscribers: List[asyncio.Queue] = []
-    _lock = asyncio.Lock()
+    """每个订阅者按数据库游标读取；进程内只广播唤醒信号。"""
 
-    _instance_id = f"instance-{uuid.uuid4().hex[:12]}"
-    _running = False
-    _poll_task: asyncio.Task | None = None
-    _last_seen_event_id: int = 0
+    def __init__(self) -> None:
+        self._subscribers: set[asyncio.Event] = set()
+        self._instance_id = f"instance-{uuid.uuid4().hex[:12]}"
+        self._poll_task: asyncio.Task | None = None
+        self._running = False
+        self._last_seen_event_id = 0
 
-    _POLL_INTERVAL_SECONDS = 0.5
-    _POLL_BATCH_SIZE = 200
-    _MAX_LOCAL_QUEUE_SIZE = 100
-
-    @classmethod
-    async def get_diagnostics(cls) -> dict[str, Any]:
-        """Return a public diagnostics snapshot for API routes and health checks."""
-        from app.core.config import settings
-
-        async with cls._lock:
-            subscriber_count = len(cls._subscribers)
-
+    def get_diagnostics(self) -> dict[str, Any]:
         return {
-            "active_subscribers": subscriber_count,
+            "active_subscribers": len(self._subscribers),
             "max_subscribers": settings.max_sse_subscribers,
-            "instance_id": cls._instance_id,
-            "running": cls._running,
+            "instance_id": self._instance_id,
+            "running": self._running,
             "outbox_polling_enabled": settings.enable_event_outbox_polling,
-            "last_seen_event_id": cls._last_seen_event_id,
+            "last_seen_event_id": self._last_seen_event_id,
         }
 
-    @classmethod
-    async def start(cls) -> None:
-        """启动跨实例事件桥接轮询。"""
-        if cls._running:
-            return
+    async def start(self) -> None:
+        if not self._running:
+            self._running = True
+            if settings.enable_event_outbox_polling:
+                self._poll_task = asyncio.create_task(self._poll(), name="event-bus-poller")
 
-        await cls._init_last_seen_event_id()
-
-        cls._running = True
-
-        from app.core.config import settings
-        if settings.enable_event_outbox_polling:
-            cls._poll_task = asyncio.create_task(cls._poll_remote_events(), name="event-bus-poller")
-            logger.info(f"事件总线已启动 ({cls._instance_id})，启用 outbox 轮询")
-        else:
-            logger.info(f"事件总线已启动 ({cls._instance_id})，未启用 outbox 轮询（单实例模式）")
-
-    @classmethod
-    async def stop(cls) -> None:
-        """停止事件桥接轮询。"""
-        cls._running = False
-        if cls._poll_task:
-            cls._poll_task.cancel()
+    async def stop(self) -> None:
+        self._running = False
+        if self._poll_task:
+            self._poll_task.cancel()
             try:
-                await cls._poll_task
+                await self._poll_task
             except asyncio.CancelledError:
                 pass
-            finally:
-                cls._poll_task = None
-        logger.info(f"事件总线已停止 ({cls._instance_id})")
+            self._poll_task = None
 
-    @classmethod
-    async def subscribe(cls) -> AsyncGenerator[Any, None]:
-        """订阅事件流"""
-        from app.core.config import settings
+    async def _latest_id(self) -> int:
+        async with AsyncSessionLocal() as db:
+            return int(await db.scalar(text("SELECT COALESCE(MAX(id), 0) FROM realtime_events")))
 
-        queue: asyncio.Queue = asyncio.Queue(maxsize=cls._MAX_LOCAL_QUEUE_SIZE)
-        
-        async with cls._lock:
-            if len(cls._subscribers) >= settings.max_sse_subscribers:
-                logger.warning(
-                    f"SSE subscriber rejected: limit reached ({settings.max_sse_subscribers})"
-                )
-                yield {"event": "error", "data": {"message": "Too many connections"}}
-                return
-            cls._subscribers.append(queue)
-            subscriber_count = len(cls._subscribers)
-        
-        logger.debug(f"新 SSE 订阅者。当前总数: {subscriber_count}")
-        
-        try:
-            while True:
-                try:
-                    # 空闲时每 30 秒发送心跳，早于客户端 90 秒失活阈值
-                    data = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    yield data
-                except asyncio.TimeoutError:
-                    # 发送心跳包
-                    yield {"event": "ping", "data": {"timestamp": asyncio.get_event_loop().time()}}
-                except Exception as e:
-                    logger.error(f"SSE 订阅者循环出错: {e}")
-                    break
-        finally:
-            async with cls._lock:
-                if queue in cls._subscribers:
-                    cls._subscribers.remove(queue)
-                subscriber_count = len(cls._subscribers)
-            logger.debug(f"SSE 订阅者已断开。当前总数: {subscriber_count}")
+    def _wake(self, event_id: int) -> None:
+        self._last_seen_event_id = max(self._last_seen_event_id, event_id)
+        for wake in self._subscribers:
+            wake.set()
 
-    @classmethod
-    async def publish(cls, event: str, data: dict):
-        """发布事件：本地广播 + 写入 outbox 供其他实例同步。"""
-        event_id = await cls._persist_outbox_event(event=event, data=data)
+    async def publish(self, event: str, data: dict) -> None:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(text("""
+                INSERT INTO realtime_events (event_type, payload, source_instance)
+                VALUES (:event, :payload, :instance)
+            """), {"event": event, "payload": json.dumps(data, ensure_ascii=False), "instance": self._instance_id})
+            event_id = result.lastrowid
+            if event_id % 512 == 0:
+                await db.execute(text("DELETE FROM realtime_events WHERE created_at < datetime('now', '-7 days') AND id < :id"), {"id": event_id})
+            await db.commit()
+        self._wake(event_id)
 
-        message = {"event": event, "data": data}
-        if event_id is not None:
-            message["id"] = event_id
-
-        await cls._broadcast_local(message)
-
-    _BROADCAST_SLOW_THRESHOLD_MS = 50  # 广播超过此阈值时记录 warning
-
-    @classmethod
-    async def _broadcast_local(cls, message: dict) -> None:
-        """向当前进程内订阅者广播。"""
-        
-        # 获取当前订阅者列表的副本，避免迭代时修改
-        async with cls._lock:
-            subscribers = list(cls._subscribers)
-        
-        if not subscribers:
-            logger.debug(f"事件 '{message.get('event')}' 无订阅者，跳过")
+    async def subscribe(self, after: int | None) -> AsyncIterator[dict]:
+        if len(self._subscribers) >= settings.max_sse_subscribers:
+            yield {"event": "error", "data": {"message": "Too many connections"}}
             return
-        
-        t0 = time.monotonic()
-
-        # 广播给所有订阅者，失败的跳过
-        failed_queues = []
-        for queue in subscribers:
-            try:
-                queue.put_nowait(message)
-            except asyncio.QueueFull:
-                logger.warning(f"订阅者队列已满，丢弃事件 '{message.get('event')}'")
-                failed_queues.append(queue)
-            except Exception as e:
-                logger.error(f"发布事件 '{message.get('event')}' 失败: {e}")
-                failed_queues.append(queue)
-        
-        # 清理失败的订阅者
-        if failed_queues:
-            async with cls._lock:
-                for queue in failed_queues:
-                    if queue in cls._subscribers:
-                        cls._subscribers.remove(queue)
-            logger.info(f"已移除 {len(failed_queues)} 个失败或响应过慢的订阅者")
-
-        elapsed_ms = (time.monotonic() - t0) * 1000
-        if elapsed_ms > cls._BROADCAST_SLOW_THRESHOLD_MS:
-            logger.warning(
-                f"广播过慢: event='{message.get('event')}', "
-                f"订阅者数量={len(subscribers)}, 耗时={elapsed_ms:.1f}ms"
-            )
-        else:
-            logger.debug(
-                f"已向 {len(subscribers) - len(failed_queues)} 个订阅者发布事件 '{message.get('event')}' ({elapsed_ms:.1f}ms)"
-            )
-
-    @classmethod
-    async def _init_last_seen_event_id(cls) -> None:
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(text("SELECT COALESCE(MAX(id), 0) FROM realtime_events"))
-            cls._last_seen_event_id = int(result.scalar() or 0)
-
-    @classmethod
-    async def _persist_outbox_event(cls, event: str, data: dict) -> int | None:
-        """持久化事件到 outbox 表，返回事件 ID（用于 SSE Last-Event-ID）。"""
+        wake = asyncio.Event()
+        self._subscribers.add(wake)
         try:
-            payload = json.dumps(data, ensure_ascii=False)
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    text("""
-                        INSERT INTO realtime_events (event_type, payload, source_instance)
-                        VALUES (:event_type, :payload, :source_instance)
-                    """),
-                    {
-                        "event_type": event,
-                        "payload": payload,
-                        "source_instance": cls._instance_id,
-                    },
-                )
-                await session.commit()
-                return result.lastrowid
-        except Exception as e:
-            logger.error(f"Failed to persist outbox event '{event}': {e}")
-            return None
-
-    @classmethod
-    async def replay_events_since(cls, last_event_id: int) -> list[dict]:
-        """从指定 event ID 之后重放事件，用于 SSE 断线续传。"""
-        try:
-            async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    text("""
-                        SELECT id, event_type, payload
-                        FROM realtime_events
-                        WHERE id > :last_id
-                        ORDER BY id ASC
-                        LIMIT :limit
-                    """),
-                    {"last_id": last_event_id, "limit": 500},
-                )
-                rows = result.fetchall()
-
-            events = []
-            for row in rows:
+            latest = await self._latest_id()
+            cursor = latest if after is None or after > latest else after
+            yield {"id": cursor, "event": "connected", "data": {}}
+            while True:
+                wake.clear()
+                while True:
+                    async with AsyncSessionLocal() as db:
+                        rows = (await db.execute(text("""
+                            SELECT id, event_type, payload FROM realtime_events
+                            WHERE id > :after ORDER BY id LIMIT 200
+                        """), {"after": cursor})).all()
+                    for event_id, name, payload in rows:
+                        cursor = event_id
+                        yield {"id": event_id, "event": name, "data": json.loads(payload)}
+                    if len(rows) < 200:
+                        break
                 try:
-                    data = json.loads(row[2]) if isinstance(row[2], str) else row[2]
+                    await asyncio.wait_for(wake.wait(), timeout=30)
+                except asyncio.TimeoutError:
+                    yield {"event": "ping", "data": {}}
+        finally:
+            self._subscribers.discard(wake)
+
+    async def _poll(self) -> None:
+        while self._running:
+            await asyncio.sleep(0.5)
+            if self._subscribers:
+                try:
+                    latest = await self._latest_id()
+                    if latest > self._last_seen_event_id:
+                        self._wake(latest)
                 except Exception:
-                    continue
-                events.append({"id": int(row[0]), "event": row[1], "data": data})
-            return events
-        except Exception as e:
-            logger.error(f"Failed to replay events since {last_event_id}: {e}")
-            return []
+                    logger.exception("读取跨进程事件失败")
 
-    @classmethod
-    async def _poll_remote_events(cls) -> None:
-        while cls._running:
-            try:
-                async with AsyncSessionLocal() as session:
-                    result = await session.execute(
-                        text("""
-                            SELECT id, event_type, payload, source_instance
-                            FROM realtime_events
-                            WHERE id > :last_id
-                            ORDER BY id ASC
-                            LIMIT :limit
-                        """),
-                        {
-                            "last_id": cls._last_seen_event_id,
-                            "limit": cls._POLL_BATCH_SIZE,
-                        },
-                    )
-                    rows = result.fetchall()
-
-                for row in rows:
-                    event_id = int(row[0])
-                    event_type = row[1]
-                    payload = row[2]
-                    source_instance = row[3]
-
-                    cls._last_seen_event_id = max(cls._last_seen_event_id, event_id)
-
-                    if source_instance == cls._instance_id:
-                        continue
-
-                    try:
-                        data = json.loads(payload) if isinstance(payload, str) else payload
-                    except Exception:
-                        logger.warning(f"Invalid event payload for id={event_id}, skipping")
-                        continue
-
-                    await cls._broadcast_local({"event": event_type, "data": data, "id": event_id})
-
-                await asyncio.sleep(cls._POLL_INTERVAL_SECONDS)
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.error(f"EventBus poll loop error: {e}", exc_info=True)
-                await asyncio.sleep(1.0)
 
 event_bus = EventBus()

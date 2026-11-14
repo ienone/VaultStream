@@ -5,27 +5,41 @@ import 'package:go_router/go_router.dart';
 import '../../../theme/design_tokens.dart';
 import '../providers/knowledge_event_provider.dart';
 
-class ContentEventLinks extends ConsumerWidget {
+class ContentEventLinks extends ConsumerStatefulWidget {
   const ContentEventLinks({super.key, required this.contentId});
 
   final int contentId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final events = ref.watch(knowledgeEventsProvider(contentId));
+  ConsumerState<ContentEventLinks> createState() => _ContentEventLinksState();
+}
+
+class _ContentEventLinksState extends ConsumerState<ContentEventLinks> {
+  int _page = 1;
+
+  @override
+  void didUpdateWidget(ContentEventLinks oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.contentId != widget.contentId) _page = 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = (page: _page, title: '', contentId: widget.contentId);
+    final events = ref.watch(knowledgeEventsProvider(query));
     return events.when(
       loading: () => const SizedBox.shrink(),
       error: (_, _) => Row(
         children: [
           const Expanded(child: Text('关联事件加载失败')),
           TextButton(
-            onPressed: () => ref.invalidate(knowledgeEventsProvider(contentId)),
+            onPressed: () => ref.invalidate(knowledgeEventsProvider(query)),
             child: const Text('重试'),
           ),
         ],
       ),
       data: (data) {
-        if (data.items.isEmpty) return const SizedBox.shrink();
+        if (data.items.isEmpty && _page == 1) return const SizedBox.shrink();
         final theme = Theme.of(context);
         return Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -74,6 +88,26 @@ class ContentEventLinks extends ConsumerWidget {
                       ),
                     ),
                   ),
+                ),
+              if (_page > 1 || data.hasMore)
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: '上一页',
+                      icon: const Icon(Icons.chevron_left),
+                      onPressed: _page > 1
+                          ? () => setState(() => _page--)
+                          : null,
+                    ),
+                    Text('第 $_page 页'),
+                    IconButton(
+                      tooltip: '下一页',
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: data.hasMore
+                          ? () => setState(() => _page++)
+                          : null,
+                    ),
+                  ],
                 ),
             ],
           ),

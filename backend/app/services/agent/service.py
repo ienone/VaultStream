@@ -149,13 +149,14 @@ class AgentService:
         await self.db.flush()
         return session
 
-    async def list_sessions(self, *, limit: int = 50) -> list[dict[str, Any]]:
+    async def list_sessions(self, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         rows = (
             await self.db.execute(
                 select(AgentSession)
                 .where(AgentSession.deleted_at.is_(None))
-                .order_by(desc(AgentSession.last_message_at), desc(AgentSession.updated_at))
-                .limit(max(1, min(limit, 100)))
+                .order_by(desc(AgentSession.last_message_at), desc(AgentSession.updated_at), AgentSession.id)
+                .offset(offset)
+                .limit(limit)
             )
         ).scalars().all()
         if not rows:
@@ -230,7 +231,7 @@ class AgentService:
                 stmt.order_by(desc(AgentMessage.id)).limit(max(1, min(limit, 100)) + 1)
             )
         ).scalars().all()
-        next_before = rows[-1].id if len(rows) > limit else None
+        next_before = rows[limit - 1].id if len(rows) > limit else None
         rows = rows[:limit]
         rows.reverse()
         return rows, next_before
@@ -1212,9 +1213,6 @@ class AgentService:
             "让用户能直接定位原文、事件或媒体播放位置。"
             "引用必须写成可点击 Markdown 链接 [标题](route)，不要把 route 放在代码块或行内代码中。"
             "检索片段不足以回答时调用 read_content；视频按章节 start_seconds/end_seconds 读取对应字幕。"
-            "PDF 引用使用 document_pages 返回的文件名、page_number 与 route；"
-            "需要全文时把其 media_asset_id 传给 read_content 的 document_asset_id，并指定 page_number。"
-            "没有原生文本的页面尚未识别，不能凭文件名或保存说明推断页内内容。"
             "用户询问图片内容时，从 read_content 的 images 选择 media_asset_id 调用 read_image，不能靠正文猜图。"
             "read_image 的结果是模型识别，回答须明确标注；看不清的内容不能补全。"
             "不要用反复搜索标题代替读取字幕，也不要通过 api_get 获取包含大量媒体元数据的完整详情来读字幕。"

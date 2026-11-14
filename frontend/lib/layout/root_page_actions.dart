@@ -12,8 +12,7 @@ Widget? buildRootPageLeading(BuildContext context) {
   return Consumer(
     builder: (context, ref, _) {
       final unread = ref.watch(
-        notificationInboxProvider(defaultNotificationQuery)
-            .select((value) => value.value?.unreadCount ?? 0),
+        notificationUnreadCountProvider.select((value) => value.value ?? 0),
       );
       return IconButton(
         tooltip: unread > 0 ? '打开导航，$unread 条未读消息' : '打开导航',

@@ -12,6 +12,7 @@ from app.schemas.notifications import (
 )
 from app.services.notification_inbox import (
     apply_notification_action,
+    count_unread_notifications,
     list_notifications,
     mark_all_notifications_read,
 )
@@ -34,6 +35,11 @@ async def get_notifications(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/notifications/unread-count")
+async def get_unread_count(_: None = Depends(require_api_token)) -> int:
+    return await count_unread_notifications()
 
 
 @router.post(

@@ -6,7 +6,7 @@ active
 
 ## Agent
 
-- `/api/v1/agent/sessions` 管理会话；消息、运行和上下文摘要归属会话。
+- `/api/v1/agent/sessions` 管理会话；列表支持 offset 分页，返回 next_offset；消息从 next_before_id 继续向前读取。消息、运行和上下文摘要归属会话。
 - `POST /api/v1/agent/run` 创建运行，增量结果通过 Agent SSE 返回。
 - `POST /api/v1/agent/runs/{run_id}/stop` 请求停止当前运行。
 - 工具清单和工具调用由 `/agent/tools` 暴露；调用方不能绕开后端权限判断。
@@ -55,10 +55,11 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - `GET /api/v1/init-status` 返回 `has_bot` 和 `version`，用于连接探测；不再返回首次向导状态 `needs_setup`。服务器连接成功后仍需验证 API 密钥。
 - 健康响应包含数据库、队列、FTS、worker、模型供应商与后台任务状态。数据库部分通过一次元数据查询确认连接和 FTS 表是否存在。完整性、外键及索引一致性由数据库维护脚本检查。
 - `GET /api/v1/ai/capabilities` 描述配置与能力，不执行真实模型请求。
+- `PATCH /api/v1/settings` 接收 `{category, values}`，在同一事务保存一组设置并返回脱敏后的更新行。模型设置中的“保存并测试”先保存当前表单，再检测已保存的模型。
 - `POST /api/v1/ai/connectivity-test` 执行真实连通性测试并记录 `run_id`。
-- AI 连通性响应稳定包含 `run_id`、`target`、`status`、`ok` 和 `elapsed_ms`，供应商相关结果或错误按目标落在明确可选字段；`POST /api/v1/ai/models` 返回目标与模型名列表。
+- AI 连通性响应稳定包含 `run_id`、`target`、`status`、`ok` 和 `elapsed_ms`，供应商相关结果或错误按目标落在明确可选字段。
 - `POST /api/v1/platform-health/parse-test` 执行只读真实解析测试，不创建收藏内容、不推进同步 cursor。它与生产解析共用数据库平台凭据和适配器构造逻辑；成功结果包含内容/布局类型、作者字段、封面与媒体、正文长度、发布时间、统计、来源标签，以及结构化扩展和私有归档的键名，便于区分“请求成功”与“字段完整”。响应不返回 Cookie 或完整原始平台 payload。
-- `GET /api/v1/platform-health` 中 `favorites_sync.last_run` 保留相关整批任务账本，用于追踪任务；`last_run_status` 是该平台在此任务中的结果状态，无相关结果时为 null。单平台任务未产出结果时使用其任务状态；多平台任务仅使用 results 内该平台的状态。账号状态显示与失败判断使用 last_run_status，不把整批任务失败传播到已成功的平台。
+- `GET /api/v1/platform-health` 读取本地账号，返回平台、名称、登录状态、是否支持扫码和收藏同步。登录状态为 `not_configured`、`configured` 或已确认的 `invalid`；打开列表不访问外部平台。
 - 平台解析测试无论业务成功或失败都返回同一个具名诊断响应，并保留 `run_id`、平台、耗时和显式 `ok/status/error`；HTTP 失败仍按公共错误规则处理。
 
 “已配置”“健康检查通过”“真实业务调用成功”是三个不同层级，界面不得合并为一个布尔状态。
@@ -73,6 +74,8 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - SSE 是刷新提示而不是完整事实源；客户端收到事件后应按需重新读取对应资源。
 
 ## 知识事件
+
+事件列表支持分页和按标题子串搜索（`q`），并可同时限制状态或关联内容。
 
 - `GET /api/v1/knowledge-events` 分页读取事件，可按事件状态或成员内容过滤。
 - `POST /api/v1/knowledge-events` 以至少一条真实内容创建人工事件。
@@ -97,6 +100,6 @@ Agent API 只提供受控编排能力，不代表 Agent 可以绕过收藏、同
 - 三个入口均返回 `QQAgentResponse`：`session_id`、`run_id`、`status`、`message`、`confirmation_required`、`confirmation`、`captures`、`duplicate`。`captures` 包含本次已保存的内容 ID、类型、当前解析状态、标题、作者、摘要、最多 1500 字符正文节选、原文 URL、站内 route 与可空 `collection_url`（从合法公开 `base_url` 构造）。未解析不伪造结构化正文，保存与解析状态分开表达。
 - 后端设置 `qq_bot_agent`：`enabled`（布尔）、`admin_qq`（QQ 号码字符串数组）、`persona`（可选人设）。其他入口配置字段与群聊白名单仍由各自服务解释。
 
-`/ai/capabilities` 使用 `text_llm` 表示通用模型，文字和图像共用配置，不再返回独立 `vision_llm` 能力；连通性和模型发现不再接受 `vision_llm` 目标。
+`/ai/capabilities` 使用 `text_llm` 表示通用模型，文字和图像共用配置，不再返回独立 `vision_llm` 能力。
 
 `background_task_updated` 在开始和终态持久化后发送，payload 为 `task`、`status`、`run_id`，以及该任务关联内容时的 `content_id`。客户端按 run ID 更新任务页、按 content ID 更新内容及处理阶段。`connected` 表示订阅已连接，客户端应重读当前页面事实，以补偿离线或事件保留窗口之外的变化；不把事件载荷直接覆盖成完整内容。

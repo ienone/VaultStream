@@ -34,6 +34,7 @@ async def list_knowledge_events(
     size: int = Query(20, ge=1, le=100),
     status: KnowledgeEventStatus | None = Query(None),
     content_id: int | None = Query(None, gt=0),
+    q: str = Query("", max_length=240),
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
@@ -42,6 +43,7 @@ async def list_knowledge_events(
         size=size,
         status=status,
         content_id=content_id,
+        query=q.strip(),
     )
 
 

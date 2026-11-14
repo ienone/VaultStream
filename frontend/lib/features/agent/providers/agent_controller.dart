@@ -143,6 +143,10 @@ abstract class AgentViewState with _$AgentViewState {
     @Default([]) List<AgentTimelineItem> timeline,
     @Default({}) Set<String> decidingConfirmationIds,
     String? sessionId,
+    int? nextSessionOffset,
+    int? beforeMessageId,
+    @Default(false) bool loadingSessions,
+    @Default(false) bool loadingHistory,
     String? activeRunId,
     @Default(true) bool loading,
     @Default(false) bool streaming,
@@ -192,22 +196,87 @@ class AgentController extends Notifier<AgentViewState> {
     }
   }
 
-  Future<void> _loadSessions() async {
-    final response = await ref.read(apiClientProvider).get('/agent/sessions');
-    final data = response.data as Map<String, dynamic>? ?? {};
-    final sessions = (data['sessions'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(AgentSessionSummary.fromJson)
-        .toList();
-    state = state.copyWith(sessions: sessions);
+  int _sessionsRevision = 0;
+  Future<void> _loadSessions({int offset = 0}) async {
+    final revision = ++_sessionsRevision;
+    final response = await ref
+        .read(apiClientProvider)
+        .get('/agent/sessions', queryParameters: {'offset': offset});
+    if (!ref.mounted || revision != _sessionsRevision) return;
+    final data = response.data as Map<String, dynamic>;
+    final incoming = (data['sessions'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(AgentSessionSummary.fromJson);
+    final byId = {
+      if (offset != 0)
+        for (final item in state.sessions) item.id: item,
+      for (final item in incoming) item.id: item,
+    };
+    state = state.copyWith(
+      sessions: byId.values.toList(),
+      nextSessionOffset: data['next_offset'] as int?,
+    );
+  }
+
+  Future<void> loadMoreSessions() async {
+    final offset = state.nextSessionOffset;
+    if (offset == null || state.loadingSessions) return;
+    state = state.copyWith(loadingSessions: true, error: null);
+    try {
+      await _loadSessions(offset: offset);
+    } catch (error) {
+      if (ref.mounted) {
+        state = state.copyWith(error: _formatRequestError(error));
+      }
+    } finally {
+      if (ref.mounted) state = state.copyWith(loadingSessions: false);
+    }
+  }
+
+  List<AgentTimelineItem> _messages(Map<String, dynamic> data) =>
+      (data['messages'] as List)
+          .cast<Map<String, dynamic>>()
+          .map(AgentMessageRecord.fromJson)
+          .map(AgentTimelineItem.fromMessage)
+          .toList();
+
+  Future<void> loadOlderMessages() async {
+    final before = state.beforeMessageId;
+    final sessionId = state.sessionId;
+    if (before == null || sessionId == null || state.loadingHistory) return;
+    final revision = _selectionRevision;
+    state = state.copyWith(loadingHistory: true, error: null);
+    try {
+      final response = await ref
+          .read(apiClientProvider)
+          .get(
+            '/agent/sessions/$sessionId/messages',
+            queryParameters: {'before_id': before},
+          );
+      if (!ref.mounted || revision != _selectionRevision) return;
+      final data = response.data as Map<String, dynamic>;
+      state = state.copyWith(
+        timeline: [..._messages(data), ...state.timeline],
+        beforeMessageId: data['next_before_id'] as int?,
+      );
+    } catch (error) {
+      if (ref.mounted && revision == _selectionRevision) {
+        state = state.copyWith(error: _formatRequestError(error));
+      }
+    } finally {
+      if (ref.mounted && revision == _selectionRevision) {
+        state = state.copyWith(loadingHistory: false);
+      }
+    }
   }
 
   Future<void> createSession() async {
     if (state.streaming) return;
-    _selectionRevision += 1;
+    final revision = ++_selectionRevision;
     final response = await ref
         .read(apiClientProvider)
         .post('/agent/sessions', data: {'title': '新会话'});
+    if (!ref.mounted || revision != _selectionRevision) return;
     final session = AgentSessionSummary.fromJson(
       response.data as Map<String, dynamic>,
     );
@@ -215,6 +284,11 @@ class AgentController extends Notifier<AgentViewState> {
     state = state.copyWith(
       sessions: [session, ...state.sessions],
       sessionId: session.id,
+      nextSessionOffset: state.nextSessionOffset == null
+          ? null
+          : state.nextSessionOffset! + 1,
+      beforeMessageId: null,
+      loadingHistory: false,
       activeRunId: null,
       timeline: const [],
       error: null,
@@ -233,22 +307,20 @@ class AgentController extends Notifier<AgentViewState> {
       ),
     ]);
     final data = responses[0].data as Map<String, dynamic>? ?? {};
-    final messages = (data['messages'] as List<dynamic>? ?? [])
-        .whereType<Map<String, dynamic>>()
-        .map(AgentMessageRecord.fromJson)
-        .map(AgentTimelineItem.fromMessage)
-        .toList();
+    final messages = _messages(data);
     final confirmations = (responses[1].data as List<dynamic>? ?? [])
         .whereType<Map<String, dynamic>>()
         .map(AgentConfirmation.fromJson)
         .where((confirmation) => confirmation.status == 'pending')
         .map(AgentTimelineItem.confirmation);
-    if (revision != _selectionRevision) return;
+    if (!ref.mounted || revision != _selectionRevision) return;
     _assistantDraft = '';
     state = state.copyWith(
       sessionId: sessionId,
       activeRunId: null,
       timeline: [...messages, ...confirmations],
+      beforeMessageId: data['next_before_id'] as int?,
+      loadingHistory: false,
       error: null,
     );
   }
@@ -485,8 +557,15 @@ class AgentController extends Notifier<AgentViewState> {
     final sessionId = state.sessionId;
     if (sessionId == null) return;
     await ref.read(apiClientProvider).post('/agent/sessions/$sessionId/clear');
+    ++_selectionRevision;
     _assistantDraft = '';
-    state = state.copyWith(timeline: const [], activeRunId: null, error: null);
+    state = state.copyWith(
+      timeline: const [],
+      beforeMessageId: null,
+      loadingHistory: false,
+      activeRunId: null,
+      error: null,
+    );
     await _loadSessions();
   }
 

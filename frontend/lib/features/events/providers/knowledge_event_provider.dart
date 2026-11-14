@@ -1,28 +1,28 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/sse_service.dart';
 import '../models/knowledge_event.dart';
 
-final knowledgeEventsProvider = FutureProvider.autoDispose
-    .family<KnowledgeEventListResponse, int?>((ref, contentId) async {
-      final response = await ref
-          .read(apiClientProvider)
-          .get(
-            '/knowledge-events',
-            queryParameters: {'page': 1, 'size': 100, 'content_id': ?contentId},
-          );
-      return KnowledgeEventListResponse.fromJson(
-        Map<String, dynamic>.from(response.data as Map),
-      );
-    });
+typedef EventPageQuery = ({int page, String title, int? contentId});
 
-final activeKnowledgeEventsProvider =
-    FutureProvider.autoDispose<KnowledgeEventListResponse>((ref) async {
+final knowledgeEventsProvider = FutureProvider.autoDispose
+    .family<KnowledgeEventListResponse, EventPageQuery>((ref, query) async {
+      refreshOnEvents(
+        ref,
+        (event) => event.type.startsWith('knowledge_event_'),
+      );
       final response = await ref
-          .read(apiClientProvider)
+          .watch(apiClientProvider)
           .get(
             '/knowledge-events',
-            queryParameters: {'page': 1, 'size': 100, 'status': 'active'},
+            queryParameters: {
+              'page': query.page,
+              'size': 20,
+              'content_id': ?query.contentId,
+              if (query.contentId == null) 'status': 'active',
+              if (query.title.isNotEmpty) 'q': query.title,
+            },
           );
       return KnowledgeEventListResponse.fromJson(
         Map<String, dynamic>.from(response.data as Map),
@@ -31,8 +31,14 @@ final activeKnowledgeEventsProvider =
 
 final knowledgeEventDetailProvider = FutureProvider.autoDispose
     .family<KnowledgeEventDetail, int>((ref, eventId) async {
+      refreshOnEvents(
+        ref,
+        (event) =>
+            event.type.startsWith('knowledge_event_') &&
+            event.data['id'] == eventId,
+      );
       final response = await ref
-          .read(apiClientProvider)
+          .watch(apiClientProvider)
           .get('/knowledge-events/$eventId');
       return KnowledgeEventDetail.fromJson(
         Map<String, dynamic>.from(response.data as Map),
@@ -70,7 +76,7 @@ class KnowledgeEventActions {
           },
         );
     final event = _detail(response.data);
-    _invalidate(event.id, contentId: contentId);
+    _invalidate(event.id);
     return event;
   }
 
@@ -93,7 +99,7 @@ class KnowledgeEventActions {
           },
         );
     final event = _detail(response.data);
-    _invalidate(eventId, contentId: contentId);
+    _invalidate(eventId);
     return event;
   }
 
@@ -118,7 +124,7 @@ class KnowledgeEventActions {
         .read(apiClientProvider)
         .patch('/knowledge-events/$eventId/members/$contentId', data: changes);
     final event = _detail(response.data);
-    _invalidate(eventId, contentId: contentId);
+    _invalidate(eventId);
     return event;
   }
 
@@ -129,18 +135,14 @@ class KnowledgeEventActions {
     await ref
         .read(apiClientProvider)
         .delete('/knowledge-events/$eventId/members/$contentId');
-    _invalidate(eventId, contentId: contentId);
+    _invalidate(eventId);
   }
 
   KnowledgeEventDetail _detail(Object? data) =>
       KnowledgeEventDetail.fromJson(Map<String, dynamic>.from(data as Map));
 
-  void _invalidate(int eventId, {int? contentId}) {
+  void _invalidate(int eventId) {
     ref.invalidate(knowledgeEventDetailProvider(eventId));
-    ref.invalidate(knowledgeEventsProvider(null));
-    ref.invalidate(activeKnowledgeEventsProvider);
-    if (contentId != null) {
-      ref.invalidate(knowledgeEventsProvider(contentId));
-    }
+    ref.invalidate(knowledgeEventsProvider);
   }
 }

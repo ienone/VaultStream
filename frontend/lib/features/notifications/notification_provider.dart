@@ -6,11 +6,15 @@ import 'notification_models.dart';
 
 typedef NotificationQuery = ({String? category, String state, int offset});
 
-const NotificationQuery defaultNotificationQuery = (
-  category: null,
-  state: 'active',
-  offset: 0,
-);
+final notificationUnreadCountProvider = FutureProvider.autoDispose<int>((
+  ref,
+) async {
+  refreshOnEvents(ref, (event) => event.type == 'notification_updated');
+  final response = await ref
+      .watch(apiClientProvider)
+      .get<int>('/notifications/unread-count');
+  return response.data!;
+});
 
 final notificationInboxProvider = FutureProvider.autoDispose
     .family<NotificationInbox, NotificationQuery>((ref, query) async {
@@ -47,11 +51,13 @@ Future<void> applyNotificationAction(
     },
   );
   ref.invalidate(notificationInboxProvider);
+  ref.invalidate(notificationUnreadCountProvider);
 }
 
 Future<void> markAllNotificationsRead(WidgetRef ref) async {
   await ref.read(apiClientProvider).post('/notifications/read-all');
   ref.invalidate(notificationInboxProvider);
+  ref.invalidate(notificationUnreadCountProvider);
 }
 
 Future<Map<String, dynamic>> generateNotificationDigest(WidgetRef ref) async {
@@ -59,5 +65,6 @@ Future<Map<String, dynamic>> generateNotificationDigest(WidgetRef ref) async {
       .read(apiClientProvider)
       .post('/notifications/digest');
   ref.invalidate(notificationInboxProvider);
+  ref.invalidate(notificationUnreadCountProvider);
   return Map<String, dynamic>.from(response.data as Map);
 }

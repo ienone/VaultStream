@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import '../../../core/widgets/app_filter_menu.dart';
+
 import '../../../core/widgets/app_choice_segments.dart';
 
 import 'package:material_ui/material_ui.dart';
@@ -53,6 +56,21 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
   bool _submitting = false;
   bool _confirmingExit = false;
   int? _selectedEventId;
+  String? _selectedTitle;
+  String _eventQuery = '';
+  int _eventPage = 1;
+  Timer? _searchTimer;
+  void _search(String text) {
+    _searchTimer?.cancel();
+    _searchTimer = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      setState(() {
+        _eventQuery = text.trim();
+        _eventPage = 1;
+      });
+    });
+  }
+
   String _role = 'source';
   String _evidenceState = 'unverified';
   String? _error;
@@ -66,6 +84,7 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
 
   @override
   void dispose() {
+    _searchTimer?.cancel();
     _titleController.dispose();
     super.dispose();
   }
@@ -144,7 +163,14 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final events = _createNew ? null : ref.watch(activeKnowledgeEventsProvider);
+    final EventPageQuery query = (
+      page: _eventPage,
+      title: _eventQuery,
+      contentId: null,
+    );
+    final events = _createNew
+        ? null
+        : ref.watch(knowledgeEventsProvider(query));
     return BrowserLeaveGuard(
       enabled: _submitting || _dirty,
       child: PopScope<KnowledgeEventDetail>(
@@ -175,44 +201,79 @@ class _AddToEventDialogState extends ConsumerState<AddToEventDialog> {
                   maxLength: 240,
                   decoration: const InputDecoration(labelText: '事件标题'),
                 )
-              else
-                events!.when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (error, _) => Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        formatApiErrorMessage(
-                          error,
-                          fallbackMessage: '无法读取已有事件',
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () =>
-                            ref.invalidate(activeKnowledgeEventsProvider),
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('重试'),
-                      ),
-                    ],
+              else ...[
+                if (_selectedEventId != null)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_selectedTitle!),
+                    trailing: TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => setState(() {
+                              _selectedEventId = null;
+                              _selectedTitle = null;
+                              _eventPage = 1;
+                              _eventQuery = '';
+                            }),
+                      child: const Text('更换'),
+                    ),
+                  )
+                else ...[
+                  TextField(
+                    onChanged: _search,
+                    decoration: const InputDecoration(
+                      hintText: '搜索事件',
+                      prefixIcon: Icon(Icons.search),
+                    ),
                   ),
-                  data: (data) => data.items.isEmpty
-                      ? const Text('没有可加入的进行中事件')
-                      : Semantics(
-                          label: '已有事件',
-                          child: AppFilterMenu(
-                            label: '已有事件',
-                            value: _selectedEventId?.toString() ?? '选择事件',
-                            options: {
-                              for (final event in data.items)
-                                '${event.id}': event.title,
+                  events!.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (error, _) => TextButton(
+                      onPressed: () =>
+                          ref.invalidate(knowledgeEventsProvider(query)),
+                      child: const Text('读取失败，重试'),
+                    ),
+                    data: (data) => Column(
+                      children: [
+                        if (data.items.isEmpty)
+                          const ListTile(title: Text('没有匹配的事件')),
+                        for (final event in data.items)
+                          ListTile(
+                            title: Text(event.title),
+                            onTap: () {
+                              _searchTimer?.cancel();
+                              setState(() {
+                                _selectedEventId = event.id;
+                                _selectedTitle = event.title;
+                              });
                             },
-                            enabled: !_submitting,
-                            onSelected: (value) => setState(
-                              () => _selectedEventId = int.parse(value),
-                            ),
                           ),
-                        ),
-                ),
+                        if (_eventPage > 1 || data.hasMore)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              IconButton(
+                                tooltip: '上一页',
+                                icon: const Icon(Icons.chevron_left),
+                                onPressed: _eventPage > 1
+                                    ? () => setState(() => _eventPage--)
+                                    : null,
+                              ),
+                              Text('第 $_eventPage 页'),
+                              IconButton(
+                                tooltip: '下一页',
+                                icon: const Icon(Icons.chevron_right),
+                                onPressed: data.hasMore
+                                    ? () => setState(() => _eventPage++)
+                                    : null,
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
               const SizedBox(height: AppSpacing.md),
               _EnumSelector(
                 label: '内容角色',

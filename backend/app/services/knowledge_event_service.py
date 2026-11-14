@@ -42,12 +42,14 @@ class KnowledgeEventService:
         size: int,
         status: KnowledgeEventStatus | None,
         content_id: int | None,
+        query: str = "",
     ) -> dict[str, Any]:
         events, total = await self.repository.list_events(
             page=page,
             size=size,
             status=status,
             content_id=content_id,
+            query=query,
         )
         return {
             "items": [self._serialize_summary(event) for event in events],

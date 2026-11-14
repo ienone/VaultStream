@@ -86,6 +86,7 @@ class AgentSessionItem(BaseModel):
 
 class AgentSessionListResponse(BaseModel):
     sessions: List[AgentSessionItem]
+    next_offset: int | None
 
 
 class AgentSessionActionResponse(BaseModel):

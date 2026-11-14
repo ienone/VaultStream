@@ -43,7 +43,7 @@ Bot 生命周期控制和 chat 同步已经离开 API router 并进入可注入 
 
 解析队列每行只执行一次：PENDING → RUNNING → COMPLETED/FAILED，不再使用租约重领、世代或重复执行预算。30 分钟是执行超时；轮询发现超时 RUNNING 时结算失败，不重新抓取。写入结果仍要求该任务行处于 RUNNING，避免已结束任务的迟到结果提交。解析事实与 Task 完成同事务写入。
 
-队列和手动重新解析统一进入 SQLite Task，再调用 `ContentParser.execute_parse`，保留 force 与人工候选语义。评分、摘要、索引、分发规则匹配和 PDF 提取使用独立持久 Task；同内容串行，失败分别结算，不降级已保存正文。运行账本直接更新状态和结果，不把展示字典及序列化时间再解析回数据库；元数据保留在原记录中。
+队列和手动重新解析统一进入 SQLite Task，再调用 `ContentParser.execute_parse`，保留 force 与人工候选语义。评分、摘要、索引和分发规则匹配使用独立持久 Task；同内容串行，失败分别结算，不降级已保存正文。运行账本直接更新状态和结果，不把展示字典及序列化时间再解析回数据库；元数据保留在原记录中。
 
 `TaskWorker` 在每次从解析队列领取任务前通过 `AutomationPolicyService` 读取持久化的 `enable_parse_worker`。关闭时 worker 保持存活但不调用 dequeue，既有 pending 任务原样等待；内容捕获和入队不受影响，重新开启后继续领取。该策略不抢占或中断已经进入执行中的解析任务。
 
@@ -83,7 +83,6 @@ Bot 生命周期控制和 chat 同步已经离开 API router 并进入可注入 
 
 解析和后处理使用同一 SQLite 队列与运行账本。待处理 run 标记 pending，领取后进入 running；任务超时失败，不自动重放外部调用。
 
-
 ## 2026-09-06 职责收敛
 
 任务与通知统一使用 `task_run_presentation` 的标题、结果摘要和终态集合。单条任务有可用关联内容时，展示标题或来源域名。网页解析因缺少文本模型密钥失败时，可直接进入模型配置或回内容页重新解析。任务结果先显示摘要和有意义的指标；全零同步指标不重复成四个格子，run ID、触发来源与错误码放在诊断区。
@@ -91,6 +90,8 @@ Bot 生命周期控制和 chat 同步已经离开 API router 并进入可注入 
 `BackgroundTaskRun` 负责一次执行的持久状态、关联和结果。`background_task_state:*` 只保留真实常驻 worker 的运行健康快照，不能当作某次执行结果；逐内容 embedding 没有独立 worker，已移除其重复投影写入，以 ContentEmbedding 的索引状态和 failure_reason 为事实源，不重复创建自动 content_embedding 运行记录。
 
 ## 实时界面更新
+
+订阅与断线恢复共用同一个数据库游标。进程广播只唤醒订阅者；积压事件分批按 ID 读取。事件保留七天，客户端重连时重新读取当前页面的数据。
 
 任务首次落盘及终态提交后发布 `background_task_updated`，携带 `task/status/run_id`；任务 metadata 有 `content_id` 时一并提供。事件只提示重读持久事实，重复结算不重复广播。解析进入 processing、解析正文提交时分别发布 `content_updated`，正文显示不等待摘要与索引结束。
 
