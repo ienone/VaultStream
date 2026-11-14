@@ -165,7 +165,7 @@ class ImmersiveMediaDetail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          flex: 13,
+          flex: ctx.detail.template.mediaIsPrimary ? 13 : 1,
           child: ClipRRect(
             borderRadius: AppShape.cardBorder,
             child: _ImmersiveMediaViewer(ctx: ctx),
@@ -173,7 +173,7 @@ class ImmersiveMediaDetail extends StatelessWidget {
         ),
         const SizedBox(width: AppSpacing.md),
         Expanded(
-          flex: 8,
+          flex: ctx.detail.template.mediaIsPrimary ? 8 : 1,
           child: ColoredBox(
             color: scheme.surface,
             child: SingleChildScrollView(

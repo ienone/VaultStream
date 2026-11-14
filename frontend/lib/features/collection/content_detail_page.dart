@@ -678,11 +678,20 @@ class _ContentDetailPageState extends ConsumerState<ContentDetailPage> {
   }
 
   Widget _buildImmersiveMediaPane(TemplateContext ctx) {
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: ImmersiveMediaDetail(
-        context_: ctx,
-        sharedHeaderBuilder: _revealHeader,
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth:
+              AppPane.readableMaxWidth * 2 + AppSpacing.md + AppSpacing.xl * 2,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: ImmersiveMediaDetail(
+            context_: ctx,
+            sharedHeaderBuilder: _revealHeader,
+          ),
+        ),
       ),
     );
   }
