@@ -357,7 +357,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final field in defaults.keys) ...[
-                    _SettingsField(
+                    SettingsTextField(
                       controller: controllers[field]!,
                       label: labels[field]!,
                       obscureText: field == 'api_key',
@@ -584,52 +584,6 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
       ),
     );
   }
-}
-
-class _SettingsField extends StatelessWidget {
-  const _SettingsField({
-    required this.controller,
-    required this.label,
-    this.description,
-    this.hint,
-    this.obscureText = false,
-    this.keyboardType,
-  });
-
-  final TextEditingController controller;
-  final String label;
-  final String? description;
-  final String? hint;
-  final bool obscureText;
-  final TextInputType? keyboardType;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(label, style: Theme.of(context).textTheme.bodyLarge),
-      if (description != null) ...[
-        const SizedBox(height: 4),
-        Text(
-          description!,
-          style: Theme.of(context).textTheme.bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-        ),
-      ],
-      const SizedBox(height: 8),
-      Semantics(
-        label: label,
-        child: TextField(
-          controller: controller,
-          obscureText: obscureText,
-          keyboardType: keyboardType,
-          autocorrect: false,
-          enableSuggestions: false,
-          decoration: InputDecoration(hintText: hint),
-        ),
-      ),
-    ],
-  );
 }
 
 class _ModelSaveButtons extends StatefulWidget {

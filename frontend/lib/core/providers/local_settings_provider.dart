@@ -53,25 +53,6 @@ class LocalSettings extends _$LocalSettings {
     );
   }
 
-  Future<void> setBaseUrl(String url) async {
-    url = normalizeServerUrl(url);
-    if (isSharedPrefsInitialized) {
-      await sharedPrefs.setString(_keyBaseUrl, url);
-    }
-    state = state.copyWith(baseUrl: url);
-  }
-
-  Future<void> setApiToken(String token) async {
-    if (isSecureStorageInitialized) {
-      await secureStorage.write(key: apiTokenStorageKey, value: token);
-    }
-    if (isSharedPrefsInitialized) {
-      await sharedPrefs.remove(apiTokenStorageKey);
-    }
-    initialApiToken = token;
-    state = state.copyWith(apiToken: token);
-  }
-
   Future<void> clearAuth() async {
     if (isSecureStorageInitialized) {
       await secureStorage.delete(key: apiTokenStorageKey);

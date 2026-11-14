@@ -152,18 +152,24 @@ class SettingSaveButton extends StatefulWidget {
 
 class _SettingSaveButtonState extends State<SettingSaveButton> {
   bool _saving = false;
-  bool _failed = false;
+  String? _error;
 
   Future<void> _save() async {
     if (_saving) return;
     setState(() {
       _saving = true;
-      _failed = false;
+      _error = null;
     });
     try {
       await widget.onPressed();
-    } catch (_) {
-      if (mounted) setState(() => _failed = true);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error is FormatException
+              ? error.message
+              : formatApiErrorMessage(error, fallbackMessage: '保存失败，请重试'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -187,11 +193,11 @@ class _SettingSaveButtonState extends State<SettingSaveButton> {
           ],
         ),
       ),
-      if (_failed)
+      if (_error != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(
-            '保存失败，请重试',
+            _error!,
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
         ),
@@ -276,6 +282,53 @@ class _SettingSwitchState extends State<SettingSwitch> {
             ],
           ),
         ),
+    ],
+  );
+}
+
+class SettingsTextField extends StatelessWidget {
+  const SettingsTextField({
+    super.key,
+    required this.controller,
+    required this.label,
+    this.description,
+    this.hint,
+    this.obscureText = false,
+    this.keyboardType,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String? description;
+  final String? hint;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(label, style: Theme.of(context).textTheme.bodyLarge),
+      if (description != null) ...[
+        const SizedBox(height: 4),
+        Text(
+          description!,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
+      ],
+      const SizedBox(height: 8),
+      Semantics(
+        label: label,
+        child: TextField(
+          controller: controller,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(hintText: hint),
+        ),
+      ),
     ],
   );
 }

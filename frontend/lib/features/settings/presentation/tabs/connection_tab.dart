@@ -19,7 +19,6 @@ import '../../../../core/network/api_client.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/platform_auth_controller.dart';
 import '../../providers/platform_health_provider.dart';
-import '../../models/system_setting.dart';
 import '../../utils/setting_value.dart';
 import '../widgets/setting_components.dart';
 import '../widgets/settings_editor_draft.dart';
@@ -116,50 +115,23 @@ class ConnectionTab extends ConsumerWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return AppPageBody(
+      maxWidth: AppPane.readableMaxWidth,
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         children: [
-          SettingGroup(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: _buildBaseUrlEditor(context, ref, localSettings.baseUrl),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: _buildApiTokenEditor(
-                  context,
-                  ref,
-                  localSettings.apiToken,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: _buildProxyEditor(context, ref),
-              ),
-            ],
+          _buildConnectionEditor(context, ref, localSettings),
+          const Divider(height: 48),
+          _buildProxyEditor(context, ref),
+          const SizedBox(height: 32),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('退出登录'),
+              style: TextButton.styleFrom(foregroundColor: colorScheme.error),
+              onPressed: () => _confirmLogout(context, ref),
+            ),
           ),
-          const SizedBox(height: 24),
-          SettingGroup(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.network_check_rounded),
-                title: const Text('测试连接'),
-                onTap: () => _testConnection(
-                  context,
-                  ref,
-                  localSettings.baseUrl,
-                  localSettings.apiToken,
-                ),
-              ),
-              ListTile(
-                leading: Icon(Icons.logout_rounded, color: colorScheme.error),
-                title: Text('退出登录', style: TextStyle(color: colorScheme.error)),
-                onTap: () => _confirmLogout(context, ref),
-              ),
-            ],
-          ),
-          const SizedBox(height: 40),
         ],
       ),
     );
@@ -205,76 +177,105 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildBaseUrlEditor(
+  Widget _buildConnectionEditor(
     BuildContext context,
     WidgetRef ref,
-    String currentValue,
-  ) {
-    return _ConnectionValueEditor(
-      initialValue: currentValue,
-      label: '服务器地址',
-      hint: 'https://vault.example.com',
-      buttonLabel: '保存地址',
-      onSave: (value) async {
-        try {
-          await ref.read(localSettingsProvider.notifier).setBaseUrl(value);
-          if (context.mounted) showToast(context, '服务器地址已保存');
-        } on FormatException catch (error) {
-          if (context.mounted) showToast(context, error.message);
-        }
-      },
-    );
-  }
+    LocalSettingsState settings,
+  ) => SettingsEditorDraft(
+    initialValues: {'url': settings.baseUrl, 'token': settings.apiToken},
+    builder: (context, controllers) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsTextField(
+          controller: controllers['url']!,
+          label: '服务器地址',
+          hint: 'https://vault.example.com',
+          keyboardType: TextInputType.url,
+        ),
+        const SizedBox(height: 20),
+        SettingsTextField(
+          controller: controllers['token']!,
+          label: '访问密钥',
+          obscureText: true,
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.network_check_rounded),
+              label: const Text('测试连接'),
+              onPressed: () => _testConnection(
+                context,
+                ref,
+                controllers['url']!.text,
+                controllers['token']!.text,
+              ),
+            ),
+            SettingSaveButton(
+              onPressed: () async {
+                await ref
+                    .read(localSettingsProvider.notifier)
+                    .setConnection(
+                      controllers['url']!.text,
+                      controllers['token']!.text,
+                    );
+                if (context.mounted) showToast(context, '连接设置已保存');
+              },
+              child: const Text('保存连接'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 
-  Widget _buildApiTokenEditor(
-    BuildContext context,
-    WidgetRef ref,
-    String currentValue,
-  ) {
-    return _ConnectionValueEditor(
-      initialValue: currentValue,
-      label: '访问密钥',
-      obscureText: true,
-      buttonLabel: '更新密钥',
-      onSave: (value) async {
-        await ref.read(localSettingsProvider.notifier).setApiToken(value);
-        if (context.mounted) showToast(context, '密钥已更新');
-      },
-    );
-  }
-
-  Widget _buildProxyEditor(BuildContext context, WidgetRef ref) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.when(
-      data: (settings) {
-        final proxy =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'http_proxy',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        return _ConnectionValueEditor(
-          initialValue: proxy,
-          label: 'HTTP/HTTPS 代理地址',
-          hint: 'http://127.0.0.1:7890',
-          buttonLabel: '保存代理',
-          onSave: (value) async {
-            await ref
-                .read(systemSettingsProvider.notifier)
-                .updateSetting('http_proxy', value, category: 'network');
-            if (context.mounted) showToast(context, '代理已保存');
+  Widget _buildProxyEditor(BuildContext context, WidgetRef ref) => ref
+      .watch(systemSettingsProvider)
+      .when(
+        data: (settings) => SettingsEditorDraft(
+          initialValues: {
+            'proxy':
+                getSettingValue(settings, 'http_proxy', '') as String? ?? '',
           },
-        );
-      },
-      loading: () => const LoadingGroup(),
-      error: (_, _) => SettingLoadFailure(
-        onRetry: () => ref.invalidate(systemSettingsProvider),
-      ),
-    );
-  }
+          builder: (context, controllers) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SettingsTextField(
+                controller: controllers['proxy']!,
+                label: '服务器代理',
+                description: '用于服务器访问外部网站，留空则不使用代理。',
+                hint: 'http://127.0.0.1:7890',
+                keyboardType: TextInputType.url,
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: SettingSaveButton(
+                  onPressed: () async {
+                    await ref
+                        .read(systemSettingsProvider.notifier)
+                        .updateSetting(
+                          'http_proxy',
+                          controllers['proxy']!.text,
+                          category: 'network',
+                        );
+                    if (context.mounted) showToast(context, '代理已保存');
+                  },
+                  child: const Text('保存代理'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        loading: () => const LoadingGroup(),
+        error: (_, _) => SettingLoadFailure(
+          onRetry: () => ref.invalidate(systemSettingsProvider),
+        ),
+      );
 
   Widget buildBiliAdvancedEditor(BuildContext context, WidgetRef ref) =>
       SettingsEditorDraft(
@@ -715,53 +716,6 @@ class _PlatformLoginDialogState extends ConsumerState<PlatformLoginDialog> {
     'failed' => '登录失败，请重试',
     _ => '正在等待平台确认…',
   };
-}
-
-class _ConnectionValueEditor extends StatelessWidget {
-  const _ConnectionValueEditor({
-    required this.initialValue,
-    required this.label,
-    required this.buttonLabel,
-    required this.onSave,
-    this.hint,
-    this.obscureText = false,
-  });
-
-  final String initialValue;
-  final String label;
-  final String buttonLabel;
-  final String? hint;
-  final bool obscureText;
-  final Future<void> Function(String value) onSave;
-
-  @override
-  Widget build(BuildContext context) => SettingsEditorDraft(
-    initialValues: {'value': initialValue},
-    builder: (context, controllers) {
-      final controller = controllers['value']!;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: controller,
-            obscureText: obscureText,
-            enableSuggestions: false,
-            autocorrect: false,
-            keyboardType: obscureText ? TextInputType.text : TextInputType.url,
-            decoration: InputDecoration(labelText: label, hintText: hint),
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.tonal(
-              onPressed: () => onSave(controller.text),
-              child: Text(buttonLabel),
-            ),
-          ),
-        ],
-      );
-    },
-  );
 }
 
 /// Explicit credential entry; never reads a browser profile or echoes saved secrets.
