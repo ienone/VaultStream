@@ -48,7 +48,7 @@ class AccountDetailPage extends ConsumerWidget {
         body: AppPageBody(
           maxWidth: 720,
           child: const SingleChildScrollView(
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             child: PushTab(platform: 'qq'),
           ),
         ),
@@ -86,7 +86,10 @@ class AccountDetailPage extends ConsumerWidget {
               : AppPageBody(
                   maxWidth: 720,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 24,
+                    ),
                     children: [AccountPlatformPanel(account: account)],
                   ),
                 );

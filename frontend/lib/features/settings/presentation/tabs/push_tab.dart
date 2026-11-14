@@ -416,6 +416,7 @@ class _PushTabState extends ConsumerState<PushTab> {
               ] else ...[
                 SectionHeader(
                   title: '机器人服务',
+                  padding: const EdgeInsets.only(bottom: 12),
                   action: IconButton(
                     tooltip: '刷新机器人状态',
                     onPressed: _isControllingTelegram

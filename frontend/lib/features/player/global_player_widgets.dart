@@ -1,3 +1,4 @@
+import '../../core/layout/responsive_layout.dart';
 import '../../core/utils/toast.dart';
 import '../collection/providers/collection_provider.dart';
 
@@ -1149,98 +1150,104 @@ class GlobalMiniPlayer extends ConsumerWidget {
         ? '仅听声音'
         : null;
 
-    return Material(
-      key: const ValueKey('global-mini-player'),
-      color: scheme.surfaceContainerHighest,
-      child: SafeArea(
-        top: false,
-        child: Semantics(
-          hint: '展开播放器',
-          child: InkWell(
-            onTap: () => expandPlayer(context),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 56),
-              child: Row(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: ClipRRect(
-                      borderRadius: AppShape.cardMediaBorder,
-                      child: SizedBox(
-                        width: 64,
-                        height: 44,
-                        child: poster != null
-                            ? NetworkThumbnail(
-                                mediaAsset: poster,
-                                purpose: MediaPurpose.card,
-                              )
-                            : Icon(
-                                audioPresentation
-                                    ? Icons.graphic_eq_rounded
-                                    : Icons.movie_outlined,
-                                color: scheme.primary,
-                              ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: AppSpacing.sm,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            request.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          if (status != null) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              status,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (state.loading)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    )
-                  else if (player != null && state.initialized)
-                    ValueListenableBuilder<VideoPlayerValue>(
-                      valueListenable: player,
-                      builder: (context, value, _) => IconButton(
-                        tooltip: value.isPlaying ? '暂停' : '播放',
-                        onPressed: actions.togglePlayback,
-                        icon: Icon(
-                          value.isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
+    final compact = WindowMetrics.of(context).isShortLandscape;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: compact ? 4 : 8),
+        child: Material(
+          key: const ValueKey('global-mini-player'),
+          color: scheme.surfaceContainerHighest,
+          borderRadius: AppShape.cardBorder,
+          clipBehavior: Clip.antiAlias,
+          child: Semantics(
+            hint: '展开播放器',
+            child: InkWell(
+              onTap: () => expandPlayer(context),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: compact ? 48 : 56),
+                child: Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: ClipRRect(
+                        borderRadius: AppShape.cardMediaBorder,
+                        child: SizedBox(
+                          width: compact ? 52 : 64,
+                          height: compact ? 36 : 44,
+                          child: poster != null
+                              ? NetworkThumbnail(
+                                  mediaAsset: poster,
+                                  purpose: MediaPurpose.card,
+                                )
+                              : Icon(
+                                  audioPresentation
+                                      ? Icons.graphic_eq_rounded
+                                      : Icons.movie_outlined,
+                                  color: scheme.primary,
+                                ),
                         ),
                       ),
                     ),
-                  IconButton(
-                    tooltip: '关闭播放器',
-                    onPressed: actions.close,
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                  const SizedBox(width: 4),
-                ],
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: compact ? 8 : AppSpacing.sm,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              request.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            if (status != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                status,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (state.loading)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else if (player != null && state.initialized)
+                      ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: player,
+                        builder: (context, value, _) => IconButton(
+                          tooltip: value.isPlaying ? '暂停' : '播放',
+                          onPressed: actions.togglePlayback,
+                          icon: Icon(
+                            value.isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                        ),
+                      ),
+                    IconButton(
+                      tooltip: '关闭播放器',
+                      onPressed: actions.close,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
               ),
             ),
           ),

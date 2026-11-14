@@ -44,61 +44,68 @@ class ConnectionTab extends ConsumerWidget {
       return ListView(
         padding: const EdgeInsetsDirectional.fromSTEB(12, 12, 12, 24),
         children: [
-          const SectionHeader(title: '内容平台'),
+          const SectionHeader(
+            title: '内容平台',
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+          ),
           _buildPlatformHealthSection(context, ref, platformHealthAsync),
           const SizedBox(height: 16),
-          const SectionHeader(title: '聊天账号'),
+          const SectionHeader(
+            title: '聊天账号',
+            padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+          ),
           for (final entry in {'telegram': 'Telegram', 'qq': 'QQ'}.entries)
-            ListTile(
-              leading: Icon(
-                entry.key == 'telegram'
-                    ? Icons.telegram_rounded
-                    : Icons.chat_bubble_outline_rounded,
-              ),
+            _AccountNavigationTile(
               selected: selectedPlatform == entry.key,
-              title: Text(entry.value),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              title: entry.value,
               onTap: () => onAccountSelected != null
                   ? onAccountSelected!(entry.key)
                   : context.go('/accounts/${entry.key}'),
             ),
           const SizedBox(height: 12),
-          ExpansionTile(
-            title: const Text('账号设置'),
-            children: [
-              ref
-                  .watch(systemSettingsProvider)
-                  .when(
-                    data: (settings) => Column(
-                      children: [
-                        for (final option in {
-                          'chat_capture_enabled': '允许机器人保存到收藏库',
-                          'enable_cookie_keepalive': '自动检查登录状态',
-                        }.entries)
-                          SettingSwitch(
-                            title: Text(option.value),
-                            value: parseBoolSetting(
-                              getSettingValue(settings, option.key, true),
-                              true,
+          Material(
+            type: MaterialType.transparency,
+            borderRadius: AppShape.cardMediaBorder,
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              title: const Text('账号设置'),
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                ref
+                    .watch(systemSettingsProvider)
+                    .when(
+                      data: (settings) => Column(
+                        children: [
+                          for (final option in {
+                            'chat_capture_enabled': '允许机器人保存到收藏库',
+                            'enable_cookie_keepalive': '自动检查登录状态',
+                          }.entries)
+                            SettingSwitch(
+                              title: Text(option.value),
+                              value: parseBoolSetting(
+                                getSettingValue(settings, option.key, true),
+                                true,
+                              ),
+                              onChanged: (value) => ref
+                                  .read(systemSettingsProvider.notifier)
+                                  .updateSetting(
+                                    option.key,
+                                    value,
+                                    category:
+                                        option.key == 'chat_capture_enabled'
+                                        ? 'bot'
+                                        : 'automation',
+                                  ),
                             ),
-                            onChanged: (value) => ref
-                                .read(systemSettingsProvider.notifier)
-                                .updateSetting(
-                                  option.key,
-                                  value,
-                                  category: option.key == 'chat_capture_enabled'
-                                      ? 'bot'
-                                      : 'automation',
-                                ),
-                          ),
-                      ],
+                        ],
+                      ),
+                      loading: () => const LinearProgressIndicator(),
+                      error: (_, _) => SettingLoadFailure(
+                        onRetry: () => ref.invalidate(systemSettingsProvider),
+                      ),
                     ),
-                    loading: () => const LinearProgressIndicator(),
-                    error: (_, _) => SettingLoadFailure(
-                      onRetry: () => ref.invalidate(systemSettingsProvider),
-                    ),
-                  ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 40),
         ],
@@ -424,9 +431,9 @@ class _PlatformAccountListState extends State<_PlatformAccountList> {
       children: [
         for (final platform in widget.platforms)
           if (widget.onSelected != null)
-            ListTile(
+            _AccountNavigationTile(
               key: _platformKeys[platform.platform],
-              title: Text(platform.label),
+              title: platform.label,
               selected: platform.platform == widget.selectedPlatform,
               onTap: () => widget.onSelected!(platform.platform),
             )
@@ -438,6 +445,33 @@ class _PlatformAccountListState extends State<_PlatformAccountList> {
       ],
     );
   }
+}
+
+class _AccountNavigationTile extends StatelessWidget {
+  const _AccountNavigationTile({
+    super.key,
+    required this.title,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    type: MaterialType.transparency,
+    borderRadius: AppShape.cardMediaBorder,
+    clipBehavior: Clip.antiAlias,
+    child: ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      title: Text(title),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      selected: selected,
+      onTap: onTap,
+    ),
+  );
 }
 
 class PlatformLoginDialog extends ConsumerStatefulWidget {

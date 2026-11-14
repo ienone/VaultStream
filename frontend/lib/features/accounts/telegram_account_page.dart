@@ -103,7 +103,7 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
             ),
           ),
           data: (account) => ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
             children: [
               Text('个人账号', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 12),
@@ -134,7 +134,7 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               const PushTab(platform: 'telegram'),
             ],
           ),

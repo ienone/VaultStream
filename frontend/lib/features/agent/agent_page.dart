@@ -445,7 +445,7 @@ class _ConversationPane extends StatelessWidget {
                   key: ValueKey(state._sessionId),
                   reverse: true,
                   controller: state._scrollController,
-                  padding: const EdgeInsets.all(AppSpacing.md),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   itemCount:
                       state._timeline.length +
                       (state._agentState.beforeMessageId == null ? 0 : 1),
@@ -468,14 +468,19 @@ class _ConversationPane extends StatelessWidget {
                         constraints: const BoxConstraints(
                           maxWidth: AppPane.readableMaxWidth,
                         ),
-                        child: _TimelineTile(
-                          item: state._timeline[index],
-                          showInlineCitations: showInlineCitations,
-                          onDecide: state._decideConfirmation,
-                          confirmationPending: state._decidingConfirmationIds
-                              .contains(
-                                state._timeline[index].confirmation?.id,
-                              ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                          ),
+                          child: _TimelineTile(
+                            item: state._timeline[index],
+                            showInlineCitations: showInlineCitations,
+                            onDecide: state._decideConfirmation,
+                            confirmationPending: state._decidingConfirmationIds
+                                .contains(
+                                  state._timeline[index].confirmation?.id,
+                                ),
+                          ),
                         ),
                       ),
                     );
@@ -518,6 +523,7 @@ class _ConversationPane extends StatelessWidget {
                 child: Material(
                   color: Theme.of(context).colorScheme.surfaceContainerHigh,
                   borderRadius: AppShape.paneBorder,
+                  clipBehavior: Clip.antiAlias,
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.xs),
                     child: Row(
@@ -534,6 +540,10 @@ class _ConversationPane extends StatelessWidget {
                             textInputAction: TextInputAction.newline,
                             decoration: const InputDecoration(
                               hintText: '输入问题或指令',
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 12,
+                              ),
                               filled: false,
                               border: InputBorder.none,
                               enabledBorder: InputBorder.none,
@@ -775,8 +785,13 @@ class _Bubble extends StatelessWidget {
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: AppPane.readableMaxWidth),
-        margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-        padding: const EdgeInsets.all(AppSpacing.sm),
+        margin: const EdgeInsets.only(bottom: AppSpacing.md),
+        padding: alignRight
+            ? const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              )
+            : const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         decoration: alignRight
             ? BoxDecoration(
                 color: theme.colorScheme.primaryContainer,

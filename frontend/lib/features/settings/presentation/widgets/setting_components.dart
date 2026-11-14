@@ -207,14 +207,14 @@ class SettingSwitch extends StatefulWidget {
     this.subtitle,
     required this.value,
     required this.onChanged,
-    this.contentPadding = EdgeInsets.zero,
+    this.contentPadding,
     this.shape,
   });
   final Widget title;
   final Widget? subtitle;
   final bool value;
   final Future<void> Function(bool) onChanged;
-  final EdgeInsetsGeometry contentPadding;
+  final EdgeInsetsGeometry? contentPadding;
   final ShapeBorder? shape;
   @override
   State<SettingSwitch> createState() => _SettingSwitchState();
@@ -257,18 +257,24 @@ class _SettingSwitchState extends State<SettingSwitch> {
       ),
       if (_saving) const LinearProgressIndicator(),
       if (_error != null)
-        Wrap(
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text(
-              _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            TextButton(
-              onPressed: () => _save(_requested!),
-              child: const Text('重试'),
-            ),
-          ],
+        Padding(
+          padding:
+              widget.contentPadding ??
+              ListTileTheme.of(context).contentPadding ??
+              const EdgeInsets.symmetric(horizontal: 16),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              TextButton(
+                onPressed: () => _save(_requested!),
+                child: const Text('重试'),
+              ),
+            ],
+          ),
         ),
     ],
   );

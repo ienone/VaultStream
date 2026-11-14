@@ -341,9 +341,6 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                                             .appBarTheme
                                             .copyWith(
                                               centerTitle: true,
-                                              toolbarHeight: WindowMetrics.of(
-                                                context,
-                                              ).toolbarHeight,
                                               backgroundColor: Theme.of(context)
                                                   .colorScheme
                                                   .surfaceContainerLow,
