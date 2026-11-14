@@ -32,6 +32,11 @@ final class AppRadius {
 /// 组件按语义选择形状，而不是所有容器统一 28 圆角。
 /// 卡片、pane、sheet 的圆角差异本身就是层级信号。
 final class AppShape {
+  /// 表单字段与选择器。
+  static const BorderRadius inputBorder = BorderRadius.all(
+    Radius.circular(AppRadius.sm),
+  );
+
   /// 独立内容卡片。
   static const double card = AppRadius.xl;
 

@@ -76,12 +76,6 @@ class _AppSelectMenuState extends State<AppSelectMenu>
 
   Widget _surface({required bool expanded, double? maxHeight}) {
     final theme = Theme.of(context);
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(
-        color: expanded ? theme.colorScheme.primary : theme.colorScheme.outline,
-      ),
-    );
     return InputDecorator(
       isFocused: expanded,
       decoration: InputDecoration(
@@ -94,10 +88,6 @@ class _AppSelectMenuState extends State<AppSelectMenu>
           horizontal: 16,
           vertical: 16,
         ),
-        border: border,
-        enabledBorder: border,
-        focusedBorder: border,
-        disabledBorder: border,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -245,7 +235,7 @@ class _AppSelectMenuState extends State<AppSelectMenu>
                     },
                     child: Material(
                       color: Theme.of(context).colorScheme.surfaceContainerHigh,
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: AppShape.inputBorder,
                       child: _surface(expanded: true, maxHeight: maxHeight),
                     ),
                   ),
@@ -260,11 +250,11 @@ class _AppSelectMenuState extends State<AppSelectMenu>
         child: Opacity(
           opacity: _open ? 0 : 1,
           child: Material(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(16),
+            type: MaterialType.transparency,
+            borderRadius: AppShape.inputBorder,
             child: InkWell(
               focusNode: _focus,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppShape.inputBorder,
               onTap: widget.enabled ? () => _menu.open() : null,
               child: Semantics(
                 button: true,

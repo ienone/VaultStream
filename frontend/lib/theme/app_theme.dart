@@ -37,6 +37,31 @@ class AppTheme {
   static ThemeData fromColorScheme(ColorScheme scheme, Brightness brightness) {
     final isDark = brightness == Brightness.dark;
     final textTheme = _buildTextTheme(brightness);
+    final inputTheme = InputDecorationTheme(
+      filled: false,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: const OutlineInputBorder(borderRadius: AppShape.inputBorder),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: AppShape.inputBorder,
+        borderSide: BorderSide(color: scheme.outlineVariant),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: AppShape.inputBorder,
+        borderSide: BorderSide(color: scheme.primary, width: 2),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: AppShape.inputBorder,
+        borderSide: BorderSide(color: scheme.onSurface.withValues(alpha: .12)),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: AppShape.inputBorder,
+        borderSide: BorderSide(color: scheme.error),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: AppShape.inputBorder,
+        borderSide: BorderSide(color: scheme.error, width: 2),
+      ),
+    );
 
     // Keep space around labels when text scaling increases their height.
     const actionButtonStyle = ButtonStyle(
@@ -186,23 +211,7 @@ class AppTheme {
         ),
       ),
 
-      // Input Decoration (Textfields)
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: scheme.surfaceContainerHighest,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          borderSide: BorderSide(color: scheme.primary, width: 2),
-        ),
-      ),
+      inputDecorationTheme: inputTheme,
 
       // Dialogs
       dialogTheme: DialogThemeData(
@@ -252,15 +261,7 @@ class AppTheme {
           ),
           elevation: WidgetStateProperty.all(8),
         ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppRadius.xl),
-            borderSide: BorderSide.none,
-          ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        ),
+        inputDecorationTheme: inputTheme,
       ),
 
       // Integrated Search Bar Theme
