@@ -8,18 +8,11 @@ part 'queue_item.g.dart';
 enum QueueStatus {
   willPush('will_push', '待发送'),
   filtered('filtered', '未发送'),
-  pushed('pushed', '已发送');
+  history('history', '发送记录');
 
   const QueueStatus(this.value, this.label);
   final String value;
   final String label;
-
-  static QueueStatus fromValue(String value) {
-    return QueueStatus.values.firstWhere(
-      (e) => e.value == value,
-      orElse: () => QueueStatus.filtered,
-    );
-  }
 }
 
 @freezed
@@ -49,34 +42,45 @@ abstract class QueueItem with _$QueueItem {
 
   const QueueItem._();
 
-  String get displayPlatform => sourcePlatform ?? platform;
-
   bool get deliveryUnconfirmed => reasonCode == 'delivery_unknown';
   bool get isProcessing => status == 'processing';
 
-  String? get displayReason {
-    final message = reason?.trim();
-    if (message != null && message.isNotEmpty) {
-      return message;
-    }
+  bool get isDeliveryFailure =>
+      status == 'failed' &&
+      switch (reasonCode) {
+        'manual_canceled' ||
+        'manual_filtered' ||
+        'tags_not_all_matched' ||
+        'tags_not_any_matched' ||
+        'tags_excluded' ||
+        'platform_mismatch' ||
+        'content_not_eligible' ||
+        'already_pushed_dedupe' ||
+        'approval_required' ||
+        'manual_ready' ||
+        'nsfw_condition_mismatch' ||
+        'nsfw_blocked' ||
+        'qq_agent_receipt' => false,
+        _ => true,
+      };
 
-    return switch (reasonCode) {
-      'nsfw_blocked' => 'NSFW 内容被阻止',
-      'nsfw_separate_unconfigured_blocked' => 'NSFW 分离路由未配置，已阻止',
-      'nsfw_condition_mismatch' => 'NSFW 条件不匹配',
-      'platform_mismatch' => '平台条件不匹配',
-      'tags_excluded' => '命中排除标签',
-      'tags_not_all_matched' => '未命中全部必需标签',
-      'tags_not_any_matched' => '未命中任一必需标签',
-      'approval_required' => '等待人工审批',
-      'already_pushed_dedupe' => '已推送（去重跳过）',
-      'content_not_eligible' => '内容状态不满足推送条件',
-      'target_unavailable' => '目标不可用，暂缓推送',
-      'manual_filtered' => '已手动过滤',
-      'manual_canceled' => '已手动取消',
-      _ => null,
-    };
-  }
+  String? get displayReason => switch (reasonCode) {
+    'nsfw_blocked' || 'nsfw_condition_mismatch' => '内容限制，未发送',
+    'nsfw_separate_unconfigured_blocked' => '未设置独立接收目标',
+    'platform_mismatch' => '不符合平台条件',
+    'tags_excluded' ||
+    'tags_not_all_matched' ||
+    'tags_not_any_matched' => '不符合标签条件',
+    'approval_required' => '待确认',
+    'already_pushed_dedupe' => '此前已发送',
+    'content_not_eligible' => '内容不符合发送条件',
+    'target_unavailable' => '接收目标不可用',
+    'rule_or_target_disabled' => '规则或目标已停用',
+    'manual_filtered' => '已手动跳过',
+    'manual_canceled' => '已取消',
+    'qq_agent_receipt' => '由助手回复',
+    _ => null,
+  };
 
   factory QueueItem.fromJson(Map<String, dynamic> json) =>
       _$QueueItemFromJson(json);

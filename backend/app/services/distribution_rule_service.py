@@ -1,13 +1,12 @@
 from datetime import timedelta
-from typing import List, Optional, Dict, Any, Tuple
-from sqlalchemy import select, desc, and_, update
-from sqlalchemy.orm import selectinload
+from typing import List, Optional, Tuple
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.distribution import DistributionRule, DistributionTarget
-from app.models.system import ContentQueueItem, PushedRecord, QueueItemStatus
+from app.models.system import ContentQueueItem, QueueItemStatus
 from app.models.content import Content, ContentStatus, ReviewStatus
-from app.models.bot import BotChat
+from app.models.bot import BotChat, BotConfig
 from app.schemas.distribution import (
     DistributionRuleCreate, 
     DistributionRuleUpdate,
@@ -19,13 +18,11 @@ from app.schemas.distribution import (
     RulePreviewItem,
     RulePreviewResponse
 )
-from app.constants import Platform
 from app.services.distribution.decision import (
     DECISION_FILTERED,
     DECISION_PENDING_REVIEW,
     DECISION_WILL_PUSH,
     DistributionDecision,
-    check_match_conditions,
     should_distribute,
 )
 from app.media.extractor import pick_preview_thumbnail
@@ -102,16 +99,20 @@ class DistributionRuleService:
         await self.repo.delete_rule(db_rule)
         await self.db.commit()
 
+    async def _active_chats(self, chat_ids):
+        return {chat.id: chat for chat in await self.db.scalars(
+            select(BotChat).join(BotConfig).where(BotChat.id.in_(chat_ids),
+                BotChat.enabled.is_(True), BotChat.is_accessible.is_(True), BotChat.is_push_target.is_(True),
+                BotConfig.enabled.is_(True), BotConfig.is_primary.is_(True))
+        )}
+
     async def _validate_chats(self, chat_ids):
         if chat_ids is None:
             return None
-        chats = []
-        for chat_id in set(chat_ids):
-            chat = await self.bot_repo.get_chat_by_id(chat_id)
-            if not chat or not chat.enabled or not chat.is_accessible or not chat.is_push_target:
-                raise HTTPException(409, "所选推送目标不可用，请刷新后重试")
-            chats.append(chat)
-        return chats
+        chats = await self._active_chats(set(chat_ids))
+        if len(chats) != len(set(chat_ids)):
+            raise HTTPException(409, "所选推送目标不可用，请刷新后重试")
+        return list(chats.values())
 
     async def _guard_deliveries(self, rule_id, chat_ids=None):
         conditions = [ContentQueueItem.rule_id == rule_id]
@@ -135,8 +136,8 @@ class DistributionRuleService:
     # -------------------------
     
     async def list_rule_targets(self, rule_id: int) -> List[DistributionTarget]:
-        await self.get_rule(rule_id) # Ensure rule exists
-        return await self.repo.list_rule_targets(rule_id)
+        rule = await self.get_rule(rule_id)
+        return sorted(rule.distribution_targets, key=lambda target: target.created_at)
 
     async def create_rule_target(self, rule_id: int, target_in: DistributionTargetCreate) -> Tuple[DistributionTarget, int]:
         rule = await self.get_rule(rule_id)
@@ -250,7 +251,7 @@ class DistributionRuleService:
         rule: DistributionRule,
         bot_chat: BotChat,
         since,
-    ) -> list[Content]:
+    ) -> list[tuple[Content, DistributionDecision]]:
         if not rule.enabled or not bot_chat.enabled:
             return []
 
@@ -279,27 +280,18 @@ class DistributionRuleService:
         ).scalars().all()
         existing_content_ids = {int(content_id) for content_id in existing_rows}
 
-        candidates: list[Content] = []
+        candidates: list[tuple[Content, DistributionDecision]] = []
         for content in contents:
             if content.id in existing_content_ids:
                 continue
-            if (
-                rule.approval_required
-                and content.review_status == ReviewStatus.AUTO_APPROVED
-            ):
-                continue
-            if check_match_conditions(content, rule.match_conditions or {}).bucket == DECISION_FILTERED:
-                continue
-
             decision = should_distribute(
                 content=content,
                 rule=rule,
                 bot_chat=bot_chat,
-                require_approval=False,
             )
             if decision.bucket == DECISION_FILTERED:
                 continue
-            candidates.append(content)
+            candidates.append((content, decision))
 
         return candidates
 
@@ -315,20 +307,11 @@ class DistributionRuleService:
             return 0
 
         inserted = 0
-        for content in await self._find_backfill_candidates(
+        for content, decision in await self._find_backfill_candidates(
             rule=rule,
             bot_chat=bot_chat,
             since=since,
         ):
-            decision = should_distribute(
-                content=content,
-                rule=rule,
-                bot_chat=bot_chat,
-                require_approval=False,
-            )
-            if decision.bucket == DECISION_FILTERED:
-                continue
-
             self.db.add(
                 ContentQueueItem(
                     content_id=content.id,
@@ -336,7 +319,9 @@ class DistributionRuleService:
                     bot_chat_id=bot_chat.id,
                     target_platform=bot_chat.platform_type,
                     target_id=decision.target_id or bot_chat.chat_id,
-                    status=QueueItemStatus.SCHEDULED,
+                    status=QueueItemStatus.FAILED if decision.bucket == DECISION_PENDING_REVIEW else QueueItemStatus.SCHEDULED,
+                    last_error_type="approval_required" if decision.bucket == DECISION_PENDING_REVIEW else None,
+                    last_error=decision.reason if decision.bucket == DECISION_PENDING_REVIEW else None,
                     priority=rule.priority + content.queue_priority,
                     scheduled_at=utcnow(),
                 )
@@ -376,19 +361,8 @@ class DistributionRuleService:
         if not rule:
             raise HTTPException(status_code=404, detail="Distribution rule not found")
         
-        # 为了预览，我们需要加载 targets
-        result = await self.db.execute(
-            select(DistributionRule)
-            .options(
-                selectinload(DistributionRule.distribution_targets)
-                .selectinload(DistributionTarget.bot_chat)
-            )
-            .where(DistributionRule.id == rule_id)
-        )
-        rule = result.scalar_one()
-
         contents, _ = await self.content_repo.list_contents(
-            size=limit * 2,
+            size=limit,
             statuses=[ContentStatus.PARSE_SUCCESS.value],
             include_archive_metadata=True
         )
@@ -398,16 +372,11 @@ class DistributionRuleService:
         filtered_count = 0
         pending_review_count = 0
         
-        chats = [
-            target.bot_chat
-            for target in rule.distribution_targets
-            if target.enabled and target.bot_chat and target.bot_chat.enabled
-        ]
-        
+        chats = list((await self._active_chats([
+            target.bot_chat_id for target in rule.distribution_targets if target.enabled
+        ])).values())
+
         for content in contents:
-            if len(preview_items) >= limit:
-                break
-            
             decision = self._resolve_preview_decision(content=content, rule=rule, chats=chats)
             status = decision.bucket
 
@@ -451,26 +420,15 @@ class DistributionRuleService:
         
         stats_list: List[RulePreviewStats] = []
         
+        if not rules:
+            return []
+        contents, _ = await self.content_repo.list_contents(size=100, statuses=[ContentStatus.PARSE_SUCCESS.value])
+        active = await self._active_chats({
+            target.bot_chat_id for rule in rules for target in rule.distribution_targets if target.enabled
+        })
         for rule in rules:
-            contents, _ = await self.content_repo.list_contents(
-                size=100,
-                statuses=[ContentStatus.PARSE_SUCCESS.value]
-            )
-            
-            will_push = 0
-            filtered = 0
-            pending_review = 0
-
-            # 加载启用且关联了启用配置的目标
-            targets = await self.repo.list_rule_targets(rule.id)
-            chats = []
-            for t in targets:
-                if t.enabled:
-                    # 获取详细 chat 信息
-                    chat = await self.bot_repo.get_chat_by_id(t.bot_chat_id)
-                    if chat and chat.enabled:
-                        chats.append(chat)
-            
+            will_push = filtered = pending_review = 0
+            chats = [active[t.bot_chat_id] for t in rule.distribution_targets if t.enabled and t.bot_chat_id in active]
             for content in contents:
                 decision = self._resolve_preview_decision(content=content, rule=rule, chats=chats)
                 if decision.bucket == DECISION_FILTERED:

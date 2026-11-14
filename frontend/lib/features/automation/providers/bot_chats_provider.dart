@@ -3,6 +3,7 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/sse_service.dart';
 import '../models/bot_chat.dart';
 
 part 'bot_chats_provider.g.dart';
@@ -11,6 +12,7 @@ part 'bot_chats_provider.g.dart';
 class BotChats extends _$BotChats {
   @override
   FutureOr<List<BotChat>> build() async {
+    refreshOnEvents(ref, (event) => event.type == 'distribution_push_success');
     return _fetchChats();
   }
 

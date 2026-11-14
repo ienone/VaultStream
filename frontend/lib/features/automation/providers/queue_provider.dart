@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/network/api_client.dart';
@@ -8,40 +10,25 @@ import '../models/queue_item.dart';
 
 part 'queue_provider.g.dart';
 
-// 队列配置常量
-class _QueueConfig {
-  // SSE 事件类型
-  static const eventContentPushed = 'content_pushed';
-  static const eventQueueUpdated = 'queue_updated';
+typedef QueueFilter = ({int? ruleId, QueueStatus status});
 
-  // 防抖延迟
-  static const refreshDebounce = Duration(milliseconds: 500);
-}
+typedef QueueSendResult = ({int id, bool sent, String? error});
 
-@riverpod
-class QueueFilter extends _$QueueFilter {
-  @override
-  QueueFilterState build() => const QueueFilterState();
-
-  void setFilter({int? ruleId, required QueueStatus status}) {
-    if (state.ruleId == ruleId && state.status == status) return;
-    state = QueueFilterState(ruleId: ruleId, status: status);
-  }
-
-  void setRuleId(int? ruleId) {
-    state = QueueFilterState(ruleId: ruleId, status: state.status);
-  }
-
-  void setStatus(QueueStatus status) {
-    state = QueueFilterState(ruleId: state.ruleId, status: status);
-  }
-}
-
-class QueueFilterState {
-  final int? ruleId;
-  final QueueStatus status;
-
-  const QueueFilterState({this.ruleId, this.status = QueueStatus.willPush});
+Future<List<QueueSendResult>> sendQueueItems(Dio api, List<int> ids) async {
+  if (ids.isEmpty) return [];
+  final response = await api.post<Map<String, dynamic>>(
+    '/distribution-queue/items/batch-push-now',
+    data: {'item_ids': ids},
+    options: Options(receiveTimeout: Duration.zero),
+  );
+  return (response.data!['items'] as List).map((raw) {
+    final item = raw as Map<String, dynamic>;
+    return (
+      id: item['item_id'] as int,
+      sent: item['sent'] as bool,
+      error: item['error'] as String?,
+    );
+  }).toList();
 }
 
 @riverpod
@@ -50,9 +37,7 @@ class ContentQueue extends _$ContentQueue {
   Timer? _debounceTimer;
 
   @override
-  FutureOr<QueueListResponse> build() async {
-    final filter = ref.watch(queueFilterProvider);
-
+  FutureOr<QueueListResponse> build(QueueFilter filter) async {
     // 启动 SSE 服务
     ref.watch(sseServiceProvider.notifier);
 
@@ -73,12 +58,10 @@ class ContentQueue extends _$ContentQueue {
 
   void _handleSseEvent(SseEvent event) {
     // 使用常量匹配事件类型
-    if (event.type == 'reconnected' ||
-        event.type == _QueueConfig.eventContentPushed ||
-        event.type == _QueueConfig.eventQueueUpdated) {
+    if (event.type == 'reconnected' || event.type == 'queue_updated') {
       // 防抖刷新：避免短时间内多次事件触发多次请求
       _debounceTimer?.cancel();
-      _debounceTimer = Timer(_QueueConfig.refreshDebounce, () {
+      _debounceTimer = Timer(const Duration(milliseconds: 500), () {
         softRefresh();
       });
     }
@@ -102,41 +85,20 @@ class ContentQueue extends _$ContentQueue {
   }
 
   Future<void> cancelItems(List<int> ids) async {
-    final lease = ref.keepAlive();
-    try {
-      await ref
-          .read(apiClientProvider)
-          .post('/distribution-queue/cancel', data: {'item_ids': ids});
-      if (!ref.mounted) return;
-      final current = state.value;
-      if (current != null) {
-        final canceled = ids.toSet();
-        final remaining = current.items
-            .where((item) => !canceled.contains(item.id))
-            .toList();
-        state = AsyncData(
-          current.copyWith(
-            items: remaining,
-            total: (current.total - ids.length).clamp(0, current.total),
-          ),
-        );
-      }
-      // The single queue event reconciles pagination and counts once.
-    } finally {
-      lease.close();
-    }
+    await ref
+        .read(apiClientProvider)
+        .post('/distribution-queue/cancel', data: {'item_ids': ids});
   }
 
   Future<void> loadMore() async {
     final current = state.value;
     if (current == null || !current.hasMore) return;
-    final filter = ref.read(queueFilterProvider);
     final next = await _fetchQueue(
       ruleId: filter.ruleId,
       status: filter.status,
       page: current.page + 1,
     );
-    if (!ref.mounted || !identical(filter, ref.read(queueFilterProvider))) {
+    if (!ref.mounted) {
       return;
     }
     final items = {
@@ -147,7 +109,6 @@ class ContentQueue extends _$ContentQueue {
   }
 
   Future<void> softRefresh() async {
-    final filter = ref.read(queueFilterProvider);
     final pages = state.value?.page ?? 1;
     try {
       final items = <QueueItem>[];
@@ -161,7 +122,7 @@ class ContentQueue extends _$ContentQueue {
         items.addAll(latest.items);
         if (!latest.hasMore) break;
       }
-      if (!ref.mounted || !identical(filter, ref.read(queueFilterProvider))) {
+      if (!ref.mounted) {
         return;
       }
       state = AsyncData(latest!.copyWith(items: items));
@@ -170,36 +131,12 @@ class ContentQueue extends _$ContentQueue {
     }
   }
 
-  Future<QueueItem> loadItem(int itemId) async {
-    final response = await ref
+  Future<void> schedule(List<int> ids, DateTime at) async {
+    await ref
         .read(apiClientProvider)
-        .get('/distribution-queue/items/$itemId');
-    return QueueItem.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<QueueItem> pushNow(int itemId) async {
-    final dio = ref.read(apiClientProvider);
-    final response = await dio.post(
-      '/distribution-queue/items/$itemId/push-now',
-    );
-    _safeInvalidate();
-    return QueueItem.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<void> updateSchedule(int itemId, DateTime scheduledAt) async {
-    final dio = ref.read(apiClientProvider);
-    await dio.post(
-      '/distribution-queue/items/$itemId/schedule',
-      data: {'scheduled_at': scheduledAt.toUtc().toIso8601String()},
-    );
-    _safeInvalidate();
-  }
-
-  void _safeInvalidate() {
-    if (ref.mounted) ref.invalidateSelf();
-  }
-
-  void refresh() {
-    _safeInvalidate();
+        .post(
+          '/distribution-queue/items/batch-schedule',
+          data: {'item_ids': ids, 'start_time': at.toUtc().toIso8601String()},
+        );
   }
 }

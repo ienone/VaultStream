@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import AgentRun, BotChat, ContentSource
 
 
+# A user choosing a specific queue item/target approves just that delivery.
+ITEM_APPROVAL = "manual"
+# A bulk rule rematch may skip a redundant QQ receipt, but still obeys rule approval.
 EXPLICIT_PUSH = "explicit_push"
+EXPLICIT_RESEND = "explicit_resend"
 
 
 async def has_qq_agent_receipt(

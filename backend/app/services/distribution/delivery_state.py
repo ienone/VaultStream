@@ -1,11 +1,16 @@
 """Durable delivery phases and fencing, using the existing queue lock fields."""
 from datetime import timedelta
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import case, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import utcnow
-from app.models import ContentQueueItem, QueueItemStatus
+from app.models import PushedRecord, ContentQueueItem, QueueItemStatus
+
+
+from app.services.distribution.receipt_policy import EXPLICIT_RESEND
+
+AWAITING_SEND = ("approval_required", "manual_ready")
 
 
 DELIVERY_PREPARING = "delivery_preparing"
@@ -13,6 +18,33 @@ DELIVERY_SENDING = "delivery_sending"
 DELIVERY_UNKNOWN = "delivery_unknown"
 LOCK_TIMEOUT = 600
 UNKNOWN_MESSAGE = "未收到发送回执，已停止自动重试。"
+
+
+def delivery_bucket():
+    return case(
+        (ContentQueueItem.status == QueueItemStatus.SUCCESS, "pushed"),
+        (or_(ContentQueueItem.status.in_([QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING]),
+             ContentQueueItem.next_attempt_at.is_not(None),
+             ContentQueueItem.last_error_type.in_(AWAITING_SEND)), "will_push"),
+        else_="filtered",
+    )
+
+
+def visible_queue_item():
+    # Another rule/manual entry may already have delivered this destination.
+    # Keep active and uncertain attempts visible until explicitly resolved.
+    delivered = select(PushedRecord.id).where(
+        PushedRecord.content_id == ContentQueueItem.content_id,
+        PushedRecord.target_platform == ContentQueueItem.target_platform,
+        PushedRecord.target_id == ContentQueueItem.target_id,
+        PushedRecord.push_status == "success",
+    ).exists()
+    return or_(
+        ContentQueueItem.status.in_([QueueItemStatus.SUCCESS, QueueItemStatus.PROCESSING]),
+        ContentQueueItem.last_error_type == "delivery_unknown",
+        ContentQueueItem.approved_by == EXPLICIT_RESEND,
+        ~delivered,
+    )
 
 
 def delivery_is_resolved():

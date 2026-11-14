@@ -205,24 +205,6 @@ class AutomationPolicyService:
             mode,
         )
 
-    async def distribution_worker_poll(self) -> AutomationPolicyDecision:
-        mode = str(
-            await self._config.get_value_fresh(
-                "distribution_mode",
-                getattr(settings, "distribution_mode", "auto"),
-            )
-            or "auto"
-        ).strip().lower()
-        if mode != "paused":
-            return AutomationPolicyDecision(True, "allowed", "distribution worker enabled")
-        return AutomationPolicyDecision(
-            False,
-            "distribution_paused",
-            "distribution worker polling is paused",
-            "distribution_mode",
-            mode,
-        )
-
     async def cookie_keepalive(self) -> AutomationPolicyDecision:
         enabled = coerce_bool(
             await self._config.get_value_fresh(

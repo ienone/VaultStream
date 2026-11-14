@@ -33,11 +33,9 @@ active
 
 - 自动队列以内容、规则和目标组合为操作边界；手动项 `rule_id=null`，按内容与 BotChat 唯一。统计按队列项计数，与列表一致。
 - `/api/v1/distribution-queue/items` 提供状态、内容、规则、目标、卡片用途的有序 `media_assets` 和分页筛选；签名媒体 URL 跟随当前请求 origin。
-- 单条队列项的 retry、cancel、push-now、schedule、status 和 reorder 只影响该目标。
-- `content/{content_id}` 系列接口会影响同一内容关联的多个目标，只能在用户明确选择内容维度操作时使用。
-- 过去由 inline dict 表达的 enqueue/cancel/batch retry，以及内容级 push/schedule/reorder/status/repush 现均有命名响应；`changed/moved/retried_count` 是同步完成的数量，只有明确返回的 `run_id` 才可跳转任务详情。
-
-立即排期和外部推送成功是两个不同阶段。调度接口返回的 `run_id` 不能被解释为消息已经送达。
+- 立即发送使用 `/distribution-queue/items/batch-push-now`，请求 `item_ids`，响应 `items[{item_id, sent, error}]`；只有收到平台回执的项标记成功。单项资源也支持 `/items/{id}/push-now`。
+- 多选排期使用 `/distribution-queue/items/batch-schedule`，传 `item_ids` 与 `start_time`。默认安排在同一时刻，可用非负 `interval_seconds` 设置间隔。取消使用 `/distribution-queue/cancel`。排期和取消遇到冲突整批回滚。
+- `will_push` 包含等待确认、排期、处理中和有重试时间的记录；`history` 包含成功和终止的记录，`filtered` 只返回终止未发送的记录。
 
 发送未知结果沿用 `status=failed`，以 `reason_code/last_error_type=delivery_unknown` 明确标识，并提供带时区的 `last_error_at`。未知记录属于 `filtered` 列表，普通重试、取消、批量排期/重推不能修改它。单项 push-now 是同步执行路径，调用方必须读取返回资源状态，不能无论结果如何都提示“已加入队列”。
 
@@ -72,7 +70,7 @@ active
 
 聚合复用 `PUT /settings/{key}`：`enable_content_aggregation`、`enable_aggregation_push` 均为 boolean，默认 false，category=automation。状态与产物 ID 复用 background task diagnostics 的 `content_aggregation` 运行记录；不新增平行调用接口。内部 `content_aggregation_cursor`、`content_aggregation_last_attempt` 为恢复进度，不是用户配置项。
 
-队列状态变更（重试、取消、状态切换、排期、重推）使用条件更新保护正在发送的租约；任务已 processing 或读取后状态变化返回 HTTP 409，调用方应刷新列表。批量请求遇到此冲突整批事务回滚，不返回部分成功数量。
+队列状态变更（重试、取消和排期）使用条件更新保护正在发送的租约；任务已 processing 或读取后状态变化返回 HTTP 409，调用方应刷新列表。批量立即发送独立记录每项结果。
 
 收藏单项/批量重试条目支持可选 collection_id、collection_title，调用方从失败项原样传回；重试复用正常同步的来源身份。已存在且处理完成的单项重试返回既有 content_id 与新的 run_id，不重复创建来源。
 
@@ -99,9 +97,9 @@ Telegram options 写入同样要求 leader（否则 503）；关闭任一同步�
 
 `POST /distribution-queue/manual` 接受 `content_ids`（1–50）、`bot_chat_ids`（1–10），最多 100 个组合，拒绝额外字段。目标必须启用、可访问、允许推送且属于启用的主 Bot；内容必须解析完成且未删除，聚合外发策略继续生效。无效内容、目标、已有发送中或未知结果返回 409，事务回滚。
 
-200 返回 `ManualPushResponse {item_ids, already_sent}`，只准备手动队列，不声明送达。手动项使用 `approved_by=manual`，不改变内容全局审批或收藏状态；客户端逐项调用现有 `/items/{id}/push-now`，读取实际 status。重复准备复用同一项，已送达组合只计入 already_sent。失败仍在正式队列中处理；未收到发送回执的记录保留，阻止自动重复发送。
+200 返回 `ManualPushResponse {item_ids, already_sent}`，只准备手动队列，不声明送达。手动项使用 `approved_by=manual`，不改变内容全局审批或收藏状态；客户端批量提交这些队列项并读取各项结果。重复准备复用同一项，已送达组合只计入 already_sent。失败仍在正式队列中处理；未收到发送回执的记录保留，阻止自动重复发送。
 
-规则要求人工确认时，匹配的新内容进入 `failed/approval_required`、无自动重试；逐项立即发送或显式排期只确认该队列项。删除规则或移除目标时若存在 processing／delivery_unknown，返回 409。保存规则不再隐式扫描全部历史内容。
+规则要求人工确认时，自动审批不能代替人工确认，尚未人工审批的匹配内容进入 `failed/approval_required`、无自动重试；逐项立即发送或显式排期只确认该队列项。删除规则或移除目标时若存在 processing／delivery_unknown，返回 409。保存规则不再隐式扫描全部历史内容。
 
 队列列表与统计不再把已有成功发送记录的同内容、同平台、同目标的其他旧排期算作待发送；发送中和未收到发送回执的条目仍保留，不能被成功记录遮蔽。单项接口与数据库记录保持可追溯。
 
@@ -120,3 +118,7 @@ POST `/bot/qq/{config_id}/group-capture` 使用 QQGroupCaptureRequest（QQ 原�
 ### 批量取消队列
 
 `POST /api/v1/distribution-queue/cancel` 接收 `BatchQueueCancelRequest {item_ids: int[]}`（1–500 项），返回 `BatchQueueCancelResponse {canceled_ids: int[]}`。ID 去重，一次条件更新和事务提交，不加载内容或媒体 manifest。不存在、已发送、发送中或回执未知的任一项导致整个操作回滚并返回 409。成功只广播一次 queue_updated。
+
+机器人配置可在创建或更新时传入 `access`，与凭证在同一事务保存。Telegram 支持 `admins/allowed_users/blocked_users`，QQ 支持 `admins/groups/agent_enabled`，各列表元素为数字 ID 字符串。只提交名单不会触发服务重启或群组同步。
+
+`GET /favorites-sync/status?platform=zhihu` 返回指定平台和相关的最近运行记录。`GET /telegram-account/status` 的 `recent_runs` 来自 Telegram 用户账号同步任务。

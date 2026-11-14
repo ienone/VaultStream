@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 
 from app.core.time_utils import utcnow
+from app.core.events import event_bus
 from app.models import Content, ContentQueueItem, QueueItemStatus
 from app.services.agent.tool_registry import (
     AgentToolContext,
@@ -15,7 +16,7 @@ from app.services.agent.tool_registry import (
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution import DistributionService
 from app.services.distribution.delivery_state import delivery_is_resolved
-from app.services.distribution.receipt_policy import EXPLICIT_PUSH
+from app.services.distribution.receipt_policy import EXPLICIT_PUSH, EXPLICIT_RESEND, ITEM_APPROVAL
 
 
 class PushBatchArgs(BaseModel):
@@ -105,11 +106,12 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
             continue
 
         values = dict(status=QueueItemStatus.SCHEDULED, scheduled_at=now,
-                      approved_by=EXPLICIT_PUSH,
+                      approved_by=ITEM_APPROVAL if item.rule_id is None else EXPLICIT_PUSH,
                       next_attempt_at=None, last_error=None, last_error_type=None,
                       last_error_at=None, locked_at=None, locked_by=None)
-        if include_success:
-            values["message_id"] = None
+        if item.status == QueueItemStatus.SUCCESS and include_success:
+            # Keep message_id as the exact receipt this reschedule supersedes.
+            values["approved_by"] = EXPLICIT_RESEND
         updated = await context.db.execute(update(ContentQueueItem).where(
             ContentQueueItem.id == item.id, ContentQueueItem.status == item.status,
             delivery_is_resolved(),
@@ -119,6 +121,8 @@ async def _push_batch_tool(args: Dict[str, Any], context: AgentToolContext) -> D
             changed_ids.append(item.id)
 
     await context.db.commit()
+    if changed_ids:
+        await event_bus.publish("queue_updated", {"action": "agent_schedule", "queue_item_ids": changed_ids})
 
     return {
         "content_ids": content_ids,

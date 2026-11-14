@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
+from time import monotonic
 
 from sqlalchemy import select, update, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,9 @@ from app.models import Content, ContentStatus, Task, TaskStatus, BackgroundTaskR
 
 class TaskQueue:
     EXECUTION_TIMEOUT = timedelta(minutes=30)
+
+    def __init__(self):
+        self._next_recovery = 0.0
 
     async def connect(self):
         logger.info("SQLite 队列已连接")
@@ -80,36 +84,11 @@ class TaskQueue:
         for _ in range(timeout):
             try:
                 async with AsyncSessionLocal() as session:
+                    if monotonic() >= self._next_recovery:
+                        self._next_recovery = monotonic() + 60
+                        await self._recover_expired(session)
+                        await self._settle_orphaned_runs()
                     now = utcnow()
-                    # 崩溃或取消后留下的任务只结算失败，不重跑外部解析。
-                    expired = (await session.execute(
-                        update(Task).where(
-                            Task.status == TaskStatus.RUNNING,
-                            or_(Task.started_at.is_(None), Task.started_at <= now - self.EXECUTION_TIMEOUT),
-                        ).values(
-                            status=TaskStatus.FAILED,
-                            last_error="Task execution timed out",
-                            completed_at=now,
-                        ).returning(Task.payload, Task.task_type)
-                    )).all()
-                    if expired:
-                        other_running = select(Task.id).where(
-                            Task.status == TaskStatus.RUNNING,
-                            Task.payload["content_id"].as_integer() == Content.id,
-                        ).exists()
-                        await session.execute(update(Content).where(
-                            Content.id.in_([payload["content_id"] for payload, kind in expired
-                                            if kind == "parse_content" and payload.get("content_id")]),
-                            Content.deleted_at.is_(None),
-                            Content.status == ContentStatus.PROCESSING,
-                            ~other_running,
-                        ).values(
-                            status=ContentStatus.PARSE_FAILED,
-                            last_error="Task execution timed out",
-                            last_error_type="TimeoutError",
-                            last_error_at=now,
-                        ))
-
                     active = aliased(Task)
                     eligible = or_(Task.task_type != "parse_content",
                                    Task.payload["trigger"].as_string() == "manual")
@@ -120,27 +99,62 @@ class TaskQueue:
                             active.status == TaskStatus.RUNNING,
                             active.payload["content_id"].as_integer() == Task.payload["content_id"].as_integer(),
                         ).exists(),
-                    ).order_by(Task.priority.desc(), Task.created_at, Task.id).limit(1).scalar_subquery()
-                    task = (await session.execute(
-                        update(Task).where(Task.id == candidate, Task.status == TaskStatus.PENDING)
-                        .values(status=TaskStatus.RUNNING, started_at=now)
-                        .returning(Task)
-                    )).scalar_one_or_none()
-                    if task is not None and not task.payload.get("run_id"):
-                        run_name = {"parse_content": "content_parse", "repair_media": "media_repair"}.get(task.task_type, task.task_type)
-                        data = {**task.payload, "run_id": uuid4().hex, "run_name": run_name}
-                        task.payload = data
-                        session.add(BackgroundTaskRun(run_id=data["run_id"], task=data["run_name"],
-                                                     status="pending", run_metadata={"content_id": data.get("content_id")}))
-                    await session.commit()
-                    await self._settle_orphaned_runs()
-                    if task is not None:
-                        return task
+                    ).order_by(Task.priority.desc(), Task.created_at, Task.id).limit(1)
+                    candidate_id = await session.scalar(candidate)
+                    if candidate_id is not None:
+                        # Re-evaluate eligibility while holding the SQLite writer lock.
+                        task = (await session.execute(
+                            update(Task).where(Task.id == candidate_id, Task.id == candidate.scalar_subquery())
+                            .values(status=TaskStatus.RUNNING, started_at=now)
+                            .returning(Task)
+                        )).scalar_one_or_none()
+                        if task is not None and not task.payload.get("run_id"):
+                            run_name = {"parse_content": "content_parse", "repair_media": "media_repair"}.get(task.task_type, task.task_type)
+                            data = {**task.payload, "run_id": uuid4().hex, "run_name": run_name}
+                            task.payload = data
+                            session.add(BackgroundTaskRun(run_id=data["run_id"], task=data["run_name"],
+                                                         status="pending", run_metadata={"content_id": data.get("content_id")}))
+                        await session.commit()
+                        if task is not None:
+                            return task
                 await asyncio.sleep(1)
             except Exception as e:
                 logger.error(f"任务出队失败: {e}")
                 await asyncio.sleep(1)
         return None
+
+    async def _recover_expired(self, session: AsyncSession) -> None:
+        now = utcnow()
+        # 崩溃或取消后留下的任务只结算失败，不重跑外部解析。
+        expired = (await session.execute(
+            update(Task).where(
+                Task.status == TaskStatus.RUNNING,
+                or_(Task.started_at.is_(None), Task.started_at <= now - self.EXECUTION_TIMEOUT),
+            ).values(
+                status=TaskStatus.FAILED,
+                last_error="Task execution timed out",
+                completed_at=now,
+            ).returning(Task.payload, Task.task_type)
+        )).all()
+        if expired:
+            other_running = select(Task.id).where(
+                Task.status == TaskStatus.RUNNING,
+                Task.payload["content_id"].as_integer() == Content.id,
+            ).exists()
+            await session.execute(update(Content).where(
+                Content.id.in_([payload["content_id"] for payload, kind in expired
+                                if kind == "parse_content" and payload.get("content_id")]),
+                Content.deleted_at.is_(None),
+                Content.status == ContentStatus.PROCESSING,
+                ~other_running,
+            ).values(
+                status=ContentStatus.PARSE_FAILED,
+                last_error="Task execution timed out",
+                last_error_type="TimeoutError",
+                last_error_at=now,
+            ))
+
+        await session.commit()
 
     async def _settle_orphaned_runs(self) -> None:
         from app.services.background_task_state import record_task_run_error, record_task_run_success

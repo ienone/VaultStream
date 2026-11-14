@@ -23,6 +23,7 @@ from app.services.background_task_state import (
     get_task_run,
 )
 from app.services.config_service import ConfigService
+from app.services.distribution.delivery_state import AWAITING_SEND, visible_queue_item
 
 
 class SystemDiagnosticsService:
@@ -70,7 +71,8 @@ class SystemDiagnosticsService:
                 select(func.count())
                 .select_from(ContentQueueItem)
                 .where(ContentQueueItem.status == QueueItemStatus.FAILED)
-                .where(ContentQueueItem.attempt_count < ContentQueueItem.max_attempts)
+                .where(ContentQueueItem.next_attempt_at.is_not(None), visible_queue_item(),
+                       ContentQueueItem.attempt_count < ContentQueueItem.max_attempts)
             )
         ).scalar() or 0
 
@@ -197,7 +199,8 @@ class SystemDiagnosticsService:
                     Content.id == ContentQueueItem.content_id,
                     isouter=True,
                 )
-                .where(ContentQueueItem.status == QueueItemStatus.FAILED)
+                .where(ContentQueueItem.status == QueueItemStatus.FAILED, visible_queue_item(),
+                       ~func.coalesce(ContentQueueItem.last_error_type, "").in_(AWAITING_SEND))
                 .order_by(
                     ContentQueueItem.last_error_at.desc().nullslast(),
                     ContentQueueItem.updated_at.desc(),

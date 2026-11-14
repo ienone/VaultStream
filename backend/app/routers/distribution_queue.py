@@ -21,20 +21,18 @@ from app.schemas import (
     ContentQueueItemListResponse,
     ContentQueueItemResponse,
     EnqueueContentRequest,
-    QueueCancelResponse,
     QueueChangedResponse,
     QueueEnqueueResponse,
-    QueueItemRetryRequest,
-    QueueMovedResponse,
-    QueueRepushResponse,
     QueueStatsResponse,
 )
 from app.schemas.media import MediaAssetManifest, MediaPurpose
 from app.schemas.queue import (
     ManualPushRequest, ManualPushResponse, BatchQueueCancelRequest, BatchQueueCancelResponse,
+    BatchQueueSendResponse, BatchScheduleRequest, QueueSelection, QueueSendResult,
 )
+from app.services.distribution.delivery_state import delivery_bucket, visible_queue_item
 from app.services.distribution.queue_operations import (
-    QueueEditConflict, cancel_items, filter_item, lock_item_for_edit, schedule_item,
+    QueueEditConflict, cancel_items, lock_item_for_edit, schedule_item,
 )
 from app.services.background_task_state import (
     record_task_run_error,
@@ -46,10 +44,7 @@ from app.services.media_manifest import (
     resolve_media_base_url,
 )
 from app.tasks import DistributionQueueWorker
-
-
-def get_queue_worker():
-    return DistributionQueueWorker()
+from app.utils.datetime_utils import normalize_datetime_for_db
 
 
 router = APIRouter(prefix="/distribution-queue", tags=["distribution-queue"])
@@ -138,62 +133,17 @@ async def _queue_item_response_with_media(
     )
 
 
-def _with_run_id(response: ContentQueueItemResponse, run_id: str) -> ContentQueueItemResponse:
-    response.run_id = run_id
-    return response
-
-
 def _build_status_conditions(status: Optional[str]):
     if not status:
         return []
-
-    if status == "will_push":
-        return [
-            or_(
-                ContentQueueItem.status.in_(
-                    [
-                        QueueItemStatus.SCHEDULED,
-                        QueueItemStatus.PROCESSING,
-                    ]
-                ),
-                and_(
-                    ContentQueueItem.status == QueueItemStatus.FAILED,
-                    ContentQueueItem.next_attempt_at.is_not(None),
-                ),
-            ),
-        ]
-
-    if status == "filtered":
-        return [
-            and_(
-                ContentQueueItem.status == QueueItemStatus.FAILED,
-                ContentQueueItem.next_attempt_at.is_(None),
-            )
-        ]
-
-    if status == "pushed":
-        return [ContentQueueItem.status == QueueItemStatus.SUCCESS]
-
+    if status == "history":
+        return [delivery_bucket().in_(["pushed", "filtered"])]
+    if status in {"will_push", "filtered", "pushed"}:
+        return [delivery_bucket() == status]
     try:
         return [ContentQueueItem.status == QueueItemStatus(status)]
-    except Exception:
+    except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
-
-
-def _visible_queue_condition():
-    # Another rule/manual entry may already have delivered this destination.
-    # Keep active and uncertain attempts visible until explicitly resolved.
-    delivered = select(PushedRecord.id).where(
-        PushedRecord.content_id == ContentQueueItem.content_id,
-        PushedRecord.target_platform == ContentQueueItem.target_platform,
-        PushedRecord.target_id == ContentQueueItem.target_id,
-        PushedRecord.push_status == "success",
-    ).exists()
-    return or_(
-        ContentQueueItem.status.in_([QueueItemStatus.SUCCESS, QueueItemStatus.PROCESSING]),
-        ContentQueueItem.last_error_type == "delivery_unknown",
-        ~delivered,
-    )
 
 
 @router.post("/manual", response_model=ManualPushResponse)
@@ -214,11 +164,11 @@ async def get_queue_stats(
     _: None = Depends(require_api_token),
 ):
     """获取队列统计信息。"""
-    conditions = [_visible_queue_condition()]
+    conditions = [visible_queue_item()]
     if rule_id is not None:
         conditions.append(ContentQueueItem.rule_id == rule_id)
 
-    where_clause = and_(*conditions) if conditions else True
+    where_clause = and_(*conditions)
 
     result = await db.execute(select(
         func.count().label("total"),
@@ -246,7 +196,7 @@ async def list_queue_items(
     _: None = Depends(require_api_token),
 ):
     """获取队列项列表（分页）。"""
-    conditions = [_visible_queue_condition()]
+    conditions = [visible_queue_item()]
 
     conditions.extend(_build_status_conditions(status))
 
@@ -257,7 +207,7 @@ async def list_queue_items(
     if bot_chat_id is not None:
         conditions.append(ContentQueueItem.bot_chat_id == bot_chat_id)
 
-    where_clause = and_(*conditions) if conditions else True
+    where_clause = and_(*conditions)
 
     count_result = await db.execute(
         select(func.count(ContentQueueItem.id)).where(where_clause)
@@ -266,8 +216,8 @@ async def list_queue_items(
 
     offset = (page - 1) * size
     ordering = (
-        (ContentQueueItem.completed_at.desc(), ContentQueueItem.id.desc())
-        if status in {"pushed", QueueItemStatus.SUCCESS.value}
+        (ContentQueueItem.updated_at.desc(), ContentQueueItem.id.desc())
+        if status in {"pushed", "filtered", "history", QueueItemStatus.SUCCESS.value}
         else (ContentQueueItem.scheduled_at.asc(), ContentQueueItem.id.asc())
     )
     result = await db.execute(
@@ -331,93 +281,44 @@ async def push_queue_item_now(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """立即执行单个队列项推送（用于手动触发）。"""
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.id == item_id)
-    )
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-
-    run = await record_task_run_started(
-        "distribution_push",
-        queue_item_id=item.id,
-        content_id=item.content_id,
-        target_platform=item.target_platform,
-        target_id=item.target_id,
-        trigger="manual",
-    )
-
-    if item.last_error_type == "approval_required":
-        await _lock_queue_item_for_edit(db, item)
-        await db.commit()
-    worker = get_queue_worker()
-    try:
-        await worker.process_item_now(item_id, worker_name="api-manual")
-    except ValueError as e:
-        await record_task_run_error(
-            "distribution_push",
-            run["run_id"],
-            e,
-            queue_item_id=item.id,
-            content_id=item.content_id,
-            target_platform=item.target_platform,
-            target_id=item.target_id,
-            trigger="manual",
-        )
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        await record_task_run_error(
-            "distribution_push",
-            run["run_id"],
-            e,
-            queue_item_id=item.id,
-            content_id=item.content_id,
-            target_platform=item.target_platform,
-            target_id=item.target_id,
-            trigger="manual",
-        )
-        raise
-
-    refreshed = await db.execute(
-        select(ContentQueueItem, Content)
-        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
-        .where(ContentQueueItem.id == item_id)
-        .execution_options(populate_existing=True)
-    )
-    row = refreshed.first()
-    item = row[0] if row else None
-    content = row[1] if row else None
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-    if item.status == QueueItemStatus.SUCCESS:
-        await record_task_run_success(
-            "distribution_push",
-            run["run_id"],
-            queue_item_id=item.id,
-            content_id=item.content_id,
-            target_platform=item.target_platform,
-            target_id=item.target_id,
-            message_id=item.message_id,
-            attempt_count=item.attempt_count,
-            trigger="manual",
-        )
-    else:
-        await record_task_run_error(
-            "distribution_push",
-            run["run_id"],
-            item.last_error or f"Distribution push ended with status {item.status.value}",
-            queue_item_id=item.id,
-            content_id=item.content_id,
-            target_platform=item.target_platform,
-            target_id=item.target_id,
-            status=item.status.value,
-            last_error_type=item.last_error_type,
-            attempt_count=item.attempt_count,
-            trigger="manual",
-        )
+    result, run_id = await _send_queue_item(item_id, db, request.app.state.distribution_worker)
+    if not result.sent and run_id is None:
+        raise HTTPException(409, result.error)
+    item, content = (await db.execute(select(ContentQueueItem, Content).outerjoin(
+        Content, Content.id == ContentQueueItem.content_id,
+    ).where(ContentQueueItem.id == item_id).execution_options(populate_existing=True))).one()
     response = await _queue_item_response_with_media(db, item, content, request)
-    return _with_run_id(response, run["run_id"])
+    response.run_id = run_id
+    return response
+
+
+async def _send_queue_item(item_id: int, db: AsyncSession, worker: DistributionQueueWorker) -> tuple[QueueSendResult, str | None]:
+    item = await db.get(ContentQueueItem, item_id, populate_existing=True)
+    if item is None:
+        return QueueSendResult(item_id=item_id, sent=False, error="队列项不存在"), None
+    details = dict(queue_item_id=item_id, content_id=item.content_id,
+                   target_platform=item.target_platform, target_id=item.target_id, trigger="manual")
+    await db.commit()
+    run = await record_task_run_started("distribution_push", **details)
+    try:
+        await worker.process_item_now(item_id)
+    except ValueError as error:
+        await record_task_run_error("distribution_push", run["run_id"], error, **details)
+        return QueueSendResult(item_id=item_id, sent=False, error=str(error)), None
+    except Exception as error:
+        await record_task_run_error("distribution_push", run["run_id"], error, **details)
+        raise
+    await db.refresh(item)
+    sent = item.status == QueueItemStatus.SUCCESS
+    reason = None if sent else (item.last_error or "尚未发送")
+    details.update(status=item.status.value, last_error_type=item.last_error_type,
+                   attempt_count=item.attempt_count)
+    await db.commit()
+    if sent:
+        await record_task_run_success("distribution_push", run["run_id"], message_id=item.message_id, **details)
+    else:
+        await record_task_run_error("distribution_push", run["run_id"], reason, **details)
+    return QueueSendResult(item_id=item_id, sent=sent, error=reason), run["run_id"]
 
 
 @router.post("/enqueue/{content_id}", response_model=QueueEnqueueResponse)
@@ -440,51 +341,7 @@ async def enqueue_content_endpoint(
         manual=True,
     )
     logger.info(f"手动入队: content_id={content_id}, enqueued={enqueued_count}")
-    await event_bus.publish("queue_updated", {
-        "action": "manual_enqueue",
-        "content_id": content_id,
-        "items_changed": enqueued_count,
-        "timestamp": utcnow().isoformat(),
-    })
     return {"status": "ok", "enqueued_count": enqueued_count}
-
-
-@router.post("/items/{item_id}/retry", response_model=ContentQueueItemResponse)
-async def retry_queue_item(
-    item_id: int,
-    http_request: Request,
-    request: QueueItemRetryRequest,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """重试单个队列项。"""
-    result = await db.execute(
-        select(ContentQueueItem, Content)
-        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
-        .where(ContentQueueItem.id == item_id)
-    )
-    row = result.first()
-    item = row[0] if row else None
-    content = row[1] if row else None
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-
-    await _lock_queue_item_for_edit(db, item)
-
-    schedule_item(item, at=utcnow())
-    if request.reset_attempts:
-        item.attempt_count = 0
-
-    await db.commit()
-    await db.refresh(item)
-
-    await event_bus.publish("queue_updated", {
-        "action": "retry_item",
-        "queue_item_id": item_id,
-        "status": item.status.value,
-        "timestamp": utcnow().isoformat(),
-    })
-    return await _queue_item_response_with_media(db, item, content, http_request)
 
 
 @router.post("/cancel", response_model=BatchQueueCancelResponse)
@@ -505,157 +362,6 @@ async def cancel_queue_items(
     return {"canceled_ids": ids}
 
 
-@router.post("/items/{item_id}/cancel", response_model=QueueCancelResponse)
-async def cancel_queue_item(
-    item_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """将队列项标记为手动过滤终态（不再重试）。"""
-    result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.id == item_id))
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-
-    await _lock_queue_item_for_edit(db, item)
-
-    filter_item(item, reason='Canceled manually', error_type='manual_canceled', at=utcnow())
-
-    await db.commit()
-
-    await event_bus.publish("queue_updated", {
-        "action": "cancel_item",
-        "queue_item_id": item_id,
-        "timestamp": utcnow().isoformat(),
-    })
-    return {"status": "filtered", "id": item_id}
-
-
-@router.post("/items/{item_id}/status", response_model=ContentQueueItemResponse)
-async def set_queue_item_status(
-    item_id: int,
-    request: Request,
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """Set status for exactly one queue item."""
-    target_status = str(payload.get("status") or "").strip().lower()
-    now = utcnow()
-    result = await db.execute(
-        select(ContentQueueItem, Content)
-        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
-        .where(ContentQueueItem.id == item_id)
-    )
-    row = result.first()
-    item = row[0] if row else None
-    content = row[1] if row else None
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-
-    await _lock_queue_item_for_edit(db, item)
-
-    if target_status == "will_push":
-        if item.status != QueueItemStatus.SUCCESS:
-            schedule_item(item, at=now)
-    elif target_status == "filtered":
-        if item.status != QueueItemStatus.SUCCESS:
-            reason = str(payload.get("reason") or "Filtered manually").strip() or "Filtered manually"
-            filter_item(item, reason=reason, error_type='manual_filtered', at=now)
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported status")
-
-    await db.commit()
-    await db.refresh(item)
-    await event_bus.publish("queue_updated", {
-        "action": "item_status",
-        "queue_item_id": item_id,
-        "status": item.status.value,
-        "timestamp": now.isoformat(),
-    })
-    return await _queue_item_response_with_media(db, item, content, request)
-
-
-@router.post("/items/{item_id}/schedule", response_model=ContentQueueItemResponse)
-async def schedule_queue_item(
-    item_id: int,
-    request: Request,
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """Set schedule for exactly one queue item."""
-    raw = payload.get("scheduled_at")
-    if not raw:
-        raise HTTPException(status_code=400, detail="scheduled_at is required")
-    try:
-        scheduled_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Invalid scheduled_at") from e
-
-    result = await db.execute(
-        select(ContentQueueItem, Content)
-        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
-        .where(ContentQueueItem.id == item_id)
-    )
-    row = result.first()
-    item = row[0] if row else None
-    content = row[1] if row else None
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-    if item.status == QueueItemStatus.SUCCESS:
-        raise HTTPException(status_code=400, detail="Cannot reschedule a pushed queue item")
-
-    await _lock_queue_item_for_edit(db, item)
-    schedule_item(item, at=scheduled_at)
-
-    await db.commit()
-    await db.refresh(item)
-    await event_bus.publish("queue_updated", {
-        "action": "item_schedule",
-        "queue_item_id": item_id,
-        "scheduled_at": _as_utc(scheduled_at).isoformat() if _as_utc(scheduled_at) else None,
-        "timestamp": utcnow().isoformat(),
-    })
-    return await _queue_item_response_with_media(db, item, content, request)
-
-
-@router.post("/items/{item_id}/reorder", response_model=ContentQueueItemResponse)
-async def reorder_queue_item(
-    item_id: int,
-    request: Request,
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """Reorder exactly one queue item by boosting its priority."""
-    index = int(payload.get("index") or 0)
-    boost = max(1, 1000 - index)
-    result = await db.execute(
-        select(ContentQueueItem, Content)
-        .join(Content, Content.id == ContentQueueItem.content_id, isouter=True)
-        .where(ContentQueueItem.id == item_id)
-    )
-    row = result.first()
-    item = row[0] if row else None
-    content = row[1] if row else None
-    if not item:
-        raise HTTPException(status_code=404, detail="Queue item not found")
-
-    if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
-        item.priority = max(item.priority, boost)
-        await db.commit()
-        await db.refresh(item)
-        await event_bus.publish("queue_updated", {
-            "action": "item_reorder",
-            "queue_item_id": item_id,
-            "priority": item.priority,
-            "timestamp": utcnow().isoformat(),
-        })
-
-    return await _queue_item_response_with_media(db, item, content, request)
-
-
 @router.post("/batch-retry", response_model=BatchQueueRetryResponse)
 async def batch_retry_queue_items(
     request: BatchQueueRetryRequest,
@@ -663,7 +369,7 @@ async def batch_retry_queue_items(
     _: None = Depends(require_api_token),
 ):
     """批量重试队列项。"""
-    conditions = []
+    conditions = [ContentQueueItem.status == QueueItemStatus.FAILED]
     if request.item_ids:
         conditions.append(ContentQueueItem.id.in_(request.item_ids))
     else:
@@ -694,502 +400,39 @@ async def batch_retry_queue_items(
     return {"retried_count": len(retried_ids), "item_ids": retried_ids}
 
 
-@router.post(
-    "/items/batch-push-now",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
+@router.post("/items/batch-push-now", response_model=BatchQueueSendResponse)
 async def batch_push_now_queue_items(
-    payload: dict = Body(default={}),
+    payload: QueueSelection,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """批量将指定队列项调整为立即可处理。"""
-    item_ids = [int(item_id) for item_id in (payload.get("item_ids") or [])]
-    if not item_ids:
-        return {"status": "ok", "changed": 0}
-
-    run = await record_task_run_started(
-        "distribution_schedule",
-        action="item_batch_push_now",
-        queue_item_ids=item_ids,
-        trigger="manual",
-    )
-    now = utcnow()
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.id.in_(item_ids))
-    )
-    items = result.scalars().all()
-
-    changed = 0
-    changed_item_ids: list[int] = []
-    content_ids: list[int] = []
-    for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
-            await _lock_queue_item_for_edit(db, item)
-            schedule_item(item, at=now)
-            changed += 1
-            changed_item_ids.append(item.id)
-            content_ids.append(item.content_id)
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "item_batch_push_now",
-        "queue_item_ids": changed_item_ids,
-        "items_changed": changed,
-        "timestamp": now.isoformat(),
-    })
-    await record_task_run_success(
-        "distribution_schedule",
-        run["run_id"],
-        action="item_batch_push_now",
-        changed=changed,
-        queue_item_ids=changed_item_ids,
-        content_ids=content_ids,
-        trigger="manual",
-    )
-    return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
+    results = []
+    for item_id in dict.fromkeys(payload.item_ids):
+        result, _run_id = await _send_queue_item(item_id, db, request.app.state.distribution_worker)
+        results.append(result)
+    return BatchQueueSendResponse(items=results)
 
 
-@router.post(
-    "/items/batch-schedule",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
+@router.post("/items/batch-schedule", response_model=QueueChangedResponse, response_model_exclude_none=True)
 async def batch_schedule_queue_items(
-    payload: dict = Body(default={}),
+    payload: BatchScheduleRequest,
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_api_token),
 ):
-    """批量按队列项更新排期时间。"""
-    item_ids = [int(item_id) for item_id in (payload.get("item_ids") or [])]
-    raw_start = payload.get("start_time")
-    interval_seconds = int(payload.get("interval_seconds") or 300)
-
-    if not item_ids or not raw_start:
-        return {"status": "ok", "changed": 0}
-
-    try:
-        start_time = datetime.fromisoformat(str(raw_start).replace("Z", "+00:00"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid start_time")
-
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.id.in_(item_ids))
-    )
-    items_by_id = {item.id: item for item in result.scalars().all()}
-
-    changed = 0
-    changed_item_ids: list[int] = []
-    for idx, item_id in enumerate(item_ids):
-        item = items_by_id.get(item_id)
-        if item is None:
-            continue
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
-            await _lock_queue_item_for_edit(db, item)
-            schedule_item(item, at=start_time + timedelta(seconds=interval_seconds * idx))
-            changed += 1
-            changed_item_ids.append(item.id)
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "item_batch_schedule",
-        "queue_item_ids": changed_item_ids,
-        "items_changed": changed,
-        "timestamp": utcnow().isoformat(),
-    })
-    return {"status": "ok", "changed": changed}
-
-
-@router.post("/content/{content_id}/status", response_model=QueueMovedResponse)
-async def set_content_queue_status(
-    content_id: int,
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """按内容维度设置队列状态（供前端交互）。"""
-    target_status = str(payload.get("status") or "").strip().lower()
-    now = utcnow()
-
-    result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.content_id == content_id))
-    items = result.scalars().all()
-
-    if target_status == "will_push":
-        changed = 0
-        for item in items:
-            if item.status == QueueItemStatus.SUCCESS:
-                continue
-
-            await _lock_queue_item_for_edit(db, item)
-            schedule_item(item, at=now)
-            changed += 1
-        await db.commit()
-        await event_bus.publish("queue_updated", {
-            "action": "content_status_will_push",
-            "content_id": content_id,
-            "items_changed": changed,
-            "timestamp": now.isoformat(),
-        })
-        return {"status": "ok", "moved": changed}
-
-    if target_status == "filtered":
-        changed = 0
-        reason = str(payload.get("reason") or "Filtered manually").strip() or "Filtered manually"
-        for item in items:
-            if item.status == QueueItemStatus.SUCCESS:
-                continue
-            await _lock_queue_item_for_edit(db, item)
-            filter_item(item, reason=reason, error_type='manual_filtered', at=now)
-            changed += 1
-        await db.commit()
-        await event_bus.publish("queue_updated", {
-            "action": "content_status_filtered",
-            "content_id": content_id,
-            "items_changed": changed,
-            "timestamp": now.isoformat(),
-        })
-        return {"status": "ok", "moved": changed}
-
-    raise HTTPException(status_code=400, detail="Unsupported status")
-
-
-@router.post(
-    "/content/{content_id}/repush-now",
-    response_model=QueueRepushResponse,
-)
-async def repush_now_content_queue(
-    content_id: int,
-    target_id: Optional[str] = Query(None, description="仅重推指定目标ID"),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """手动重推：删除去重记录并立即重新排期。"""
-    now = utcnow()
-
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.content_id == content_id)
-    )
-    items = result.scalars().all()
-
-    changed = 0
-    affected_targets: set[str] = set()
-    for item in items:
-        if target_id and item.target_id != target_id:
-            continue
+    ids = list(dict.fromkeys(payload.item_ids))
+    items = {item.id: item for item in await db.scalars(
+        select(ContentQueueItem).where(ContentQueueItem.id.in_(ids))
+    )}
+    if len(items) != len(ids) or any(
+        item.status not in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED) for item in items.values()
+    ):
+        raise HTTPException(409, "所选记录已变化，请刷新后重试")
+    start = normalize_datetime_for_db(payload.start_time)
+    for index, item_id in enumerate(ids):
+        item = items[item_id]
         await _lock_queue_item_for_edit(db, item)
-        schedule_item(item, at=now, clear_receipt=True)
-        changed += 1
-        affected_targets.add(item.target_id)
-
-    deleted_records = 0
-    if affected_targets:
-        delete_stmt = PushedRecord.__table__.delete().where(
-            and_(
-                PushedRecord.content_id == content_id,
-                PushedRecord.target_id.in_(list(affected_targets)),
-            )
-        )
-        delete_result = await db.execute(delete_stmt)
-        deleted_records = int(delete_result.rowcount or 0)
-
+        schedule_item(item, at=start + timedelta(seconds=index * payload.interval_seconds))
     await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_repush_now",
-        "content_id": content_id,
-        "target_id": target_id,
-        "items_changed": changed,
-        "deleted_records": deleted_records,
-        "timestamp": now.isoformat(),
-    })
-    return {
-        "status": "ok",
-        "changed": changed,
-        "deleted_records": deleted_records,
-    }
-
-
-@router.post(
-    "/content/batch-repush-now",
-    response_model=QueueRepushResponse,
-)
-async def batch_repush_now_content_queue(
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """批量手动重推：删除去重记录并立即重新排期。"""
-    content_ids = [int(cid) for cid in (payload.get("content_ids") or [])]
-    if not content_ids:
-        return {"status": "ok", "changed": 0, "deleted_records": 0}
-
-    now = utcnow()
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
-    )
-    items = result.scalars().all()
-
-    changed = 0
-    target_pairs: set[tuple[int, str]] = set()
-    for item in items:
-        await _lock_queue_item_for_edit(db, item)
-        schedule_item(item, at=now, clear_receipt=True)
-        changed += 1
-        target_pairs.add((item.content_id, item.target_id))
-
-    deleted_records = 0
-    for cid, tid in target_pairs:
-        delete_result = await db.execute(
-            PushedRecord.__table__.delete().where(
-                and_(
-                    PushedRecord.content_id == cid,
-                    PushedRecord.target_id == tid,
-                )
-            )
-        )
-        deleted_records += int(delete_result.rowcount or 0)
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_batch_repush_now",
-        "content_ids": content_ids,
-        "items_changed": changed,
-        "deleted_records": deleted_records,
-        "timestamp": now.isoformat(),
-    })
-    return {
-        "status": "ok",
-        "changed": changed,
-        "deleted_records": deleted_records,
-    }
-
-
-@router.post(
-    "/content/{content_id}/reorder",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
-async def reorder_content_queue(
-    content_id: int,
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """按内容维度重排（通过优先级提升实现）。"""
-    index = int(payload.get("index") or 0)
-    boost = max(1, 1000 - index)
-
-    result = await db.execute(
-        select(ContentQueueItem)
-        .where(ContentQueueItem.content_id == content_id)
-        .order_by(ContentQueueItem.priority.desc(), ContentQueueItem.id.asc())
-    )
-    items = result.scalars().all()
-
-    changed = 0
-    for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
-            item.priority = max(item.priority, boost)
-            changed += 1
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_reorder",
-        "content_id": content_id,
-        "items_changed": changed,
-        "timestamp": utcnow().isoformat(),
-    })
-    return {"status": "ok", "changed": changed}
-
-
-@router.post(
-    "/content/{content_id}/push-now",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
-async def push_now_content_queue(
-    content_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """将内容相关队列项立即推送。"""
-    run = await record_task_run_started(
-        "distribution_schedule",
-        action="content_push_now",
-        content_id=content_id,
-        trigger="manual",
-    )
-    now = utcnow()
-    result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.content_id == content_id))
-    items = result.scalars().all()
-
-    changed = 0
-    changed_item_ids: list[int] = []
-    for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
-            await _lock_queue_item_for_edit(db, item)
-            schedule_item(item, at=now)
-            changed += 1
-            changed_item_ids.append(item.id)
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_push_now",
-        "content_id": content_id,
-        "items_changed": changed,
-        "timestamp": now.isoformat(),
-    })
-    await record_task_run_success(
-        "distribution_schedule",
-        run["run_id"],
-        action="content_push_now",
-        content_id=content_id,
-        changed=changed,
-        queue_item_ids=changed_item_ids,
-        trigger="manual",
-    )
-    return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
-
-
-@router.post(
-    "/content/{content_id}/schedule",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
-async def schedule_content_queue(
-    content_id: int,
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """按内容维度更新排期时间。"""
-    raw = payload.get("scheduled_at")
-    if not raw:
-        raise HTTPException(status_code=400, detail="scheduled_at is required")
-    try:
-        scheduled_at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid scheduled_at")
-
-    result = await db.execute(select(ContentQueueItem).where(ContentQueueItem.content_id == content_id))
-    items = result.scalars().all()
-
-    changed = 0
-    for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
-            await _lock_queue_item_for_edit(db, item)
-            schedule_item(item, at=scheduled_at)
-            changed += 1
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_schedule",
-        "content_id": content_id,
-        "items_changed": changed,
-        "timestamp": utcnow().isoformat(),
-    })
-    return {"status": "ok", "changed": changed}
-
-
-@router.post(
-    "/content/batch-push-now",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
-async def batch_push_now_content_queue(
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """批量立即推送（内容维度）。"""
-    content_ids = [int(cid) for cid in (payload.get("content_ids") or [])]
-    if not content_ids:
-        return {"status": "ok", "changed": 0}
-
-    run = await record_task_run_started(
-        "distribution_schedule",
-        action="content_batch_push_now",
-        content_ids=content_ids,
-        trigger="manual",
-    )
-    now = utcnow()
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
-    )
-    items = result.scalars().all()
-
-    changed = 0
-    changed_item_ids: list[int] = []
-    for item in items:
-        if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
-            await _lock_queue_item_for_edit(db, item)
-            schedule_item(item, at=now)
-            changed += 1
-            changed_item_ids.append(item.id)
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_batch_push_now",
-        "content_ids": content_ids,
-        "items_changed": changed,
-        "timestamp": now.isoformat(),
-    })
-    await record_task_run_success(
-        "distribution_schedule",
-        run["run_id"],
-        action="content_batch_push_now",
-        content_ids=content_ids,
-        changed=changed,
-        queue_item_ids=changed_item_ids,
-        trigger="manual",
-    )
-    return {"status": "ok", "changed": changed, "run_id": run["run_id"]}
-
-
-@router.post(
-    "/content/batch-reschedule",
-    response_model=QueueChangedResponse,
-    response_model_exclude_none=True,
-)
-async def batch_reschedule_content_queue(
-    payload: dict = Body(default={}),
-    db: AsyncSession = Depends(get_db),
-    _: None = Depends(require_api_token),
-):
-    """批量排期（内容维度）。"""
-    content_ids = [int(cid) for cid in (payload.get("content_ids") or [])]
-    raw_start = payload.get("start_time")
-    interval_seconds = int(payload.get("interval_seconds") or 300)
-
-    if not content_ids or not raw_start:
-        return {"status": "ok", "changed": 0}
-
-    try:
-        start_time = datetime.fromisoformat(str(raw_start).replace("Z", "+00:00"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid start_time")
-
-    result = await db.execute(
-        select(ContentQueueItem).where(ContentQueueItem.content_id.in_(content_ids))
-    )
-    grouped = {}
-    for item in result.scalars().all():
-        grouped.setdefault(item.content_id, []).append(item)
-
-    changed = 0
-    for idx, content_id in enumerate(content_ids):
-        scheduled = start_time + timedelta(seconds=interval_seconds * idx)
-        for item in grouped.get(content_id, []):
-            if item.status in (QueueItemStatus.SCHEDULED, QueueItemStatus.FAILED):
-                await _lock_queue_item_for_edit(db, item)
-                schedule_item(item, at=scheduled)
-                changed += 1
-
-    await db.commit()
-    await event_bus.publish("queue_updated", {
-        "action": "content_batch_reschedule",
-        "content_ids": content_ids,
-        "items_changed": changed,
-        "timestamp": utcnow().isoformat(),
-    })
-    return {"status": "ok", "changed": changed}
+    await event_bus.publish("queue_updated", {"action": "item_batch_schedule", "queue_item_ids": ids})
+    return {"status": "ok", "changed": len(ids)}

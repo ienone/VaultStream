@@ -97,7 +97,7 @@ class PushedRecord(Base):
     __tablename__ = "pushed_records"
     
     __table_args__ = (
-        UniqueConstraint("content_id", "target_id", name="uq_pushed_records_content_target"),
+        UniqueConstraint("content_id", "target_platform", "target_id", name="uq_pushed_records_delivery"),
         Index("ix_pushed_records_target_id", "target_id"),
     )
     

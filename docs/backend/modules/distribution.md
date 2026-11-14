@@ -18,7 +18,7 @@ active
 
 - 管理分发规则和目标。
 - 根据内容匹配规则生成队列项。
-- 支持推送、取消、重试、重新排序、批量操作。
+- 支持批量推送、同一时刻或间隔排期、取消和重试。
 - 支持 Telegram 和 Napcat/QQ 推送服务。
 
 ## 不承担职责
@@ -33,7 +33,6 @@ active
 
 队列列表和单项响应批量/按项附带卡片用途的统一 `media_assets`，签名 URL 使用当前请求 origin。前端队列预览不再自行猜测或改写封面 URL。worker 推送前会连同变体一次性加载媒体资产；`push.media.build_content_payload` 按 Telegram/QQ 能力选择本地可上传变体，并只把后端明确允许直连的远端原址作为兜底。Telegram 与 NapCat push service 只消费该 `media_items`，不再读取旧 archive metadata 或 `cover_url`；QQ 音频映射为 OneBot record 段。
 
-分发队列的 enqueue、cancel、batch retry、push/schedule/reorder/status/repush，以及规则删除与人工扫描动作已从匿名响应收敛为命名 response model，并纳入 OpenAPI schema gate。数量字段表达当前请求已完成的数据库状态变更；`run_id` 仅在确实创建后台运行时出现。规则目标删除保持 `204 No Content`，同样由门禁固定。
 
 仓库实验数据库已通过“真实队列/资产/本地 storage → worker → Telegram 适配器 → 队列与 pushed record 持久化”探针；网络边界由只记录上传字节的 Bot 替身截断，确认没有外部请求。真实 Telegram/QQ 账号发送与平台接受的媒体规格仍需在用户授权配置下验收，不能由本地探针外推。
 
@@ -79,7 +78,7 @@ active
 
 ## 发送期间的策略变化
 
-QQ Agent 收藏会由插件向原管理员私聊返回回执。自动入队和发送前检查真实 `ContentSource` 与 `AgentRun` 的关联，只跳过相同 Bot 配置、相同私聊用户的目标；要求来源含对应 run、session 与材料引用，旧 `qq_bot` 来源不受影响。其他目标及现有规则照常执行。网页明确入队、排期、重试和已确认的 Agent 推送使用队列现有 `approved_by=explicit_push` 记录这次发送授权，手动立即发送同样可执行。此标记只控制回执去重，其他规则及发送策略沿用现有行为；Agent 指定目标时只对该目标入队。
+QQ Agent 收藏会由插件向原管理员私聊返回回执。自动入队和发送前检查真实 `ContentSource` 与 `AgentRun` 的关联，只跳过相同 Bot 配置、相同私聊用户的目标；要求来源含对应 run、session 与材料引用，旧 `qq_bot` 来源不受影响。其他目标及现有规则照常执行。规则手动重新匹配和已确认的 Agent 规则入队使用 `approved_by=explicit_push` 记录这次发送授权，逐项立即发送或排期使用 `manual` 代表对该目标的确认。此标记只控制回执去重，其他规则及发送策略沿用现有行为；Agent 指定目标时只对该目标入队。
 
 手动立即发送与自动领取都用状态条件更新，且同内容、同平台、同目标只能有一个处理中队列项。已有成功发送记录按平台及目标去重。渲染结束、实际发送前重新检查规则/目标启用、内容资格、规则匹配、人工审核、聚合推送与自动暂停；手动发送保留原有显式绕过自动暂停的语义。目标路由变化会暂缓并提示刷新队列，不能沿旧目标身份直接发送到新目标。已发起的网络请求不承诺能被稍后的开关撤回。
 

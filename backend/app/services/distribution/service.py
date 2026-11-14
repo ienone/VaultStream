@@ -4,7 +4,7 @@ Distribution business entrypoint.
 This service owns rule matching, auto-approval, and queue
 enqueue decisions.
 """
-from sqlalchemy import and_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import event_bus
@@ -12,6 +12,7 @@ from app.core.logging import logger
 from app.core.time_utils import utcnow
 from app.models import (
     BotChat,
+    BotConfig,
     Content,
     ContentQueueItem,
     ContentStatus,
@@ -20,13 +21,12 @@ from app.models import (
     QueueItemStatus,
     ReviewStatus,
 )
-from app.repositories import ContentRepository, DistributionRepository
 from app.services.automation_policy import AutomationPolicyService
 from app.services.distribution.delivery_state import delivery_is_resolved
 from app.services.distribution.receipt_policy import EXPLICIT_PUSH, has_qq_agent_receipt
 from app.services.distribution.decision import (
     DECISION_FILTERED,
-    check_match_conditions,
+    DECISION_PENDING_REVIEW,
     should_distribute,
 )
 
@@ -36,66 +36,10 @@ class DistributionService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.content_repo = ContentRepository(db)
-        self.dist_repo = DistributionRepository(db)
-
-    def _check_match(self, content: Content, rule: DistributionRule) -> bool:
-        decision = check_match_conditions(content, rule.match_conditions or {})
-        return decision.bucket != DECISION_FILTERED
-
-    async def auto_approve_if_eligible(self, content: Content) -> bool:
-        """Auto-approve content when it matches any non-approval-required rule."""
-        policy = await AutomationPolicyService().distribution_enqueue(force=False)
-        if not policy.allowed:
-            logger.bind(
-                component="distribution",
-                content_id=content.id,
-                policy=policy.as_dict(),
-            ).info("Content auto-approval skipped by automation policy")
-            return False
-
-        if not (await AutomationPolicyService().aggregation_delivery(content)).allowed:
-            return False
-        if content.deleted_at is not None or content.review_status == ReviewStatus.REJECTED:
-            return False
-        if content.review_status != ReviewStatus.PENDING:
-            await self.enqueue_content(content.id)
-            return False
-
-        result = await self.db.execute(
-            select(DistributionRule).where(DistributionRule.enabled == True)
-        )
-        all_rules = result.scalars().all()
-
-        for rule in all_rules:
-            if rule.approval_required:
-                continue
-
-            if self._check_match(content, rule):
-                content.review_status = ReviewStatus.AUTO_APPROVED
-                content.reviewed_at = utcnow()
-                content.review_note = f"Auto-approved (rule: {rule.name})"
-
-                await self.db.commit()
-
-                logger.info(
-                    "Content auto-approved: content_id=%s",
-                    content.id,
-                )
-
-                try:
-                    await self.enqueue_content(content.id)
-                except Exception as e:
-                    logger.warning(f"Failed to enqueue after auto-approve: {e}")
-
-                return True
-
-        await self.enqueue_content(content.id)
-        return False
 
     async def enqueue_content(
         self, content_id: int, *, force: bool = False, manual: bool = False,
-        bot_chat_id: int | None = None,
+        bot_chat_id: int | None = None, auto_approve: bool = False,
     ) -> int:
         """Create or update distribution queue items for content."""
         policy = await AutomationPolicyService().distribution_enqueue(force=force)
@@ -131,126 +75,115 @@ class DistributionService:
             )
             return 0
 
-        rules_result = await self.db.execute(
-            select(DistributionRule).where(DistributionRule.enabled == True)
-        )
-        enabled_rules = rules_result.scalars().all()
-
-        if not enabled_rules:
-            logger.info(f"No enabled rules for content: content_id={content_id}")
+        targets = (await self.db.execute(select(DistributionRule, DistributionTarget, BotChat)
+            .join(DistributionTarget, DistributionTarget.rule_id == DistributionRule.id)
+            .join(BotChat, BotChat.id == DistributionTarget.bot_chat_id)
+            .join(BotConfig, BotConfig.id == BotChat.bot_config_id)
+            .where(DistributionRule.enabled.is_(True), DistributionTarget.enabled.is_(True),
+                   BotChat.enabled.is_(True), BotChat.is_accessible.is_(True), BotChat.is_push_target.is_(True),
+                   BotConfig.enabled.is_(True), BotConfig.is_primary.is_(True))
+            .order_by(DistributionRule.priority.desc(), DistributionRule.id, BotChat.id)
+        )).all()
+        if not targets:
             return 0
-
-        rule_ids = [r.id for r in enabled_rules]
-        targets_result = await self.db.execute(
-            select(DistributionTarget, BotChat)
-            .join(BotChat, DistributionTarget.bot_chat_id == BotChat.id)
-            .where(DistributionTarget.rule_id.in_(rule_ids))
-            .where(DistributionTarget.enabled == True)
-            .where(BotChat.enabled == True)
-            .where(BotChat.is_accessible == True)
-        )
-
-        rule_targets: dict[int, list[tuple[DistributionTarget, BotChat]]] = {}
-        for target, bot_chat in targets_result.all():
-            rule_targets.setdefault(target.rule_id, []).append((target, bot_chat))
-
-        existing_result = await self.db.execute(
-            select(ContentQueueItem).where(
-                and_(
-                    ContentQueueItem.content_id == content_id,
-                    ContentQueueItem.rule_id.in_(rule_ids),
-                )
-            )
-        )
-        existing_items: dict[tuple[int, int], ContentQueueItem] = {
-            (item.rule_id, item.bot_chat_id): item
-            for item in existing_result.scalars().all()
-        }
-
+        existing_items = {(item.rule_id, item.bot_chat_id): item for item in await self.db.scalars(
+            select(ContentQueueItem).where(ContentQueueItem.content_id == content_id)
+        )}
         count = 0
+        for rule, target, bot_chat in targets:
+            if bot_chat_id is not None and bot_chat.id != bot_chat_id:
+                continue
+            if (
+                target.backfill_watermark is not None
+                and content.created_at is not None
+                and content.created_at < target.backfill_watermark
+            ):
+                continue
 
-        for rule in enabled_rules:
-            for target, bot_chat in rule_targets.get(rule.id, ()):
-                if bot_chat_id is not None and bot_chat.id != bot_chat_id:
+            existing = existing_items.get((rule.id, bot_chat.id))
+            awaiting_review = existing is not None and existing.last_error_type == "approval_required"
+            if existing and not awaiting_review and not manual and not (force and existing.status == QueueItemStatus.FAILED):
+                continue
+
+            decision = should_distribute(
+                content=content,
+                rule=rule,
+                bot_chat=bot_chat,
+            )
+
+            if decision.bucket == DECISION_FILTERED:
+                continue
+
+            target_id = decision.target_id or bot_chat.chat_id
+            if not manual and await has_qq_agent_receipt(self.db, content_id, bot_chat, target_id):
+                continue
+
+            needs_approval = decision.bucket == DECISION_PENDING_REVIEW
+            if existing:
+                if awaiting_review and needs_approval:
                     continue
-                if (
-                    target.backfill_watermark is not None
-                    and content.created_at is not None
-                    and content.created_at < target.backfill_watermark
-                ):
+                if manual and existing.status == QueueItemStatus.SCHEDULED and existing.approved_by != EXPLICIT_PUSH:
+                    existing.approved_by = EXPLICIT_PUSH
+                    count += 1
+                if existing.status == QueueItemStatus.SUCCESS and not force:
+                    logger.debug(
+                        f"Queue item already succeeded: content_id={content_id}, "
+                        f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
+                    )
                     continue
 
-                existing = existing_items.get((rule.id, bot_chat.id))
-                if existing and not manual and not (force and existing.status == QueueItemStatus.FAILED):
-                    continue
-
-                decision = should_distribute(
-                    content=content,
-                    rule=rule,
-                    bot_chat=bot_chat,
-                    require_approval=False,
-                )
-
-                if decision.bucket == DECISION_FILTERED:
-                    continue
-
-                target_id = decision.target_id or bot_chat.chat_id
-                if not manual and await has_qq_agent_receipt(self.db, content_id, bot_chat, target_id):
-                    continue
-
-                if existing:
-                    if manual and existing.status == QueueItemStatus.SCHEDULED and existing.approved_by != EXPLICIT_PUSH:
-                        existing.approved_by = EXPLICIT_PUSH
-                        count += 1
-                    if existing.status == QueueItemStatus.SUCCESS and not force:
-                        logger.debug(
-                            f"Queue item already succeeded: content_id={content_id}, "
-                            f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
-                        )
+                if existing.status == QueueItemStatus.FAILED and (awaiting_review or (force and not needs_approval)):
+                    reset = await self.db.execute(update(ContentQueueItem).where(
+                        ContentQueueItem.id == existing.id,
+                        ContentQueueItem.status == QueueItemStatus.FAILED,
+                        delivery_is_resolved(),
+                        ContentQueueItem.last_error_type == "approval_required" if awaiting_review else True,
+                    ).values(
+                        status=QueueItemStatus.SCHEDULED, attempt_count=0,
+                        last_error=None, last_error_type=None, last_error_at=None,
+                        next_attempt_at=None, target_id=target_id,
+                        approved_by=EXPLICIT_PUSH if manual else existing.approved_by,
+                        scheduled_at=utcnow(), updated_at=utcnow(),
+                    ).execution_options(synchronize_session=False))
+                    if reset.rowcount != 1:
                         continue
+                    await self.db.refresh(existing)
+                    count += 1
+                    logger.info(
+                        f"Queue item reset to SCHEDULED: content_id={content_id}, "
+                        f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
+                    )
+                    continue
 
-                    if existing.status == QueueItemStatus.FAILED and force:
-                        reset = await self.db.execute(update(ContentQueueItem).where(
-                            ContentQueueItem.id == existing.id,
-                            ContentQueueItem.status == QueueItemStatus.FAILED,
-                            delivery_is_resolved(),
-                        ).values(
-                            status=QueueItemStatus.SCHEDULED, attempt_count=0,
-                            last_error=None, last_error_type=None, last_error_at=None,
-                            next_attempt_at=None, target_id=target_id,
-                            approved_by=EXPLICIT_PUSH if manual else existing.approved_by,
-                            scheduled_at=utcnow(), updated_at=utcnow(),
-                        ).execution_options(synchronize_session=False))
-                        if reset.rowcount != 1:
-                            continue
-                        await self.db.refresh(existing)
-                        count += 1
-                        logger.info(
-                            f"Queue item reset to SCHEDULED: content_id={content_id}, "
-                            f"rule_id={rule.id}, bot_chat_id={bot_chat.id}"
-                        )
+                continue
+
+            if content.review_status == ReviewStatus.PENDING and not needs_approval:
+                if not auto_approve:
+                    continue
+                updated = await self.db.execute(update(Content).where(
+                    Content.id == content.id, Content.review_status == ReviewStatus.PENDING,
+                    Content.deleted_at.is_(None),
+                ).values(review_status=ReviewStatus.AUTO_APPROVED, reviewed_at=utcnow(),
+                         review_note=f"Auto-approved (rule: {rule.name})"))
+                if not updated.rowcount:
+                    await self.db.refresh(content)
+                    if content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
                         continue
-
-                    continue
-
-                needs_approval = (rule.approval_required and content.review_status != ReviewStatus.APPROVED)
-                if content.review_status == ReviewStatus.PENDING and not needs_approval:
-                    continue
-                item = ContentQueueItem(
-                    content_id=content_id,
-                    rule_id=rule.id,
-                    bot_chat_id=bot_chat.id,
-                    target_platform=bot_chat.platform_type,
-                    target_id=target_id,
-                    status=QueueItemStatus.FAILED if needs_approval else QueueItemStatus.SCHEDULED,
-                    last_error_type="approval_required" if needs_approval else None,
-                    last_error="等待确认发送" if needs_approval else None,
-                    priority=rule.priority + content.queue_priority,
-                    scheduled_at=utcnow(),
-                    approved_by=EXPLICIT_PUSH if manual else None,
-                )
-                self.db.add(item)
-                count += 1
+            item = ContentQueueItem(
+                content_id=content_id,
+                rule_id=rule.id,
+                bot_chat_id=bot_chat.id,
+                target_platform=bot_chat.platform_type,
+                target_id=target_id,
+                status=QueueItemStatus.FAILED if needs_approval else QueueItemStatus.SCHEDULED,
+                last_error_type="approval_required" if needs_approval else None,
+                last_error="等待确认发送" if needs_approval else None,
+                priority=rule.priority + content.queue_priority,
+                scheduled_at=utcnow(),
+                approved_by=EXPLICIT_PUSH if manual else None,
+            )
+            self.db.add(item)
+            count += 1
 
         if count > 0:
             await self.db.commit()
@@ -265,7 +198,7 @@ class DistributionService:
             )
             logger.info(
                 f"Enqueued content: content_id={content_id}, "
-                f"rules_scanned={len(enabled_rules)}, "
+                f"targets_checked={len(targets)}, "
                 f"items_created_or_updated={count}"
             )
 

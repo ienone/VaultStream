@@ -6,10 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
 from app.core.time_utils import utcnow
-from app.models import BotChat, BotConfig, Content, ContentStatus, ContentQueueItem, PushedRecord, QueueItemStatus
+from app.models import BotChat, BotConfig, Content, ContentStatus, ContentQueueItem, PushedRecord, QueueItemStatus, ReviewStatus
 from app.schemas.queue import ManualPushRequest, ManualPushResponse
 from app.services.automation_policy import AutomationPolicyService
-from app.services.distribution.receipt_policy import EXPLICIT_PUSH
+from app.services.distribution.receipt_policy import ITEM_APPROVAL
 
 
 async def prepare_manual_push(db: AsyncSession, payload: ManualPushRequest) -> ManualPushResponse:
@@ -17,7 +17,7 @@ async def prepare_manual_push(db: AsyncSession, payload: ManualPushRequest) -> M
     chat_ids = list(dict.fromkeys(payload.bot_chat_ids))
     if len(content_ids) * len(chat_ids) > 100:
         raise HTTPException(422, "一次最多发送 100 个内容与目标组合")
-    contents = list((await db.scalars(select(Content).options(load_only(Content.id, Content.deleted_at, Content.status, Content.source_type)).where(Content.id.in_(content_ids)))).all())
+    contents = list((await db.scalars(select(Content).options(load_only(Content.id, Content.deleted_at, Content.status, Content.source_type, Content.review_status)).where(Content.id.in_(content_ids)))).all())
     chats = list((await db.scalars(select(BotChat).join(BotConfig).where(
         BotChat.id.in_(chat_ids), BotChat.enabled.is_(True), BotChat.is_accessible.is_(True),
         BotChat.is_push_target.is_(True), BotConfig.enabled.is_(True), BotConfig.is_primary.is_(True),
@@ -26,6 +26,8 @@ async def prepare_manual_push(db: AsyncSession, payload: ManualPushRequest) -> M
         raise HTTPException(409, "所选推送目标不可用，请刷新目标列表")
     if len(contents) != len(content_ids) or any(c.deleted_at is not None or c.status != ContentStatus.PARSE_SUCCESS for c in contents):
         raise HTTPException(409, "所选内容已删除或尚未解析完成")
+    if any(content.review_status == ReviewStatus.REJECTED for content in contents):
+        raise HTTPException(409, "所选内容中有已拒绝的项目")
     synthesis = next((content for content in contents if content.source_type == "ai_aggregation"), None)
     if synthesis is not None:
         policy = await AutomationPolicyService().aggregation_delivery(synthesis)
@@ -53,7 +55,7 @@ async def prepare_manual_push(db: AsyncSession, payload: ManualPushRequest) -> M
     await db.execute(insert(ContentQueueItem).values([
         dict(content_id=content_id, rule_id=None, bot_chat_id=chat.id,
              target_platform=chat.platform_type, target_id=chat.chat_id,
-             approved_by=EXPLICIT_PUSH, status=QueueItemStatus.FAILED,
+             approved_by=ITEM_APPROVAL, status=QueueItemStatus.FAILED,
              last_error_type="manual_ready", last_error="等待手动发送", scheduled_at=now)
         for content_id, chat in pending
     ]).on_conflict_do_nothing(index_elements=["content_id", "bot_chat_id"],

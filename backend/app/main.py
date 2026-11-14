@@ -30,7 +30,6 @@ from app.services.system_diagnostics_service import (
     SystemDiagnosticsService,
     get_system_diagnostics_service,
 )
-from app.tasks import worker, DistributionQueueWorker
 
 # 导入新路由
 from app.routers import (
@@ -172,6 +171,7 @@ async def lifespan(app: FastAPI):
         logger.warning("当前进程未获得周期任务 leader 锁，跳过自动循环任务启动")
 
     # 将 task 实例挂载到 app.state，供路由层访问
+    app.state.distribution_worker = queue_worker
     app.state.discovery_sync_task = discovery_sync_task
     app.state.favorites_sync_task = favorites_sync_task
     app.state.telegram_account_sync_task = telegram_account_sync_task

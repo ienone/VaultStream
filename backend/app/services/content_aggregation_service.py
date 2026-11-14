@@ -172,5 +172,5 @@ class ContentAggregationService:
                     for content_id in content_ids:
                         content = await db.get(Content, content_id)
                         if content is not None:
-                            await DistributionService(db).auto_approve_if_eligible(content)
+                            await DistributionService(db).enqueue_content(content.id, auto_approve=True)
         return result

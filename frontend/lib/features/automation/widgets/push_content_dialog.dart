@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/adaptive_form_dialog.dart';
-import '../models/queue_item.dart';
 import '../providers/bot_chats_provider.dart';
 import '../providers/queue_provider.dart';
 
@@ -35,29 +34,15 @@ class ManualPushActions {
     );
     final data = response.data as Map<String, dynamic>;
     final ids = (data['item_ids'] as List).cast<int>();
-    var sent = 0;
-    final errors = <String>[];
-    for (final id in ids) {
-      try {
-        final response = await api.post(
-          '/distribution-queue/items/$id/push-now',
-        );
-        final item = QueueItem.fromJson(response.data as Map<String, dynamic>);
-        if (item.status == 'success') {
-          sent++;
-        } else {
-          errors.add(
-            item.deliveryUnconfirmed
-                ? '未收到发送回执'
-                : (item.displayReason ?? '未发送'),
-          );
-        }
-      } catch (error) {
-        errors.add(formatApiErrorMessage(error));
-      }
-    }
-    ref.invalidate(contentQueueProvider);
-    return (sent: sent, skipped: data['already_sent'] as int, errors: errors);
+    final results = await sendQueueItems(api, ids);
+    return (
+      sent: results.where((item) => item.sent).length,
+      skipped: data['already_sent'] as int,
+      errors: [
+        for (final item in results)
+          if (!item.sent) item.error ?? '尚未发送',
+      ],
+    );
   }
 }
 
@@ -183,15 +168,9 @@ class _PushContentDialogState extends ConsumerState<_PushContentDialog> {
             FilledButton.tonal(
               onPressed: () {
                 Navigator.pop(context);
-                if (_hasErrors) {
-                  ref.read(queueFilterProvider.notifier).setRuleId(null);
-                  ref
-                      .read(queueFilterProvider.notifier)
-                      .setStatus(QueueStatus.filtered);
-                }
                 widget.router.go(
                   _hasErrors
-                      ? '/automation/distribution'
+                      ? '/automation/distribution/history?status=filtered'
                       : '/automation/distribution/history',
                 );
               },

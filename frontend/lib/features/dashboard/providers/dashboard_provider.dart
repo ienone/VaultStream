@@ -1,18 +1,8 @@
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/sse_service.dart';
 import '../models/stats.dart';
-
-part 'dashboard_provider.g.dart';
-
-@riverpod
-Future<QueueOverviewStats> queueStats(Ref ref) async {
-  final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/dashboard/queue');
-  return QueueOverviewStats.fromJson(response.data);
-}
 
 final backgroundTaskDiagnosticsProvider =
     FutureProvider.autoDispose<BackgroundTaskDiagnostics>((ref) async {

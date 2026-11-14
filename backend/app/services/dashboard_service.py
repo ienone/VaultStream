@@ -1,8 +1,7 @@
 """
 仪表盘统计服务 - 提供解析状态和分发状态的共享统计逻辑
 """
-from datetime import datetime
-from typing import Optional
+from app.services.distribution.delivery_state import delivery_bucket, visible_queue_item
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,20 +15,6 @@ def _is_library_content():
         Content.discovery_state.is_(None),
         Content.discovery_state == DiscoveryState.PROMOTED,
     )
-
-
-def classify_distribution_status(
-    status: QueueItemStatus,
-    next_attempt_at: Optional[datetime],
-) -> str:
-    """将队列项状态分类为看板分桶"""
-    if status == QueueItemStatus.SUCCESS:
-        return "pushed"
-    if status in (QueueItemStatus.SCHEDULED, QueueItemStatus.PROCESSING):
-        return "will_push"
-    if status == QueueItemStatus.FAILED:
-        return "will_push" if next_attempt_at is not None else "filtered"
-    return "filtered"
 
 
 def empty_distribution_bucket() -> dict[str, int]:
@@ -65,40 +50,20 @@ async def build_distribution_stats(
     distribution_stats = empty_distribution_bucket()
     rule_breakdown: dict[str, dict] = {}
 
-    cols = [
-        ContentQueueItem.status,
-        ContentQueueItem.next_attempt_at,
-        func.count(ContentQueueItem.id),
-    ]
-    group_cols = [
-        ContentQueueItem.status,
-        ContentQueueItem.next_attempt_at,
-    ]
+    bucket_column = delivery_bucket()
+    cols = [bucket_column, func.count(ContentQueueItem.id)]
+    groups = [bucket_column]
     if include_rule_breakdown:
         cols.insert(0, ContentQueueItem.rule_id)
-        group_cols.insert(0, ContentQueueItem.rule_id)
-
-    query = (
-        select(*cols)
-        .join(Content, Content.id == ContentQueueItem.content_id)
-        .where(
-            Content.status == ContentStatus.PARSE_SUCCESS,
-            _is_library_content(),
-        )
-        .group_by(*group_cols)
-    )
-    rows = (await db.execute(query)).all()
-
+        groups.insert(0, ContentQueueItem.rule_id)
+    rows = (await db.execute(select(*cols).where(visible_queue_item()).group_by(*groups))).all()
     for row in rows:
         if include_rule_breakdown:
-            rule_id, status, next_attempt_at, count = row
+            rule_id, bucket, count = row
         else:
-            status, next_attempt_at, count = row
+            bucket, count = row
             rule_id = None
-
-        count_int = int(count or 0)
-        bucket = classify_distribution_status(status, next_attempt_at)
-
+        count_int = int(count)
         distribution_stats[bucket] += count_int
         distribution_stats["total"] += count_int
 

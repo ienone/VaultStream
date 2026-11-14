@@ -57,7 +57,7 @@ from app.services.content_service import (
     CaptureFileInput,
     ContentService,
 )
-from app.services.distribution.delivery_state import DELIVERY_UNKNOWN
+from app.services.distribution.delivery_state import DELIVERY_UNKNOWN, delivery_bucket, visible_queue_item
 from app.repositories.content_repository import ContentRepository
 from app.services.content_presenter import (
     compute_effective_layout_type, compute_content_excerpt, build_content_detail,
@@ -298,12 +298,16 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
 
     queue_rows = (
         await db.execute(
-            select(ContentQueueItem.status, func.count(ContentQueueItem.id))
-            .where(ContentQueueItem.content_id == content.id)
-            .group_by(ContentQueueItem.status)
+            select(ContentQueueItem.status, delivery_bucket(), func.count(ContentQueueItem.id))
+            .where(ContentQueueItem.content_id == content.id, visible_queue_item())
+            .group_by(ContentQueueItem.status, delivery_bucket())
         )
     ).all()
-    queue_counts = _status_counts(queue_rows)
+    queue_counts = {}
+    distribution_buckets = {}
+    for status, bucket, count in queue_rows:
+        queue_counts[status.value] = queue_counts.get(status.value, 0) + count
+        distribution_buckets[bucket] = distribution_buckets.get(bucket, 0) + count
     failed_queue_items = (
         await db.execute(
             select(
@@ -320,7 +324,7 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
             )
             .where(
                 ContentQueueItem.content_id == content.id,
-                ContentQueueItem.status == QueueItemStatus.FAILED,
+                delivery_bucket() == "filtered", visible_queue_item(),
             )
             .order_by(ContentQueueItem.updated_at.desc())
             .limit(5)
@@ -354,12 +358,9 @@ async def _build_processing_status(content: Content, db: AsyncSession) -> Conten
         ).scalar()
         or 0
     )
-    queued_count = queue_counts.get(QueueItemStatus.SCHEDULED.value, 0) + queue_counts.get(
-        QueueItemStatus.PROCESSING.value,
-        0,
-    )
-    distribution_failed = queue_counts.get(QueueItemStatus.FAILED.value, 0)
-    distribution_success = queue_counts.get(QueueItemStatus.SUCCESS.value, 0)
+    queued_count = distribution_buckets.get("will_push", 0)
+    distribution_failed = distribution_buckets.get("filtered", 0)
+    distribution_success = distribution_buckets.get("pushed", 0)
     if unknown_deliveries:
         distribution_status = DELIVERY_UNKNOWN
         distribution_state = ProcessingStageState.BLOCKED

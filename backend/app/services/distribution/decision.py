@@ -89,6 +89,10 @@ def should_distribute(
 
     Same input -> same output. This function is intentionally deterministic.
     """
+    if not rule.enabled or not bot_chat or not bot_chat.enabled or not bot_chat.is_accessible or not bot_chat.is_push_target:
+        return DistributionDecision(DECISION_FILTERED, "target_unavailable", "规则或推送目标不可用")
+    if content.deleted_at is not None or content.review_status == ReviewStatus.REJECTED:
+        return DistributionDecision(DECISION_FILTERED, "content_not_eligible", "内容已删除或已拒绝")
     condition_decision = check_match_conditions(content, rule.match_conditions or {})
     if condition_decision.bucket == DECISION_FILTERED:
         return condition_decision
@@ -116,11 +120,11 @@ def should_distribute(
             target_id = routed_target
 
     if require_approval and rule.approval_required:
-        if content.review_status not in (ReviewStatus.APPROVED, ReviewStatus.AUTO_APPROVED):
+        if content.review_status != ReviewStatus.APPROVED:
             return DistributionDecision(
                 bucket=DECISION_PENDING_REVIEW,
                 reason_code="approval_required",
-                reason=f"需要人工审批 (当前状态: {content.review_status.value})",
+                reason="等待确认发送",
                 target_id=target_id,
             )
 

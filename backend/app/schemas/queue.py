@@ -70,12 +70,6 @@ class EnqueueContentRequest(BaseModel):
     force: bool = False
 
 
-class QueueItemRetryRequest(BaseModel):
-    """单个项重试请求"""
-    reset_attempts: bool = False
-
-
-
 class QueueStatsResponse(BaseModel):
     """分发队列状态统计响应"""
     will_push: int
@@ -88,13 +82,6 @@ class QueueStatsResponse(BaseModel):
 class QueueEnqueueResponse(BaseModel):
     status: Literal["ok"]
     enqueued_count: int
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class QueueCancelResponse(BaseModel):
-    status: Literal["filtered"]
-    id: int
 
     model_config = ConfigDict(extra="forbid")
 
@@ -114,25 +101,6 @@ class QueueChangedResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class QueueMovedResponse(BaseModel):
-    status: Literal["ok"]
-    moved: int
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class QueueRepushResponse(BaseModel):
-    status: Literal["ok"]
-    changed: int
-    deleted_records: int
-
-    model_config = ConfigDict(extra="forbid")
-
-
-# 为了向后兼容路由中的名称
-QueueListResponse = ContentQueueItemListResponse
-
-
 class ManualPushRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     content_ids: List[int] = Field(min_length=1, max_length=50)
@@ -144,9 +112,27 @@ class ManualPushResponse(BaseModel):
     already_sent: int
 
 
-class BatchQueueCancelRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class QueueSelection(BaseModel):
     item_ids: List[int] = Field(min_length=1, max_length=500)
+
+
+class BatchScheduleRequest(QueueSelection):
+    start_time: UtcDatetime
+    interval_seconds: int = Field(default=0, ge=0)
+
+
+class QueueSendResult(BaseModel):
+    item_id: int
+    sent: bool
+    error: str | None = None
+
+
+class BatchQueueSendResponse(BaseModel):
+    items: list[QueueSendResult]
+
+
+class BatchQueueCancelRequest(QueueSelection):
+    model_config = ConfigDict(extra="forbid")
 
 
 class BatchQueueCancelResponse(BaseModel):

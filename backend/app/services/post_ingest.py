@@ -62,7 +62,7 @@ class PostIngestService:
         from app.services.distribution import DistributionService
 
         await tag_distribution_topics(session, content)
-        await DistributionService(session).auto_approve_if_eligible(content)
+        await DistributionService(session).enqueue_content(content.id, auto_approve=True)
 
 
 async def process_content_task(task: Task) -> None:

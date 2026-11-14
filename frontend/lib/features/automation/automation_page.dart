@@ -1,28 +1,21 @@
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
-import '../../routing/navigation_scope.dart';
-import '../../core/widgets/app_filter_menu.dart';
 import '../../core/layout/app_page_body.dart';
 import '../../core/widgets/workspace_tabs.dart';
 import '../collection/content_detail_page.dart';
 import '../collection/models/content.dart';
-
-import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/layout/app_list_detail_workspace.dart';
-import '../../core/network/sse_service.dart';
 import '../../core/network/api_client.dart';
 import '../../theme/design_tokens.dart';
 import 'models/distribution_rule.dart';
 import 'models/queue_item.dart';
 import 'providers/distribution_rules_provider.dart';
-import 'providers/bot_chats_provider.dart';
 import 'providers/queue_provider.dart';
-import '../dashboard/providers/dashboard_provider.dart' as dashboard;
 import '../settings/providers/settings_provider.dart';
 import '../settings/utils/setting_value.dart';
 import 'widgets/queue_content_list.dart';
@@ -35,6 +28,7 @@ class DistributionPage extends ConsumerStatefulWidget {
   const DistributionPage({
     super.key,
     this.initialTab,
+    this.unsentOnly = false,
     this.editorRouteKey,
     this.ruleId,
     this.filterRuleId,
@@ -64,6 +58,7 @@ class DistributionPage extends ConsumerStatefulWidget {
   }
 
   final String? initialTab;
+  final bool unsentOnly;
   final ValueKey<String>? editorRouteKey;
   final int? ruleId;
   final int? filterRuleId;
@@ -127,23 +122,15 @@ class _DistributionDomainTabsState extends State<_DistributionDomainTabs>
 }
 
 class _DistributionPageState extends ConsumerState<DistributionPage> {
-  _DistributionDomainView _distributionView = _DistributionDomainView.queue;
-  int? _selectedRuleId;
-  StreamSubscription<SseEvent>? _sseSub;
+  _DistributionDomainView get _distributionView =>
+      _distributionViewFromTab(widget.initialTab);
+  int? get _selectedRuleId => widget.filterRuleId;
   ShareCard? _preview;
   LocalHistoryEntry? _readerHistory;
-  final _lastContentIds = <_DistributionDomainView, int>{};
-  int? _lastRuleId;
-  int? _pendingDefaultRuleId;
 
   @override
   void initState() {
     super.initState();
-    _distributionView = _distributionViewFromTab(widget.initialTab);
-    _selectedRuleId = widget.filterRuleId;
-    _lastRuleId = widget.ruleId;
-    _bindRealtimeEvents();
-    _scheduleQueueFilter();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _syncReaderHistory();
     });
@@ -152,17 +139,9 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   @override
   void didUpdateWidget(DistributionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.ruleId != null) _lastRuleId = widget.ruleId;
-    if (oldWidget.filterRuleId != widget.filterRuleId) {
-      _selectedRuleId = widget.filterRuleId;
-    }
-    _scheduleQueueFilter();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncReaderHistory();
-    });
-    if (oldWidget.initialTab != widget.initialTab) {
-      setState(() {
-        _distributionView = _distributionViewFromTab(widget.initialTab);
+    if (oldWidget.selectedContentId != widget.selectedContentId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncReaderHistory();
       });
     }
   }
@@ -187,52 +166,12 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     );
   }
 
-  void _scheduleQueueFilter() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncQueueFilter();
-    });
-  }
-
   QueueStatus get _queueStatus =>
       _distributionView == _DistributionDomainView.history
-      ? QueueStatus.pushed
+      ? (widget.unsentOnly ? QueueStatus.filtered : QueueStatus.history)
       : QueueStatus.willPush;
 
-  void _syncQueueFilter() {
-    if (_distributionView != _DistributionDomainView.queue &&
-        _distributionView != _DistributionDomainView.history) {
-      return;
-    }
-    ref
-        .read(queueFilterProvider.notifier)
-        .setFilter(ruleId: _selectedRuleId, status: _queueStatus);
-  }
-
-  @override
-  void dispose() {
-    _sseSub?.cancel();
-    super.dispose();
-  }
-
-  void _bindRealtimeEvents() {
-    ref.read(sseServiceProvider.notifier);
-    _sseSub?.cancel();
-    _sseSub = SseEventBus().eventStream.listen((event) {
-      if (!mounted) return;
-
-      switch (event.type) {
-        case 'queue_updated':
-          ref.invalidate(dashboard.queueStatsProvider);
-          break;
-        case 'content_pushed':
-        case 'distribution_push_success':
-          ref.invalidate(botChatsProvider);
-          break;
-        case 'distribution_push_failed':
-          break;
-      }
-    });
-  }
+  QueueFilter get _filter => (status: _queueStatus, ruleId: _selectedRuleId);
 
   void _syncReaderHistory() {
     if (widget.selectedContentId == null) {
@@ -255,7 +194,6 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   void _openContent(QueueItem item, BuildContext sourceContext) {
-    _lastContentIds[_distributionView] = item.contentId;
     _preview = ShareCard(
       id: item.contentId,
       platform: item.platform,
@@ -295,60 +233,13 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) => _buildWorkspace(context, constraints),
-  );
-
-  Widget _buildWorkspace(BuildContext context, BoxConstraints constraints) {
-    final wide = AppListDetailWorkspace.supportsSplit(
-      context,
-      availableSize: constraints.biggest,
-    );
-    final rules = ref.watch(distributionRulesProvider).value;
-    if (wide &&
-        TickerMode.valuesOf(context).enabled &&
-        AppNavigationScope.isActiveOf(context) &&
-        _distributionView == _DistributionDomainView.rules &&
-        widget.editorRouteKey == null &&
-        rules != null &&
-        rules.isNotEmpty) {
-      final rule =
-          rules.where((rule) => rule.id == _lastRuleId).firstOrNull ??
-          rules.first;
-      _scheduleDefaultRule(rule.id);
-    }
-    final isQueue =
-        _distributionView == _DistributionDomainView.queue ||
-        _distributionView == _DistributionDomainView.history;
-    QueueItem? defaultItem;
-    if (wide && isQueue && widget.selectedContentId == null) {
-      final filter = ref.watch(queueFilterProvider);
-      if (filter.ruleId == _selectedRuleId && filter.status == _queueStatus) {
-        final items = ref.watch(contentQueueProvider).value?.items;
-        defaultItem =
-            items
-                ?.where(
-                  (item) =>
-                      item.contentId == _lastContentIds[_distributionView],
-                )
-                .firstOrNull ??
-            items?.firstOrNull;
-      }
-    }
+  Widget build(BuildContext context) {
     final editorKey = widget.editorRouteKey;
     final configuration = widget.configuration;
     final creating = widget.ruleId == null;
-    final contentId = widget.selectedContentId ?? defaultItem?.contentId;
+    final contentId = widget.selectedContentId;
     final preview = _preview?.id == contentId ? _preview : null;
     return AppListDetailWorkspace(
-      emptyDetail: _distributionView == _DistributionDomainView.targets
-          ? null
-          : WorkspacePlaceholder(
-              loading: isQueue
-                  ? ref.watch(contentQueueProvider).isLoading
-                  : ref.watch(distributionRulesProvider).isLoading,
-              label: isQueue ? '暂无内容详情' : '选择规则查看详情',
-            ),
       onClose: editorKey != null
           ? () => context.go('/automation/distribution/rules')
           : widget.selectedContentId == null
@@ -364,7 +255,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
             onChanged: _showView,
           ),
         ),
-        body: _buildDistributionDomain(contentId),
+        body: _buildDistributionContent(contentId),
       ),
       detailBuilder: (deferBody, focused, toggleFocus) => editorKey != null
           ? Scaffold(
@@ -388,24 +279,6 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     );
   }
 
-  void _scheduleDefaultRule(int ruleId) {
-    if (_pendingDefaultRuleId == ruleId) return;
-    _pendingDefaultRuleId = ruleId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _pendingDefaultRuleId = null;
-      if (!mounted ||
-          !TickerMode.valuesOf(context).enabled ||
-          !AppNavigationScope.isActiveOf(context) ||
-          !AppListDetailWorkspace.supportsSplit(context) ||
-          _distributionView != _DistributionDomainView.rules ||
-          widget.editorRouteKey != null) {
-        return;
-      }
-      _lastRuleId = ruleId;
-      context.replace('/automation/distribution/rules/$ruleId');
-    });
-  }
-
   _DistributionDomainView _distributionViewFromTab(String? tab) =>
       switch (tab) {
         'history' => _DistributionDomainView.history,
@@ -414,92 +287,59 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         _ => _DistributionDomainView.queue,
       };
 
-  Widget _buildDistributionDomain(int? activeContentId) =>
-      _buildDistributionContent(activeContentId);
-
-  Color get _rulesBackgroundColor =>
-      Theme.of(context).colorScheme.surfaceContainerLow;
-
-  Widget _buildRules({bool showAutomaticSending = false}) => AppPageBody(
+  Widget _buildRules() => AppPageBody(
     maxWidth: AppPane.readableMaxWidth,
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        const inset = 16.0;
-        return ListView(
-          padding: EdgeInsets.fromLTRB(inset, 12, inset, 24),
-          children: [
-            if (showAutomaticSending) _buildAutomaticSending(),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.tonalIcon(
-                  onPressed: _openCreateRule,
-                  icon: const Icon(Icons.add),
-                  label: const Text('新建规则'),
-                ),
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        _buildAutomaticSending(),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FilledButton.tonalIcon(
+              onPressed: _openCreateRule,
+              icon: const Icon(Icons.add),
+              label: const Text('新建规则'),
+            ),
+          ),
+        ),
+        ref
+            .watch(distributionRulesProvider)
+            .when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, _) => TextButton(
+                onPressed: () => ref.invalidate(distributionRulesProvider),
+                child: const Text('规则加载失败，重试'),
+              ),
+              data: (rules) => Column(
+                children: [
+                  for (final rule in rules)
+                    RuleListTile(
+                      key: ValueKey(rule.id),
+                      rule: rule,
+                      isSelected: rule.id == widget.ruleId,
+                      onTap: () => _openRule(rule),
+                      onDelete: () => _confirmDeleteRule(rule),
+                      onToggleEnabled: (value) =>
+                          _toggleRuleEnabled(rule, value),
+                    ),
+                ],
               ),
             ),
-            ref
-                .watch(distributionRulesProvider)
-                .when(
-                  loading: () => const LinearProgressIndicator(),
-                  error: (error, _) => TextButton(
-                    onPressed: () => ref.invalidate(distributionRulesProvider),
-                    child: const Text('规则加载失败，重试'),
-                  ),
-                  data: (rules) => Column(
-                    children: [
-                      for (final rule in rules)
-                        Padding(
-                          key: ValueKey(rule.id),
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: RuleListTile(
-                            backgroundColor: _rulesBackgroundColor,
-                            rule: rule,
-                            isSelected: rule.id == widget.ruleId,
-                            onTap: () => _openRule(rule),
-                            onDelete: () => _confirmDeleteRule(rule),
-                            onToggleEnabled: (value) =>
-                                _toggleRuleEnabled(rule, value),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-          ],
-        );
-      },
+      ],
     ),
   );
 
   Widget _buildDistributionContent(int? activeContentId) {
-    final header = <Widget>[
-      if ((_distributionView == _DistributionDomainView.queue ||
-          _distributionView == _DistributionDomainView.history))
-        _buildRuleSelector(),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Offstage(
-                offstage: _distributionView != _DistributionDomainView.rules,
-                child: _buildRules(showAutomaticSending: true),
-              ),
-              if (_distributionView == _DistributionDomainView.targets)
-                const PushTab(targetsOnly: true),
-              if (_distributionView == _DistributionDomainView.queue ||
-                  _distributionView == _DistributionDomainView.history)
-                AppPageBody(child: _buildQueueList(header, activeContentId)),
-            ],
-          ),
-        ),
-      ],
-    );
+    return switch (_distributionView) {
+      _DistributionDomainView.rules => _buildRules(),
+      _DistributionDomainView.targets => const PushTab(targetsOnly: true),
+      _ => AppPageBody(
+        maxWidth: AppPane.readableMaxWidth,
+        child: _buildQueueList(activeContentId),
+      ),
+    };
   }
 
   Widget _buildAutomaticSending() => ref
@@ -534,68 +374,79 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         ],
       );
 
-  Widget _buildRuleSelector() {
-    return ref
-        .watch(distributionRulesProvider)
-        .when(
-          loading: () => const LinearProgressIndicator(),
-          error: (error, _) => Padding(
-            padding: const EdgeInsets.all(8),
-            child: Text(
-              formatApiErrorMessage(error, fallbackMessage: '规则加载失败'),
-            ),
-          ),
-          data: (rules) {
-            final selected = rules
-                .where((rule) => rule.id == _selectedRuleId)
-                .firstOrNull;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  child: AppFilterMenu(
-                    label: '规则',
-                    value: selected?.id.toString() ?? 'all',
-                    options: {
-                      'all': '全部规则',
-                      for (final rule in rules) '${rule.id}': rule.name,
-                    },
-                    onSelected: (value) {
-                      final ruleId = value == 'all' ? null : int.parse(value);
-                      final path =
-                          _distributionView == _DistributionDomainView.history
-                          ? '/automation/distribution/history'
-                          : '/automation/distribution';
-                      context.go(
-                        Uri(
-                          path: path,
-                          queryParameters: ruleId == null
-                              ? null
-                              : {'rule': '$ruleId'},
-                        ).toString(),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            );
-          },
-        );
+  void _filterQueue(int? ruleId, bool unsentOnly) {
+    context.go(
+      Uri(
+        path: _distributionView == _DistributionDomainView.history
+            ? '/automation/distribution/history'
+            : '/automation/distribution',
+        queryParameters: {
+          if (ruleId != null) 'rule': '$ruleId',
+          if (unsentOnly) 'status': 'filtered',
+        },
+      ).toString(),
+    );
   }
 
-  Widget _buildQueueList(List<Widget> header, int? activeContentId) {
-    if (widget.creatingRule) return const SizedBox.expand();
-    final queueAsync = ref.watch(contentQueueProvider);
-    final filter = ref.watch(queueFilterProvider);
-
-    if (filter.ruleId != _selectedRuleId || filter.status != _queueStatus) {
-      return _buildDistributionState(
-        header,
-        const Center(child: CircularProgressIndicator()),
-      );
+  Widget _queueFilters() {
+    final isHistory = _distributionView == _DistributionDomainView.history;
+    final rules = ref.watch(distributionRulesProvider).value ?? [];
+    final selected = rules
+        .where((rule) => rule.id == _selectedRuleId)
+        .firstOrNull;
+    if (rules.isEmpty && _selectedRuleId == null && !isHistory) {
+      return const SizedBox.shrink();
     }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (rules.isNotEmpty || _selectedRuleId != null)
+            MenuAnchor(
+              menuChildren: [
+                MenuItemButton(
+                  onPressed: () => _filterQueue(null, widget.unsentOnly),
+                  child: const Text('全部规则'),
+                ),
+                for (final rule in rules)
+                  MenuItemButton(
+                    onPressed: () => _filterQueue(rule.id, widget.unsentOnly),
+                    child: Text(rule.name),
+                  ),
+              ],
+              builder: (context, controller, _) => ActionChip(
+                avatar: const Icon(Icons.filter_list_rounded, size: 18),
+                label: Text(
+                  selected?.name ?? (_selectedRuleId == null ? '规则' : '已选规则'),
+                ),
+                tooltip: '按推送规则筛选',
+                onPressed: () =>
+                    controller.isOpen ? controller.close() : controller.open(),
+              ),
+            ),
+          if (isHistory)
+            FilterChip(
+              label: const Text('未发送'),
+              selected: widget.unsentOnly,
+              onSelected: (selected) => _filterQueue(_selectedRuleId, selected),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQueueList(int? activeContentId) {
+    final filter = _filter;
+    final provider = contentQueueProvider(filter);
+    final queueAsync = ref.watch(provider);
+    final hasFilter = _selectedRuleId != null || widget.unsentOnly;
+    final header = [
+      if (hasFilter || (queueAsync.value?.items.isNotEmpty ?? false))
+        _queueFilters(),
+    ];
     return queueAsync.when(
       loading: () => _buildDistributionState(
         header,
@@ -616,7 +467,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
               Text(formatApiErrorMessage(e, fallbackMessage: '加载失败，请重试')),
               const SizedBox(height: 16),
               FilledButton.tonal(
-                onPressed: () => ref.invalidate(contentQueueProvider),
+                onPressed: () => ref.invalidate(provider),
                 child: const Text('重试'),
               ),
             ],
@@ -630,13 +481,20 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
           items: response.items,
           activeContentId: activeContentId,
           onOpen: _openContent,
-          currentStatus: filter.status,
+          filter: filter,
+          onEmptyAction: hasFilter
+              ? () => _filterQueue(null, false)
+              : _distributionView == _DistributionDomainView.queue
+              ? () => _showView(_DistributionDomainView.history)
+              : () => context.go('/collection'),
+          emptyActionLabel: hasFilter
+              ? '清除筛选'
+              : _distributionView == _DistributionDomainView.queue
+              ? '查看发送记录'
+              : '打开收藏库',
           onLoadMore: response.hasMore
-              ? ref.read(contentQueueProvider.notifier).loadMore
+              ? ref.read(provider.notifier).loadMore
               : null,
-          onRefresh: () {
-            ref.invalidate(contentQueueProvider);
-          },
         );
       },
     );
@@ -649,7 +507,6 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   void _openRule(DistributionRule rule) {
-    _lastRuleId = rule.id;
     _navigateRule('/automation/distribution/rules/${rule.id}');
   }
 
@@ -677,10 +534,6 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
                     .deleteRule(rule.id);
                 if (widget.ruleId == rule.id && mounted) {
                   context.go('/automation/distribution/rules');
-                }
-                if (_selectedRuleId == rule.id) {
-                  setState(() => _selectedRuleId = null);
-                  ref.read(queueFilterProvider.notifier).setRuleId(null);
                 }
                 if (mounted) {
                   ref.invalidate(contentQueueProvider);
