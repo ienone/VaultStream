@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../theme/design_tokens.dart';
+import '../../routing/navigation_scope.dart';
 import 'menu_back_scope.dart';
 
 /// Keeps the field visible while its own surface expands into a menu.
@@ -45,7 +46,24 @@ class _AppSelectMenuState extends State<AppSelectMenu>
     reverseCurve: AppMotion.standardCurve,
   );
   bool _open = false;
+  bool _active = true;
   VoidCallback? _afterClose;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _active =
+        AppNavigationScope.isActiveOf(context) &&
+        TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.isCurrentOf(context) ?? true);
+    if (!_active && _open) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _active) return;
+        _menu.close();
+        _motion.value = 0;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -177,13 +195,13 @@ class _AppSelectMenuState extends State<AppSelectMenu>
         }
       },
       onCloseRequested: (hideOverlay) async {
-        if (MediaQuery.disableAnimationsOf(context)) {
+        if (!_active || MediaQuery.disableAnimationsOf(context)) {
           _motion.value = 0;
         } else {
           try {
             await _motion.reverse().orCancel;
           } on TickerCanceled {
-            return;
+            if (!mounted || _active) return;
           }
         }
         hideOverlay();
