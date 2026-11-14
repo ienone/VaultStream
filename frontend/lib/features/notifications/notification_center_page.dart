@@ -63,7 +63,11 @@ class _NotificationCenterPageState
           availableSize: constraints.biggest,
         );
         final selected =
-            _selected ?? (wide ? inbox.value?.items.firstOrNull : null);
+            inbox.value?.items
+                .where((item) => item.id == _selected?.id)
+                .firstOrNull ??
+            _selected ??
+            (wide ? inbox.value?.items.firstOrNull : null);
         return AppListDetailWorkspace(
           onClose: _selected == null
               ? null
@@ -328,14 +332,24 @@ class _NotificationCenterPageState
       final now = DateTime.now();
       snoozedUntil = DateTime(now.year, now.month, now.day + 1, 9);
     }
-    await _run(
-      () => applyNotificationAction(
+    await _run(() async {
+      await applyNotificationAction(
         ref,
         item.id,
         action,
         snoozedUntil: snoozedUntil,
-      ),
-    );
+      );
+      if (!mounted || _selected?.id != item.id) return;
+      final query = _query;
+      final updated = await ref.read(notificationInboxProvider(query).future);
+      if (mounted && _query == query && _selected?.id == item.id) {
+        setState(
+          () => _selected = updated.items
+              .where((entry) => entry.id == item.id)
+              .firstOrNull,
+        );
+      }
+    });
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -534,7 +548,7 @@ class _InboxTile extends StatelessWidget {
                   ),
                   if (item.occurrenceCount > 1)
                     Text(
-                      '合并 ${item.occurrenceCount} 次',
+                      '发生 ${item.occurrenceCount} 次',
                       style: theme.textTheme.bodySmall,
                     ),
                   if (item.isMuted)

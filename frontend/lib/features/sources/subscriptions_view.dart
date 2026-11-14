@@ -9,32 +9,57 @@ import '../discovery/providers/discovery_sources_provider.dart';
 import '../settings/presentation/widgets/setting_components.dart'
     show LoadingGroup, showToast;
 
+class SubscriptionFilter {
+  const SubscriptionFilter({
+    this.query = '',
+    this.kind = 'all',
+    this.status = 'all',
+  });
+
+  final String query, kind, status;
+  bool get isActive => kind != 'all' || status != 'all';
+
+  SubscriptionFilter copyWith({String? query, String? kind, String? status}) =>
+      SubscriptionFilter(
+        query: query ?? this.query,
+        kind: kind ?? this.kind,
+        status: status ?? this.status,
+      );
+
+  bool matches(DiscoverySource source) =>
+      source.name.toLowerCase().contains(query.trim().toLowerCase()) &&
+      (kind == 'all' || source.kind == kind) &&
+      (status == 'all' || source.enabled == (status == 'enabled'));
+}
+
 class SubscriptionsView extends ConsumerStatefulWidget {
   const SubscriptionsView({
     super.key,
     required this.onAdd,
     required this.onEdit,
     this.selectedId,
+    required this.filter,
+    required this.onFilterChanged,
   });
   final VoidCallback onAdd;
   final ValueChanged<DiscoverySource> onEdit;
   final int? selectedId;
+  final SubscriptionFilter filter;
+  final ValueChanged<SubscriptionFilter> onFilterChanged;
   @override
   ConsumerState<SubscriptionsView> createState() => _SubscriptionsViewState();
 }
 
 class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
-  final _searchController = TextEditingController();
-  String _query = '';
+  late final _searchController = TextEditingController(
+    text: widget.filter.query,
+  );
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
-
-  String _kind = 'all';
-  String _status = 'all';
 
   @override
   Widget build(BuildContext context) => AppPageBody(
@@ -65,34 +90,45 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: LayoutBuilder(
               builder: (context, box) {
-                final hasFilter = _kind != 'all' || _status != 'all';
+                final filter = widget.filter;
                 return Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _searchController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           hintText: '搜索订阅',
-                          prefixIcon: Icon(Icons.search_rounded),
+                          prefixIcon: const Icon(Icons.search_rounded),
                           isDense: true,
+                          suffixIcon: filter.query.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: '清除搜索',
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    widget.onFilterChanged(
+                                      filter.copyWith(query: ''),
+                                    );
+                                  },
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
                         ),
-                        onChanged: (value) =>
-                            setState(() => _query = value.trim().toLowerCase()),
+                        onChanged: (value) => widget.onFilterChanged(
+                          filter.copyWith(query: value),
+                        ),
                       ),
                     ),
                     PopupMenuButton<String>(
                       tooltip: '筛选订阅',
                       icon: Badge(
-                        isLabelVisible: hasFilter,
+                        isLabelVisible: filter.isActive,
                         child: const Icon(Icons.tune_rounded),
                       ),
-                      onSelected: (key) => setState(() {
-                        if (key.startsWith('kind:')) {
-                          _kind = key.substring(5);
-                        } else {
-                          _status = key.substring(7);
-                        }
-                      }),
+                      onSelected: (key) => widget.onFilterChanged(
+                        key.startsWith('kind:')
+                            ? filter.copyWith(kind: key.substring(5))
+                            : filter.copyWith(status: key.substring(7)),
+                      ),
                       itemBuilder: (_) => [
                         for (final entry in const {
                           'all': '全部类型',
@@ -101,7 +137,7 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
                         }.entries)
                           CheckedPopupMenuItem(
                             value: 'kind:${entry.key}',
-                            checked: _kind == entry.key,
+                            checked: filter.kind == entry.key,
                             child: Text(entry.value),
                           ),
                         const PopupMenuDivider(),
@@ -112,7 +148,7 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
                         }.entries)
                           CheckedPopupMenuItem(
                             value: 'status:${entry.key}',
-                            checked: _status == entry.key,
+                            checked: filter.status == entry.key,
                             child: Text(entry.value),
                           ),
                       ],
@@ -137,14 +173,7 @@ class _SubscriptionsViewState extends ConsumerState<SubscriptionsView> {
         ),
         sourcesAsync.when(
           data: (allSources) {
-            final sources = allSources
-                .where(
-                  (s) =>
-                      s.name.toLowerCase().contains(_query) &&
-                      (_kind == 'all' || s.kind == _kind) &&
-                      (_status == 'all' || s.enabled == (_status == 'enabled')),
-                )
-                .toList();
+            final sources = allSources.where(widget.filter.matches).toList();
             return sources.isEmpty
                 ? SliverToBoxAdapter(
                     child: Padding(

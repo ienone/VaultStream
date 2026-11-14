@@ -54,6 +54,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
   int _editorRevision = 0;
   int? _lastSourceId;
   String _monitorPlatform = 'telegram';
+  SubscriptionFilter _sourceFilter = const SubscriptionFilter();
 
   late final _tabs = TabController(
     length: SourcesSection.values.length,
@@ -92,7 +93,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
       final sources = widget.tab == SourcesSection.subscriptions
           ? ref.watch(discoverySourcesProvider)
           : null;
-      final items = sources?.value;
+      final items = sources?.value?.where(_sourceFilter.matches).toList();
       final defaultSource =
           items?.where((item) => item.id == _lastSourceId).firstOrNull ??
           items?.firstOrNull;
@@ -122,7 +123,9 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
           selectedId: selectedId,
           emptyDetail: WorkspacePlaceholder(
             loading: sources?.isLoading ?? false,
-            label: sources?.hasError == true ? '来源加载失败' : '暂无订阅',
+            label: sources?.hasError == true
+                ? '来源加载失败'
+                : (sources?.value?.isNotEmpty == true ? '没有匹配的订阅' : '暂无订阅'),
           ),
           onClose: widget.editor == null && widget.platform == null
               ? null
@@ -272,6 +275,13 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
                 enabled: widget.tab == SourcesSection.subscriptions,
                 child: SubscriptionsView(
                   selectedId: int.tryParse(editor ?? ''),
+                  filter: _sourceFilter,
+                  onFilterChanged: (filter) {
+                    setState(() => _sourceFilter = filter);
+                    if (widget.editor != null && widget.editor != 'new') {
+                      context.go('/sources');
+                    }
+                  },
                   onAdd: () => context.go('/sources?edit=new'),
                   onEdit: (source) => context.go('/sources?edit=${source.id}'),
                 ),
