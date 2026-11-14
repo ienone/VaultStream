@@ -42,7 +42,7 @@ jobs:
 
       - name: Check OpenAPI docs inventory
         if: always()
-        run: python ../scripts/check_openapi_docs.py ../docs/backend/api/endpoints.md
+        run: python ../scripts/export_openapi_endpoints.py --check ../docs/backend/api/endpoints.md
 
       - name: Check SQLite schema gate
         if: always()

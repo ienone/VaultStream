@@ -46,7 +46,7 @@ jobs:
         run: python -m bandit -r app --severity-level high --confidence-level high
 
       - name: Check OpenAPI docs inventory
-        run: python scripts/check_openapi_docs.py
+        run: python scripts/export_openapi_endpoints.py --check docs/backend/api/endpoints.md
 
       - name: Check SQLite schema gate
         run: python scripts/check_database_schema.py

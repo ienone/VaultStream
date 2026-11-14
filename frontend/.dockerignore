@@ -6,3 +6,5 @@
 !build/web/**
 build/web/**/*.symbols
 build/web/.last_build_id
+**/._*
+**/.DS_Store

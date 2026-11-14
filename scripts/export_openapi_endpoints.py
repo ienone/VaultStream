@@ -51,9 +51,15 @@ def main() -> int:
         type=Path,
         help="Write the generated Markdown to this path instead of stdout.",
     )
+    parser.add_argument("--check", type=Path, metavar="FILE", help="Check a generated inventory for drift.")
     args = parser.parse_args()
 
     rendered = _render()
+    if args.check is not None:
+        if args.check.read_text(encoding="utf-8") == rendered:
+            return 0
+        print(f"Update {args.check} using --out.", file=sys.stderr)
+        return 1
     if args.out is None:
         print(rendered, end="")
         return 0

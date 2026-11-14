@@ -150,7 +150,7 @@ C01 涉及 services/distribution/engine.py、__init__.py、scheduler.py 和消�
 # backend 工作目录；Q01 完成后应可用，亦是当前 CI 形态
 ../.venv/bin/python -m pytest tests -q -m "not integration"
 ../.venv/bin/python ../scripts/check_backend_requirements.py
-../.venv/bin/python ../scripts/check_openapi_docs.py ../docs/backend/api/endpoints.md
+../.venv/bin/python ../scripts/export_openapi_endpoints.py --check ../docs/backend/api/endpoints.md
 ../.venv/bin/python ../scripts/check_database_schema.py
 ```
 

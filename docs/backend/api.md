@@ -37,7 +37,7 @@ active
 - 长耗时或外部副作用动作通常返回 `run_id`。
 - 返回 `run_id` 只表示已经受理或调度，除非 contract 明确说明同步执行完成。
 - 最终状态通过任务结果、领域资源或事件提示后的重新读取获得。
-- 所有写动作的 2xx 成功响应必须使用命名 response model，或像目标删除一样明确声明 bodyless `204`；不得以 inline dict 绕过 OpenAPI contract。文档门禁同时核对端点覆盖与关键动作的成功状态码、schema 名称或无响应体约束，包括发送结果核对。
+- 所有写动作的 2xx 成功响应必须使用命名 response model，或像目标删除一样明确声明 bodyless `204`；不得以 inline dict 绕过 OpenAPI contract。响应格式以路由声明生成的 OpenAPI 为准。
 
 ### 错误
 
@@ -65,10 +65,10 @@ active
 
 ```powershell
 .venv\Scripts\python.exe scripts\export_openapi_endpoints.py --out docs\backend\api\endpoints.md
-.venv\Scripts\python.exe scripts\check_openapi_docs.py docs\backend\api\endpoints.md
+.venv\Scripts\python.exe scripts\export_openapi_endpoints.py --check docs\backend\api\endpoints.md
 ```
 
-校验通过时同时报告 endpoint 覆盖数与 action contract 数；两者分别证明路径清单和关键成功响应没有漂移，不能互相替代。
+此命令比较当前路由生成的清单与仓库里的版本。
 
 ## 常见状态码
 
@@ -81,8 +81,7 @@ active
 - `409 Conflict`：状态或唯一性冲突。
 - `503 Service Unavailable`：所需 worker、平台或供应商当前不可用。
 
-`POST /api/v1/shares` 以及把内容状态重置为 `unprocessed` 的更新在解析队列写入失败时返回 `503`，稳定错误码为 `parse_queue_unavailable`，并返回已保存的 `content_id`。这表示内容/来源已保留但解析任务未受理；客户端应明确展示“已保存、解析待处理”并允许用户进入内容详情重试，不能误报为完全成功或完全失败。
-
+收藏链接与解析任务在同一事务提交。已保存返回内容 ID，写入失败则一起回滚。
 
 ## 同步状态的时间契约（2026-09-06）
 

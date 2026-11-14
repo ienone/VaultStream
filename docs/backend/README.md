@@ -56,5 +56,5 @@ active
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -r backend\requirements-dev.txt
-.venv\Scripts\python.exe scripts\check_openapi_docs.py docs\backend\api\endpoints.md
+.venv\Scripts\python.exe scripts\export_openapi_endpoints.py --check docs\backend\api\endpoints.md
 ```

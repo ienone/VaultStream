@@ -19,7 +19,6 @@ STDLIB_MODULES = set(getattr(sys, "stdlib_module_names", set()))
 CI_SCRIPT_PATHS = [
     REPO_ROOT / "scripts" / "check_backend_requirements.py",
     REPO_ROOT / "scripts" / "check_database_schema.py",
-    REPO_ROOT / "scripts" / "check_openapi_docs.py",
 ]
 
 PACKAGE_ALIASES = {

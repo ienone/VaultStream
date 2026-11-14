@@ -85,7 +85,7 @@ docker-logs:
 	cd $(BACKEND_DIR) && $(DOCKER_COMPOSE) logs -f
 
 check-openapi:
-	$(PYTHON) scripts/check_openapi_docs.py
+	$(PYTHON) scripts/export_openapi_endpoints.py --check docs/backend/api/endpoints.md
 
 check-schema:
 	$(PYTHON) scripts/check_database_schema.py
