@@ -19,18 +19,24 @@ class AppListDetailWorkspace extends StatefulWidget {
     required this.selectedId,
     required this.detailBuilder,
     this.onClose,
+    this.emptyDetail = const WorkspacePlaceholder(
+      loading: false,
+      label: '选择左侧项目查看详情',
+    ),
   });
 
   /// Primary list/detail panes need horizontal room; each pane scrolls in short windows.
   static bool supportsSplit(BuildContext context, {Size? availableSize}) {
     final size = availableSize ?? context.size ?? MediaQuery.sizeOf(context);
     final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
-    return WindowMetrics.fromSize(Size(size.width / scale, size.height))
-        .widthClass
-        .supportsSupportingPane;
+    final width = size.width / scale;
+    return width >= ResponsiveLayout.expandedBreakpoint ||
+        (width >= 640 &&
+            MediaQuery.orientationOf(context) == Orientation.landscape);
   }
 
   final Widget list;
+  final Widget emptyDetail;
   final Object? selectedId;
   final VoidCallback? onClose;
   final Widget Function(bool deferBody, bool focused, VoidCallback? toggleFocus)
@@ -212,17 +218,17 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
     builder: (context, constraints) {
       final resized = _paneSize != constraints.biggest;
       _paneSize = constraints.biggest;
-      final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
-      final wide = WindowMetrics.fromSize(
-        Size(constraints.maxWidth / scale, constraints.maxHeight),
-      ).widthClass.supportsSupportingPane;
+      final wide = AppListDetailWorkspace.supportsSplit(
+        context,
+        availableSize: constraints.biggest,
+      );
       final listVisible = widget.selectedId == null || (wide && !_focused);
       final readerVisible = widget.selectedId != null;
       final maxListWidth = math.max(
         280.0,
-        math.min(480.0, constraints.maxWidth - 492),
+        math.min(480.0, constraints.maxWidth - 360),
       );
-      final listWidth = wide && readerVisible
+      final listWidth = wide
           ? _listWidth.clamp(280.0, maxListWidth)
           : constraints.maxWidth;
       final readerWidth = wide && !_focused
@@ -240,7 +246,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
         _saveWidth();
       }
 
-      if (!animate) _readerReady = true;
+      if (!animate || wide) _readerReady = true;
       final readerReady = _readerReady;
       final readerConfiguration = (
         _readerId,
@@ -264,7 +270,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
       return _WorkspaceBackScope(
         register: _registerDetailRoute,
         child: SharedLayoutTransition(
-          value: readerVisible && _previewingBack
+          value: readerVisible && _previewingBack && !wide
               ? paneWidth + (constraints.maxWidth - paneWidth) * _back.value
               : paneWidth,
           animate: animate && (!_previewingBack || !readerVisible),
@@ -354,28 +360,32 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                           alignment: Alignment.topLeft,
                           minWidth: readerWidth,
                           maxWidth: readerWidth,
-                          child: TickerMode(
-                            enabled: readerVisible,
-                            child: ExcludeFocus(
-                              excluding: !readerVisible,
-                              child: ExcludeSemantics(
-                                excluding: !readerVisible,
-                                child: IgnorePointer(
-                                  ignoring: !readerVisible,
-                                  child: Semantics(
-                                    container: true,
-                                    child: RepaintBoundary(child: _reader),
+                          child: wide && !readerVisible
+                              ? widget.emptyDetail
+                              : TickerMode(
+                                  enabled: readerVisible,
+                                  child: ExcludeFocus(
+                                    excluding: !readerVisible,
+                                    child: ExcludeSemantics(
+                                      excluding: !readerVisible,
+                                      child: IgnorePointer(
+                                        ignoring: !readerVisible,
+                                        child: Semantics(
+                                          container: true,
+                                          child: RepaintBoundary(
+                                            child: _reader,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                if (wide && readerVisible && listVisible)
+                if (wide && listVisible)
                   Positioned(
                     left: paneWidth - 16,
                     top: 0,
@@ -516,7 +526,7 @@ class WorkspacePlaceholder extends StatelessWidget {
               label: '正在加载详情',
               child: Align(
                 alignment: Alignment.topLeft,
-                child: Padding(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

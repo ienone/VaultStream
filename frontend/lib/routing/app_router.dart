@@ -331,24 +331,16 @@ GoRouter goRouter(Ref ref) {
                           GoRoute(
                             path: ':platform',
                             pageBuilder: (context, state) => NoTransitionPage(
-                              child:
-                                  const {
-                                    'telegram',
-                                    'qq',
-                                  }.contains(state.pathParameters['platform'])
-                                  ? WorkspaceBackTarget(
-                                      child: AccountDetailPage(
-                                        platform:
-                                            state.pathParameters['platform']!,
-                                        onClose: () => context.go(
-                                          state.uri.queryParameters['from'] ==
-                                                  'sync'
-                                              ? '/sources/sync'
-                                              : '/accounts',
-                                        ),
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
+                              child: WorkspaceBackTarget(
+                                child: AccountDetailPage(
+                                  platform: state.pathParameters['platform']!,
+                                  onClose: () => context.go(
+                                    state.uri.queryParameters['from'] == 'sync'
+                                        ? '/sources/sync'
+                                        : '/accounts',
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ],

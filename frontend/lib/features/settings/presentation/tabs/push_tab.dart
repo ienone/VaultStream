@@ -357,11 +357,13 @@ class _PushTabState extends ConsumerState<PushTab> {
       _loadedCredentials = true;
     }
 
+    final embedded =
+        widget.platform != null &&
+        !widget.targetsOnly &&
+        !widget.monitoringOnly;
     final content = ListView(
-      shrinkWrap: widget.platform != null,
-      physics: widget.platform != null
-          ? const NeverScrollableScrollPhysics()
-          : null,
+      shrinkWrap: embedded,
+      physics: embedded ? const NeverScrollableScrollPhysics() : null,
       padding: widget.platform != null
           ? EdgeInsets.zero
           : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),

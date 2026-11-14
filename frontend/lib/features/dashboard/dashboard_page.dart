@@ -1,3 +1,5 @@
+import '../../core/layout/app_list_detail_workspace.dart';
+import '../events/event_detail_page.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../core/utils/toast.dart';
@@ -41,8 +43,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
     with SingleTickerProviderStateMixin {
   late final _tabs = TabController(length: 3, vsync: this);
   ShareCard? _preview;
+  int? _lastReadId;
+  int? _selectedEventId;
   void _openItem(DiscoveryItem item, BuildContext sourceContext) {
     if (widget.selectedContentId == item.id) return;
+    _lastReadId = item.id;
     _preview = ShareCard(
       id: item.id,
       platform: item.sourceType ?? 'universal',
@@ -219,20 +224,48 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => _buildWorkspace(context, box.biggest),
+  );
+
+  Widget _buildWorkspace(BuildContext context, Size availableSize) {
+    final wide = CollectionWorkspace.supportsSplit(
+      context,
+      availableSize: availableSize,
+    );
     final feed = _showEventUpdates ? null : ref.watch(discoveryFeedProvider);
-    final selectedId = widget.selectedContentId;
+    final items = feed?.value?.items;
+    final defaultItem =
+        items?.where((item) => item.id == _lastReadId).firstOrNull ??
+        items?.firstOrNull;
+    final selectedId =
+        widget.selectedContentId ??
+        (wide && !_showEventUpdates ? defaultItem?.id : null);
+    final events = _showEventUpdates
+        ? ref.watch(knowledgeEventsProvider(_eventsQuery))
+        : null;
+    final eventItems = events?.value?.items;
+    final activeEvent =
+        eventItems?.where((item) => item.id == _selectedEventId).firstOrNull ??
+        eventItems?.firstOrNull;
     final content = _showEventUpdates
         ? _EventUpdatesFeed(
             page: _eventsPage,
             onPage: (page) => setState(() => _eventsPage = page),
             onRefresh: _refresh,
-            onSelect: (id) => context.push('/events/$id'),
+            selectedId: wide ? activeEvent?.id : null,
+            onSelect: (id) {
+              if (wide) {
+                setState(() => _selectedEventId = id);
+              } else {
+                context.push('/events/$id');
+              }
+            },
           )
         : feed!.when(
             loading: () => const SliverFillRemaining(
               hasScrollBody: false,
-              child: Center(child: CircularProgressIndicator()),
+              child: WorkspacePlaceholder(loading: true, label: ''),
             ),
             error: (error, _) => SliverFillRemaining(
               hasScrollBody: false,
@@ -308,7 +341,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
           appBar: WorkspaceAppBar(
-            title: '动态',
             tabs: WorkspaceTabs(
               controller: _tabs,
               labels: const ['最新', '稍后看', '事件'],
@@ -348,8 +380,25 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         );
       },
     );
+    if (_showEventUpdates) {
+      return AppListDetailWorkspace(
+        list: list,
+        selectedId: wide ? activeEvent?.id : null,
+        emptyDetail: WorkspacePlaceholder(
+          loading: events!.isLoading,
+          label: events.hasError ? '事件加载失败' : '暂无事件',
+        ),
+        detailBuilder: (_, _, _) =>
+            EventDetailPage(eventId: activeEvent!.id, embedded: true),
+      );
+    }
     return CollectionWorkspace(
       selectedId: selectedId,
+      defaultSelection: widget.selectedContentId == null,
+      emptyDetail: WorkspacePlaceholder(
+        loading: feed!.isLoading,
+        label: feed.hasError ? '动态加载失败' : '暂无动态',
+      ),
       preview: _preview?.id == selectedId ? _preview : null,
       onClose: _closeReader,
       list: list,
@@ -376,10 +425,12 @@ class _EventUpdatesFeed extends ConsumerWidget {
     required this.onPage,
 
     required this.onSelect,
+    this.selectedId,
   });
   final int page;
   final ValueChanged<int> onPage;
 
+  final int? selectedId;
   final ValueChanged<int> onSelect;
   final Future<void> Function() onRefresh;
 
@@ -391,7 +442,7 @@ class _EventUpdatesFeed extends ConsumerWidget {
     return events.when(
       loading: () => const SliverFillRemaining(
         hasScrollBody: false,
-        child: Center(child: CircularProgressIndicator()),
+        child: WorkspacePlaceholder(loading: true, label: ''),
       ),
       error: (error, _) => SliverFillRemaining(
         hasScrollBody: false,
@@ -407,7 +458,11 @@ class _EventUpdatesFeed extends ConsumerWidget {
           else ...[
             _EventFeedLead(total: data.total),
             for (final event in data.items)
-              _EventUpdateCard(event: event, onTap: () => onSelect(event.id)),
+              _EventUpdateCard(
+                event: event,
+                selected: event.id == selectedId,
+                onTap: () => onSelect(event.id),
+              ),
           ],
           if (page > 1 || data.hasMore)
             Row(
@@ -450,7 +505,12 @@ class _EventFeedLead extends StatelessWidget {
 }
 
 class _EventUpdateCard extends StatelessWidget {
-  const _EventUpdateCard({required this.event, required this.onTap});
+  const _EventUpdateCard({
+    required this.event,
+    required this.onTap,
+    this.selected = false,
+  });
+  final bool selected;
   final VoidCallback onTap;
 
   final KnowledgeEventSummary event;
@@ -460,7 +520,9 @@ class _EventUpdateCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Material(
-      color: scheme.surfaceContainerLowest,
+      color: selected
+          ? scheme.secondaryContainer
+          : scheme.surfaceContainerLowest,
       borderRadius: AppShape.cardBorder,
       clipBehavior: Clip.antiAlias,
       child: InkWell(

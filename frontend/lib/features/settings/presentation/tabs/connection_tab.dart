@@ -30,8 +30,10 @@ class ConnectionTab extends ConsumerWidget {
     super.key,
     this.accountsOnly = false,
     this.selectedPlatform,
+    this.onAccountSelected,
   });
 
+  final ValueChanged<String>? onAccountSelected;
   final String? selectedPlatform;
   final bool accountsOnly;
 
@@ -56,7 +58,9 @@ class ConnectionTab extends ConsumerWidget {
               selected: selectedPlatform == entry.key,
               title: Text(entry.value),
               trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => context.go('/accounts/${entry.key}'),
+              onTap: () => onAccountSelected != null
+                  ? onAccountSelected!(entry.key)
+                  : context.go('/accounts/${entry.key}'),
             ),
           const SizedBox(height: 12),
           ExpansionTile(
@@ -167,6 +171,7 @@ class ConnectionTab extends ConsumerWidget {
         return _PlatformAccountList(
           platforms: health.platforms,
           selectedPlatform: selectedPlatform,
+          onSelected: onAccountSelected,
         );
       },
       loading: () => const Padding(
@@ -376,10 +381,12 @@ class _PlatformAccountList extends StatefulWidget {
   const _PlatformAccountList({
     required this.platforms,
     required this.selectedPlatform,
+    this.onSelected,
   });
 
   final List<PlatformHealthStatus> platforms;
   final String? selectedPlatform;
+  final ValueChanged<String>? onSelected;
 
   @override
   State<_PlatformAccountList> createState() => _PlatformAccountListState();
@@ -416,10 +423,18 @@ class _PlatformAccountListState extends State<_PlatformAccountList> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final platform in widget.platforms)
-          AccountPlatformPanel(
-            key: _platformKeys[platform.platform],
-            account: platform,
-          ),
+          if (widget.onSelected != null)
+            ListTile(
+              key: _platformKeys[platform.platform],
+              title: Text(platform.label),
+              selected: platform.platform == widget.selectedPlatform,
+              onTap: () => widget.onSelected!(platform.platform),
+            )
+          else
+            AccountPlatformPanel(
+              key: _platformKeys[platform.platform],
+              account: platform,
+            ),
       ],
     );
   }

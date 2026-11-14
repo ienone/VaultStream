@@ -6,11 +6,9 @@ import '../../layout/root_page_actions.dart';
 class WorkspaceAppBar extends StatelessWidget implements PreferredSizeWidget {
   const WorkspaceAppBar({
     super.key,
-    required this.title,
     required this.tabs,
     this.actions = const [],
   });
-  final String title;
   final Widget tabs;
   final List<Widget> actions;
   @override
@@ -21,22 +19,7 @@ class WorkspaceAppBar extends StatelessWidget implements PreferredSizeWidget {
     leading: buildRootPageLeading(context),
     toolbarHeight: 52,
     titleSpacing: 8,
-    title: LayoutBuilder(
-      builder: (context, box) => Row(
-        children: [
-          if (box.maxWidth >= 900) ...[Text(title), const SizedBox(width: 24)],
-          Expanded(
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: tabs,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
+    title: Align(alignment: AlignmentDirectional.centerStart, child: tabs),
     actions: actions,
   );
 }
@@ -71,6 +54,8 @@ class WorkspaceTabs extends StatelessWidget {
         isScrollable: scrollable,
         tabAlignment: scrollable ? TabAlignment.start : TabAlignment.fill,
         dividerColor: Colors.transparent,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 10),
         tabs: [for (final label in labels) Tab(text: label)],
         onTap: onTap,
       );

@@ -1,3 +1,4 @@
+import '../../routing/navigation_scope.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../core/layout/app_page_body.dart';
@@ -126,25 +127,9 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
       _distributionViewFromTab(widget.initialTab);
   int? get _selectedRuleId => widget.filterRuleId;
   ShareCard? _preview;
-  LocalHistoryEntry? _readerHistory;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncReaderHistory();
-    });
-  }
-
-  @override
-  void didUpdateWidget(DistributionPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedContentId != widget.selectedContentId) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _syncReaderHistory();
-      });
-    }
-  }
+  final _lastContentIds = <_DistributionDomainView, int>{};
+  String _targetPlatform = 'telegram';
+  int? _openingDefaultRule;
 
   void _showView(_DistributionDomainView view) {
     final path = switch (view) {
@@ -173,30 +158,11 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
 
   QueueFilter get _filter => (status: _queueStatus, ruleId: _selectedRuleId);
 
-  void _syncReaderHistory() {
-    if (widget.selectedContentId == null) {
-      final entry = _readerHistory;
-      _readerHistory = null;
-      entry?.remove();
-    } else if (_readerHistory == null) {
-      late final LocalHistoryEntry entry;
-      entry = LocalHistoryEntry(
-        impliesAppBarDismissal: false,
-        onRemove: () {
-          if (_readerHistory != entry) return;
-          _readerHistory = null;
-          _closeReader();
-        },
-      );
-      _readerHistory = entry;
-      ModalRoute.of(context)!.addLocalHistoryEntry(entry);
-    }
-  }
-
   void _openContent(QueueItem item, BuildContext sourceContext) {
+    _lastContentIds[_distributionView] = item.contentId;
     _preview = ShareCard(
       id: item.contentId,
-      platform: item.platform,
+      platform: item.sourcePlatform ?? item.platform,
       url: '',
       title: item.title,
       mediaAssets: item.mediaAssets,
@@ -233,11 +199,57 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => _buildWorkspace(context, box.biggest),
+  );
+
+  Widget _buildWorkspace(BuildContext context, Size availableSize) {
+    final wide = AppListDetailWorkspace.supportsSplit(
+      context,
+      availableSize: availableSize,
+    );
+    final isQueue =
+        _distributionView == _DistributionDomainView.queue ||
+        _distributionView == _DistributionDomainView.history;
+    final queue = isQueue ? ref.watch(contentQueueProvider(_filter)) : null;
+    final items = queue?.value?.items;
+    final defaultItem =
+        items
+            ?.where(
+              (item) => item.contentId == _lastContentIds[_distributionView],
+            )
+            .firstOrNull ??
+        items?.firstOrNull;
+    final rules = _distributionView == _DistributionDomainView.rules
+        ? ref.watch(distributionRulesProvider)
+        : null;
+    final defaultRule = wide ? rules?.value?.firstOrNull : null;
     final editorKey = widget.editorRouteKey;
+    final autoRuleId = widget.editorRouteKey == null ? defaultRule?.id : null;
+    if (autoRuleId != null &&
+        _openingDefaultRule != autoRuleId &&
+        TickerMode.valuesOf(context).enabled &&
+        AppNavigationScope.isActiveOf(context)) {
+      _openingDefaultRule = autoRuleId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            widget.editorRouteKey != null ||
+            _distributionView != _DistributionDomainView.rules ||
+            !TickerMode.valuesOf(context).enabled ||
+            !AppNavigationScope.isActiveOf(context)) {
+          _openingDefaultRule = null;
+          return;
+        }
+        context.replace('/automation/distribution/rules/$autoRuleId');
+      });
+    }
+    if (editorKey != null) _openingDefaultRule = null;
     final configuration = widget.configuration;
+    final targets =
+        wide && _distributionView == _DistributionDomainView.targets;
     final creating = widget.ruleId == null;
-    final contentId = widget.selectedContentId;
+    final contentId =
+        widget.selectedContentId ?? (wide ? defaultItem?.contentId : null);
     final preview = _preview?.id == contentId ? _preview : null;
     return AppListDetailWorkspace(
       onClose: editorKey != null
@@ -246,20 +258,64 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
           ? null
           : _closeReader,
       selectedId:
-          editorKey ?? (contentId == null ? null : ('content', contentId)),
+          editorKey ??
+          (targets
+              ? ('target', _targetPlatform)
+              : contentId == null
+              ? null
+              : ('content', contentId)),
+      emptyDetail: WorkspacePlaceholder(
+        loading:
+            autoRuleId != null ||
+            (queue?.isLoading ?? false) ||
+            (rules?.isLoading ?? false),
+        label: (queue?.hasError ?? false) || (rules?.hasError ?? false)
+            ? '加载失败'
+            : '暂无详情',
+      ),
       list: Scaffold(
         appBar: WorkspaceAppBar(
-          title: '推送',
           tabs: _DistributionDomainTabs(
             view: _distributionView,
             onChanged: _showView,
           ),
         ),
-        body: _buildDistributionContent(contentId),
+        body: targets
+            ? ListView(
+                children: [
+                  for (final platform in {
+                    'telegram': 'Telegram',
+                    'qq': 'QQ',
+                  }.entries)
+                    ListTile(
+                      title: Text(platform.value),
+                      selected: _targetPlatform == platform.key,
+                      onTap: () =>
+                          setState(() => _targetPlatform = platform.key),
+                    ),
+                ],
+              )
+            : _buildDistributionContent(
+                contentId,
+                selectedRuleId: widget.ruleId ?? autoRuleId,
+              ),
       ),
-      detailBuilder: (deferBody, focused, toggleFocus) => editorKey != null
+      detailBuilder: (deferBody, focused, toggleFocus) => targets
           ? Scaffold(
               appBar: AppBar(
+                automaticallyImplyLeading: false,
+                title: Text(_targetPlatform == 'qq' ? 'QQ 目标' : 'Telegram 目标'),
+              ),
+              body: PushTab(
+                key: ValueKey(_targetPlatform),
+                targetsOnly: true,
+                platform: _targetPlatform,
+              ),
+            )
+          : editorKey != null
+          ? Scaffold(
+              appBar: AppBar(
+                automaticallyImplyLeading: false,
                 leading: BackButton(
                   onPressed: () => context.go('/automation/distribution/rules'),
                 ),
@@ -287,7 +343,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         _ => _DistributionDomainView.queue,
       };
 
-  Widget _buildRules() => AppPageBody(
+  Widget _buildRules(int? selectedRuleId) => AppPageBody(
     maxWidth: AppPane.readableMaxWidth,
     child: ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -318,7 +374,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
                     RuleListTile(
                       key: ValueKey(rule.id),
                       rule: rule,
-                      isSelected: rule.id == widget.ruleId,
+                      isSelected: rule.id == selectedRuleId,
                       onTap: () => _openRule(rule),
                       onDelete: () => _confirmDeleteRule(rule),
                       onToggleEnabled: (value) =>
@@ -331,9 +387,12 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     ),
   );
 
-  Widget _buildDistributionContent(int? activeContentId) {
+  Widget _buildDistributionContent(
+    int? activeContentId, {
+    int? selectedRuleId,
+  }) {
     return switch (_distributionView) {
-      _DistributionDomainView.rules => _buildRules(),
+      _DistributionDomainView.rules => _buildRules(selectedRuleId),
       _DistributionDomainView.targets => const PushTab(targetsOnly: true),
       _ => AppPageBody(
         maxWidth: AppPane.readableMaxWidth,
@@ -450,7 +509,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
     return queueAsync.when(
       loading: () => _buildDistributionState(
         header,
-        const Center(child: CircularProgressIndicator()),
+        const WorkspacePlaceholder(loading: true, label: ''),
       ),
       error: (e, st) => _buildDistributionState(
         header,

@@ -1,3 +1,4 @@
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../layout/root_page_actions.dart';
@@ -55,6 +56,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   final TextEditingController _searchController = TextEditingController();
   String? _lastAppliedRouteFilterSignature;
   ShareCard? _preview;
+  int? _lastReadId;
 
   @override
   void initState() {
@@ -94,6 +96,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   void _navigateContent(ShareCard content) {
     if (content.id == widget.selectedContentId) return;
     _preview = content;
+    _lastReadId = content.id;
     final uri = GoRouterState.of(context).uri;
     final location = uri
         .replace(
@@ -195,7 +198,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => _buildWorkspace(context, box.biggest),
+  );
+
+  Widget _buildWorkspace(BuildContext context, Size availableSize) {
     ref.listen<String>(
       collectionFilterProvider.select((state) => state.searchQuery),
       (_, query) => _syncSearchText(query),
@@ -203,9 +210,28 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final filter = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);
+    final wide = CollectionWorkspace.supportsSplit(
+      context,
+      availableSize: availableSize,
+    );
+    final items = collectionAsync.value?.items;
+    final defaultItem =
+        items?.where((item) => item.id == _lastReadId).firstOrNull ??
+        items?.firstOrNull;
+    final selectedId =
+        widget.selectedContentId ?? (wide ? defaultItem?.id : null);
     return CollectionWorkspace(
-      selectedId: widget.selectedContentId,
-      preview: _preview?.id == widget.selectedContentId ? _preview : null,
+      selectedId: selectedId,
+      defaultSelection: widget.selectedContentId == null,
+      emptyDetail: WorkspacePlaceholder(
+        loading: collectionAsync.isLoading,
+        label: collectionAsync.hasError ? '收藏加载失败' : '暂无收藏',
+      ),
+      preview: _preview?.id == selectedId
+          ? _preview
+          : defaultItem?.id == selectedId
+          ? defaultItem
+          : null,
       onClose: _closeReader,
       list: Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -254,7 +280,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                       _closeReader();
                     }
                   },
-                  activeId: widget.selectedContentId,
+                  activeId: selectedId,
                   scrollController: _scrollController,
                   isLoadingMore:
                       collectionAsync.isLoading && response.items.isNotEmpty,
@@ -280,7 +306,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                 ),
                 loading: () => LayoutBuilder(
                   builder: (context, constraints) => CollectionSkeleton(
-                    columns: widget.selectedContentId == null
+                    columns: !wide
                         ? (constraints.maxWidth /
                                   (300 *
                                       MediaQuery.textScalerOf(context)

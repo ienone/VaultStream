@@ -21,9 +21,16 @@ import '../../settings/providers/favorites_sync_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 
 class FavoritesSyncAutomationPanel extends ConsumerWidget {
-  const FavoritesSyncAutomationPanel({super.key, this.initialPlatform});
+  const FavoritesSyncAutomationPanel({
+    super.key,
+    this.initialPlatform,
+    this.showBackButton = true,
+    this.showPlatformLinks = true,
+  });
 
   final String? initialPlatform;
+  final bool showBackButton;
+  final bool showPlatformLinks;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -38,17 +45,18 @@ class FavoritesSyncAutomationPanel extends ConsumerWidget {
           if (heading != null)
             Row(
               children: [
-                IconButton(
-                  tooltip: '所有平台',
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    if (context.canPop()) {
-                      context.pop();
-                    } else {
-                      context.go('/sources/sync');
-                    }
-                  },
-                ),
+                if (showBackButton)
+                  IconButton(
+                    tooltip: '所有平台',
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/sources/sync');
+                      }
+                    },
+                  ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -98,10 +106,13 @@ class FavoritesSyncAutomationPanel extends ConsumerWidget {
                 final _ = await ref.refresh(provider.future);
               },
               child: layout(
-                platform == null ? null : _platformLabel(platform),
+                platform == null
+                    ? (showPlatformLinks ? null : '全部平台')
+                    : _platformLabel(platform),
                 [
                   if (platform == null) ...[
-                    _PlatformStatusGrid(platforms: status.platforms),
+                    if (showPlatformLinks)
+                      _PlatformStatusGrid(platforms: status.platforms),
                     if (status.enabledPlatforms.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       const _SyncCommandBar(enabled: true),
@@ -402,8 +413,51 @@ class _SyncCommandBarState extends ConsumerState<_SyncCommandBar> {
   }
 }
 
+class FavoritesSyncPlatformList extends ConsumerWidget {
+  const FavoritesSyncPlatformList({
+    super.key,
+    required this.selectedPlatform,
+    required this.onSelected,
+  });
+  final String selectedPlatform;
+  final ValueChanged<String> onSelected;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => ref
+      .watch(favoritesSyncStatusProvider(null))
+      .when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, _) => Center(
+          child: TextButton(
+            onPressed: () => ref.invalidate(favoritesSyncStatusProvider(null)),
+            child: const Text('重新加载'),
+          ),
+        ),
+        data: (status) => ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            ListTile(
+              title: const Text('全部平台'),
+              selected: selectedPlatform == 'all',
+              onTap: () => onSelected('all'),
+            ),
+            _PlatformStatusGrid(
+              platforms: status.platforms,
+              selectedPlatform: selectedPlatform,
+              onSelected: onSelected,
+            ),
+          ],
+        ),
+      );
+}
+
 class _PlatformStatusGrid extends StatelessWidget {
-  const _PlatformStatusGrid({required this.platforms});
+  const _PlatformStatusGrid({
+    required this.platforms,
+    this.selectedPlatform,
+    this.onSelected,
+  });
+  final String? selectedPlatform;
+  final ValueChanged<String>? onSelected;
 
   final List<FavoritesPlatformStatus> platforms;
 
@@ -421,17 +475,22 @@ class _PlatformStatusGrid extends StatelessWidget {
               horizontal: 20,
               vertical: 4,
             ),
+            selected: selectedPlatform == platform.platform,
             title: Text(_platformLabel(platform.platform)),
             subtitle: Text(_platformStateLabel(platform)),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () =>
-                context.push('/sources/sync?platform=${platform.platform}'),
+            onTap: () => onSelected != null
+                ? onSelected!(platform.platform)
+                : context.push('/sources/sync?platform=${platform.platform}'),
           ),
         ListTile(
+          selected: selectedPlatform == 'telegram',
           title: const Text('Telegram'),
           subtitle: const Text('已保存的消息与频道'),
           trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => context.push('/sources/sync?platform=telegram'),
+          onTap: () => onSelected != null
+              ? onSelected!('telegram')
+              : context.push('/sources/sync?platform=telegram'),
         ),
       ],
     );

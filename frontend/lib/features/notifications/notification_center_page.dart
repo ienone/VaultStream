@@ -58,12 +58,21 @@ class _NotificationCenterPageState
     final inbox = ref.watch(notificationInboxProvider(_query));
     return LayoutBuilder(
       builder: (context, constraints) {
-        final selected = _selected;
+        final wide = AppListDetailWorkspace.supportsSplit(
+          context,
+          availableSize: constraints.biggest,
+        );
+        final selected =
+            _selected ?? (wide ? inbox.value?.items.firstOrNull : null);
         return AppListDetailWorkspace(
           onClose: _selected == null
               ? null
               : () => setState(() => _selected = null),
           selectedId: selected?.id,
+          emptyDetail: WorkspacePlaceholder(
+            loading: inbox.isLoading,
+            label: inbox.hasError ? '消息加载失败' : '暂无消息',
+          ),
           list: Scaffold(
             backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
             appBar: AppBar(

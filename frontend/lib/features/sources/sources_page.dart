@@ -1,3 +1,4 @@
+import '../accounts/account_detail_page.dart';
 import '../../core/layout/app_page_body.dart';
 import '../../core/layout/app_list_detail_workspace.dart';
 import '../../core/network/api_client.dart';
@@ -49,9 +50,9 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
     with SingleTickerProviderStateMixin {
   late final _visitedTabs = <SourcesSection>{widget.tab};
   int _editorRevision = 0;
+  int? _lastSourceId;
+  String _monitorPlatform = 'telegram';
 
-  static bool _isMessageAccount(String? platform) =>
-      platform == 'telegram' || platform == 'qq';
   late final _tabs = TabController(
     length: SourcesSection.values.length,
     vsync: this,
@@ -61,6 +62,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
   @override
   void didUpdateWidget(SourcesPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _lastSourceId = int.tryParse(widget.editor ?? '') ?? _lastSourceId;
     if (oldWidget.tab != widget.tab) {
       _tabs.index = widget.tab.index;
       _visitedTabs.add(widget.tab);
@@ -85,21 +87,42 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
         context,
         availableSize: constraints.biggest,
       );
-      final editor = widget.editor;
-      final platform = _isMessageAccount(widget.platform)
-          ? widget.platform
+      final sources = widget.tab == SourcesSection.subscriptions
+          ? ref.watch(discoverySourcesProvider)
           : null;
-      final selectedId = editor ?? platform;
+      final items = sources?.value;
+      final defaultSource =
+          items?.where((item) => item.id == _lastSourceId).firstOrNull ??
+          items?.firstOrNull;
+      final editor =
+          widget.editor ?? (wide ? defaultSource?.id.toString() : null);
+      final platform =
+          widget.platform ??
+          (wide && widget.tab == SourcesSection.accounts ? 'telegram' : null);
+      final syncPlatform = widget.syncPlatform ?? 'zhihu';
+      final selectedId =
+          editor ??
+          platform ??
+          (wide
+              ? widget.tab == SourcesSection.sync
+                    ? 'sync-$syncPlatform'
+                    : widget.tab == SourcesSection.monitoring
+                    ? 'monitor-$_monitorPlatform'
+                    : null
+              : null);
       void closeAccount() => context.go(
         GoRouterState.of(context).uri.queryParameters['from'] == 'sync'
             ? '/sources/sync'
             : '/accounts',
       );
       return Scaffold(
-        appBar: wide ? _workspaceHeader(context) : null,
         body: AppListDetailWorkspace(
           selectedId: selectedId,
-          onClose: selectedId == null
+          emptyDetail: WorkspacePlaceholder(
+            loading: sources?.isLoading ?? false,
+            label: sources?.hasError == true ? '来源加载失败' : '暂无订阅',
+          ),
+          onClose: widget.editor == null && widget.platform == null
               ? null
               : editor != null
               ? _closeEditor
@@ -108,7 +131,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
             context,
             wide: wide,
             editor: editor,
-            platform: widget.platform,
+            platform: platform,
           ),
           detailBuilder: (_, _, _) => editor != null
               ? _buildEditor(
@@ -116,7 +139,32 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
                   editor,
                   showBackButton: widget.editor != null,
                 )
-              : widget.accountDetail ?? const SizedBox.shrink(),
+              : platform != null
+              ? widget.platform != null
+                    ? widget.accountDetail!
+                    : AccountDetailPage(
+                        platform: platform,
+                        showBackButton: false,
+                      )
+              : widget.tab == SourcesSection.sync
+              ? FavoritesSyncAutomationPanel(
+                  initialPlatform: syncPlatform == 'all' ? null : syncPlatform,
+                  showPlatformLinks: false,
+                  showBackButton: false,
+                )
+              : Scaffold(
+                  appBar: AppBar(
+                    automaticallyImplyLeading: false,
+                    title: Text(
+                      _monitorPlatform == 'qq' ? 'QQ 会话' : 'Telegram 会话',
+                    ),
+                  ),
+                  body: PushTab(
+                    key: ValueKey(_monitorPlatform),
+                    monitoringOnly: true,
+                    platform: _monitorPlatform,
+                  ),
+                ),
         ),
       );
     },
@@ -199,7 +247,6 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
   }
 
   PreferredSizeWidget _workspaceHeader(BuildContext context) => WorkspaceAppBar(
-    title: '来源',
     tabs: WorkspaceTabs(
       controller: _tabs,
       labels: [for (final section in SourcesSection.values) section.label],
@@ -213,7 +260,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
     required String? editor,
     required String? platform,
   }) => Scaffold(
-    appBar: wide ? null : _workspaceHeader(context),
+    appBar: _workspaceHeader(context),
     body: IndexedStack(
       index: widget.tab.index,
       children: [
@@ -230,7 +277,22 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
         _visitedTabs.contains(SourcesSection.monitoring)
             ? TickerMode(
                 enabled: widget.tab == SourcesSection.monitoring,
-                child: const PushTab(monitoringOnly: true),
+                child: wide
+                    ? ListView(
+                        children: [
+                          for (final entry in {
+                            'telegram': 'Telegram',
+                            'qq': 'QQ',
+                          }.entries)
+                            ListTile(
+                              title: Text(entry.value),
+                              selected: _monitorPlatform == entry.key,
+                              onTap: () =>
+                                  setState(() => _monitorPlatform = entry.key),
+                            ),
+                        ],
+                      )
+                    : const PushTab(monitoringOnly: true),
               )
             : const SizedBox.shrink(),
         _visitedTabs.contains(SourcesSection.accounts)
@@ -241,6 +303,9 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
                   child: ConnectionTab(
                     accountsOnly: true,
                     selectedPlatform: platform,
+                    onAccountSelected: wide
+                        ? (platform) => context.go('/accounts/$platform')
+                        : null,
                   ),
                 ),
               )
@@ -248,9 +313,17 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
         _visitedTabs.contains(SourcesSection.sync)
             ? TickerMode(
                 enabled: widget.tab == SourcesSection.sync,
-                child: FavoritesSyncAutomationPanel(
-                  initialPlatform: widget.syncPlatform,
-                ),
+                child: wide
+                    ? FavoritesSyncPlatformList(
+                        selectedPlatform: widget.syncPlatform ?? 'zhihu',
+                        onSelected: (platform) =>
+                            context.go('/sources/sync?platform=$platform'),
+                      )
+                    : FavoritesSyncAutomationPanel(
+                        initialPlatform: widget.syncPlatform == 'all'
+                            ? null
+                            : widget.syncPlatform,
+                      ),
               )
             : const SizedBox.shrink(),
       ],

@@ -1,3 +1,4 @@
+import '../../core/layout/app_list_detail_workspace.dart';
 import '../../core/layout/app_page_body.dart';
 import '../settings/presentation/tabs/push_tab.dart';
 import 'telegram_account_page.dart';
@@ -53,7 +54,45 @@ class AccountDetailPage extends ConsumerWidget {
         ),
       );
     }
-    return const SizedBox.shrink();
+    final accounts = ref.watch(platformHealthProvider);
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: showBackButton
+            ? BackButton(onPressed: onClose ?? () => context.go('/accounts'))
+            : null,
+        title: Text(
+          accounts.value?.platforms
+                  .where((item) => item.platform == platform)
+                  .firstOrNull
+                  ?.label ??
+              '账号',
+        ),
+      ),
+      body: accounts.when(
+        loading: () => const WorkspacePlaceholder(loading: true, label: ''),
+        error: (_, _) => Center(
+          child: TextButton(
+            onPressed: () => ref.invalidate(platformHealthProvider),
+            child: const Text('重新加载'),
+          ),
+        ),
+        data: (value) {
+          final account = value.platforms
+              .where((item) => item.platform == platform)
+              .firstOrNull;
+          return account == null
+              ? const Center(child: Text('账号不存在'))
+              : AppPageBody(
+                  maxWidth: 720,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [AccountPlatformPanel(account: account)],
+                  ),
+                );
+        },
+      ),
+    );
   }
 }
 
