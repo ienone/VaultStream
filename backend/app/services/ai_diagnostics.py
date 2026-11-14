@@ -5,9 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Any
-from urllib.parse import urlparse
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -121,40 +119,6 @@ async def _run_ai_connectivity_target(target: str) -> dict[str, Any]:
         "response_present": bool(text or response),
         "preview": text[:120],
     }
-
-
-async def _discover_openai_compatible_models(target: str) -> list[str]:
-    if target != "text_llm":
-        raise ValueError("target must be text_llm")
-    config_service = ConfigService()
-    config = await config_service.get_text_llm_config()
-    if not config.api_key or not config.base_url:
-        raise ValueError(f"{target} requires an API Base URL and API Key")
-    base_url = config.base_url.rstrip("/")
-    parsed = urlparse(base_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("API Base URL must be a valid http(s) URL")
-    async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
-        response = await client.get(
-            f"{base_url}/models",
-            headers={"Authorization": f"Bearer {config.api_key}"},
-        )
-        response.raise_for_status()
-        payload = response.json()
-    models = (
-        sorted(
-            {
-                item.get("id", "").strip()
-                for item in payload.get("data", [])
-                if isinstance(item, dict) and isinstance(item.get("id"), str)
-            }
-        )
-        if isinstance(payload, dict)
-        else []
-    )
-    if not models:
-        raise RuntimeError("provider returned no usable models")
-    return models
 
 
 async def _run_platform_parse_test(platform: str, url: str) -> dict[str, Any]:
@@ -518,13 +482,6 @@ class AIDiagnosticsService:
                 "error": str(exc)[:1000],
                 "elapsed_ms": elapsed_ms,
             }
-
-    async def discover_models(self, target: str) -> dict[str, Any]:
-        normalized = (target or "").strip().lower()
-        return {
-            "target": normalized,
-            "models": await _discover_openai_compatible_models(normalized),
-        }
 
     @staticmethod
     def normalize_parse_test_platform(platform: str) -> str:

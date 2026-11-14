@@ -234,13 +234,16 @@ class AIConnectivityTestResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AIModelDiscoveryResponse(BaseModel):
-    """Models returned by one configured OpenAI-compatible provider."""
+class PlatformAccountStatus(BaseModel):
+    platform: str
+    label: str
+    login: Literal["not_configured", "configured", "invalid"]
+    qr_login: bool
+    favorites_supported: bool
 
-    target: str
-    models: List[str]
 
-    model_config = ConfigDict(extra="forbid")
+class PlatformHealthResponse(BaseModel):
+    platforms: list[PlatformAccountStatus]
 
 
 class PlatformParseTestResponse(BaseModel):
@@ -282,7 +285,7 @@ class FavoritesPlatformStatusResponse(BaseModel):
     platform: str
     enabled: bool
     available: bool
-    authenticated: bool
+    authenticated: bool | None
     rate_per_minute: float
     last_result: Any = None
     error: str | None = None

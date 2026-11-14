@@ -39,18 +39,6 @@ class PlatformAuthSession {
   }
 }
 
-class PlatformAuthResult {
-  const PlatformAuthResult({
-    required this.ok,
-    required this.message,
-    this.isValid,
-  });
-
-  final bool ok;
-  final String message;
-  final bool? isValid;
-}
-
 class PlatformAuthException implements Exception {
   const PlatformAuthException(this.message);
 
@@ -131,7 +119,7 @@ class PlatformAuthActions extends _$PlatformAuthActions {
     }
   }
 
-  Future<PlatformAuthResult> check(String platform) {
+  Future<String> check(String platform) {
     return _run(platform, 'check', () async {
       final response = await ref
           .read(apiClientProvider)
@@ -139,19 +127,15 @@ class PlatformAuthActions extends _$PlatformAuthActions {
       final data = Map<String, dynamic>.from(response.data as Map);
       final valid = data['is_valid'] == true;
       ref.invalidate(platformHealthProvider);
-      return PlatformAuthResult(
-        ok: true,
-        isValid: valid,
-        message: valid ? '登录状态有效' : '登录已失效，请重新登录',
-      );
+      return valid ? '登录状态有效' : '登录已失效，请重新登录';
     });
   }
 
-  Future<PlatformAuthResult> logout(String platform) {
+  Future<String> logout(String platform) {
     return _run(platform, 'logout', () async {
       await ref.read(apiClientProvider).delete('/browser-auth/$platform');
       ref.invalidate(platformHealthProvider);
-      return const PlatformAuthResult(ok: true, message: '已清除平台登录');
+      return '已清除平台登录';
     });
   }
 

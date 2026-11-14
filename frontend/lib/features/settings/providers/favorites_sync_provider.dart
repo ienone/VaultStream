@@ -48,7 +48,7 @@ class FavoritesPlatformStatus {
   final String platform;
   final bool enabled;
   final bool available;
-  final bool authenticated;
+  final bool? authenticated;
   final double ratePerMinute;
   final Map<String, dynamic>? lastResult;
   final String? error;
@@ -64,7 +64,7 @@ class FavoritesPlatformStatus {
       platform: (json['platform'] ?? '').toString(),
       enabled: json['enabled'] == true,
       available: json['available'] != false,
-      authenticated: json['authenticated'] == true,
+      authenticated: json['authenticated'] as bool?,
       ratePerMinute: rate,
       lastResult: json['last_result'] is Map<String, dynamic>
           ? json['last_result'] as Map<String, dynamic>
@@ -90,9 +90,6 @@ class FavoritesSyncStatus {
     required this.recentRuns,
     required this.platforms,
     required this.duplicateStrategy,
-    required this.scopeStrategy,
-    required this.firstSyncStrategy,
-    required this.unfavoriteStrategy,
   });
 
   final bool running;
@@ -103,9 +100,6 @@ class FavoritesSyncStatus {
   final List<Map<String, dynamic>> recentRuns;
   final List<FavoritesPlatformStatus> platforms;
   final String duplicateStrategy;
-  final String scopeStrategy;
-  final String firstSyncStrategy;
-  final String unfavoriteStrategy;
 
   factory FavoritesSyncStatus.fromJson(Map<String, dynamic> json) {
     final interval = json['interval_minutes'];
@@ -139,9 +133,6 @@ class FavoritesSyncStatus {
                 .toList()
           : const <FavoritesPlatformStatus>[],
       duplicateStrategy: duplicateStrategy == 'skip' ? 'skip' : 'merge',
-      scopeStrategy: 'all_favorites',
-      firstSyncStrategy: 'latest_page',
-      unfavoriteStrategy: 'keep_local',
     );
   }
 }
@@ -169,7 +160,7 @@ class FavoritesSyncPlatformPreview {
 
   final String platform;
   final String status;
-  final bool authenticated;
+  final bool? authenticated;
   final int maxItems;
   final bool cursorPresent;
   final int fetched;
@@ -189,7 +180,7 @@ class FavoritesSyncPlatformPreview {
     return FavoritesSyncPlatformPreview(
       platform: (json['platform'] ?? '').toString(),
       status: (json['status'] ?? 'unknown').toString(),
-      authenticated: json['authenticated'] == true,
+      authenticated: json['authenticated'] as bool?,
       maxItems: _asInt(json['max_items']),
       cursorPresent: json['cursor_present'] == true,
       fetched: _asInt(json['fetched']),
@@ -262,20 +253,22 @@ int _asInt(Object? value) {
   return int.tryParse('$value') ?? 0;
 }
 
-final favoritesSyncStatusProvider = FutureProvider<FavoritesSyncStatus>((
-  ref,
-) async {
-  refreshOnEvents(
-    ref,
-    (event) =>
-        event.type == 'background_task_updated' &&
-        event.data['task'] == 'favorites_sync',
-  );
-  final dio = ref.watch(apiClientProvider);
-  final response = await dio.get('/favorites-sync/status');
-  final data = response.data as Map<String, dynamic>;
-  return FavoritesSyncStatus.fromJson(data);
-});
+final favoritesSyncStatusProvider = FutureProvider.autoDispose
+    .family<FavoritesSyncStatus, String?>((ref, platform) async {
+      refreshOnEvents(
+        ref,
+        (event) =>
+            event.type == 'background_task_updated' &&
+            event.data['task'] == 'favorites_sync',
+      );
+      final dio = ref.watch(apiClientProvider);
+      final response = await dio.get(
+        '/favorites-sync/status',
+        queryParameters: {'platform': ?platform},
+      );
+      final data = response.data as Map<String, dynamic>;
+      return FavoritesSyncStatus.fromJson(data);
+    });
 
 final favoritesSyncActionsProvider = Provider<FavoritesSyncActions>(
   (ref) => FavoritesSyncActions(ref),

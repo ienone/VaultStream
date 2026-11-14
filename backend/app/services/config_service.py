@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from pydantic import SecretStr
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db_adapter import AsyncSessionLocal
 from app.models import SystemSetting
@@ -91,9 +93,6 @@ class FavoritesSyncConfig:
     interval_minutes: int
     max_items: int
     duplicate_strategy: str
-    scope_strategy: str
-    first_sync_strategy: str
-    unfavorite_strategy: str
 
 
 @dataclass(frozen=True)
@@ -123,10 +122,18 @@ class ConfigService:
     ) -> None:
         self._session_factory = session_factory
         self._cache = cache if cache is not None else {}
+        self._snapshot = False
+
+    @classmethod
+    async def snapshot(cls, db: AsyncSession) -> ConfigService:
+        values = dict((await db.execute(select(SystemSetting.key, SystemSetting.value))).all())
+        service = cls(cache=values)
+        service._snapshot = True
+        return service
 
     async def get_value(self, key: str, default: Any = None) -> Any:
-        if key in self._cache:
-            return coerce_setting_value(self._cache[key])
+        if self._snapshot or key in self._cache:
+            return coerce_setting_value(self._cache.get(key, default))
 
         async with self._session_factory() as db:
             from app.repositories import SystemRepository
@@ -162,23 +169,26 @@ class ConfigService:
         category: str = "general",
         description: Optional[str] = None,
     ) -> SystemSetting:
+        rows = await self.set_values({key: value}, category=category, description=description)
+        return rows[0]
+
+    async def set_values(
+        self, values: dict[str, Any], *, category: str, description: str | None = None,
+    ) -> list[SystemSetting]:
+        from app.repositories import SystemRepository
+
         async with self._session_factory() as db:
-            from app.repositories import SystemRepository
-
             repo = SystemRepository(db)
-            setting = await repo.upsert_setting(
-                key=key,
-                value=value,
-                category=category,
-                description=description,
-            )
-
+            rows = []
+            for key, value in values.items():
+                rows.append(await repo.upsert_setting(
+                    key=key, value=value, category=category or "general", description=description,
+                ))
             await db.commit()
-            await db.refresh(setting)
-
-            self._cache[key] = value
-            self._sync_runtime_setting(key, value)
-            return setting
+            for key, value in values.items():
+                self._cache[key] = value
+                self._sync_runtime_setting(key, value)
+            return rows
 
     async def load_all_to_memory(self) -> None:
         async with self._session_factory() as db:
@@ -252,6 +262,7 @@ class ConfigService:
                 "archive_image_max_count", "archive_video_max_count", "archive_video_max_bytes",
             ),
             "platform": ("enable_cookie_keepalive", "enable_favorites_sync_scheduler"),
+            "bot": ("telegram_admin_ids", "telegram_whitelist_ids", "telegram_blacklist_ids"),
             "general": ("http_proxy",),
         }
         items = {}
@@ -341,8 +352,6 @@ class ConfigService:
         if not base_url:
             base_url = await self.get_value("text_llm_base_url")
         if not base_url:
-            base_url = await self.get_value("text_llm_api_base")
-        if not base_url:
             base_url = settings.text_llm_base_url
 
         model = await self.get_value("agent_chat_model")
@@ -369,8 +378,6 @@ class ConfigService:
             key_text = extract_secret_value(settings.text_llm_api_key)
 
         base_url = await self.get_value("text_llm_base_url")
-        if not base_url:
-            base_url = await self.get_value("text_llm_api_base")
         if not base_url:
             base_url = settings.text_llm_base_url
 
@@ -451,27 +458,6 @@ class ConfigService:
         if allowed_duplicate_strategies and strategy not in allowed_duplicate_strategies:
             strategy = default_duplicate_strategy
 
-        scope_strategy = str(
-            await read("favorites_sync_scope_strategy", "all_favorites")
-            or "all_favorites"
-        ).strip().lower()
-        if scope_strategy not in {"all_favorites", "collections_api_placeholder"}:
-            scope_strategy = "all_favorites"
-
-        first_sync_strategy = str(
-            await read("favorites_sync_first_sync_strategy", "latest_page")
-            or "latest_page"
-        ).strip().lower()
-        if first_sync_strategy not in {"latest_page", "full_backfill_placeholder"}:
-            first_sync_strategy = "latest_page"
-
-        unfavorite_strategy = str(
-            await read("favorites_sync_unfavorite_strategy", "keep_local")
-            or "keep_local"
-        ).strip().lower()
-        if unfavorite_strategy not in {"keep_local", "mark_archived_placeholder"}:
-            unfavorite_strategy = "keep_local"
-
         raw_platforms = await read("favorites_sync_platforms", [])
         enabled_platforms = self.parse_favorites_sync_platforms(raw_platforms)
         if supported_platforms is not None:
@@ -485,9 +471,6 @@ class ConfigService:
             interval_minutes=interval,
             max_items=max_items,
             duplicate_strategy=strategy,
-            scope_strategy=scope_strategy,
-            first_sync_strategy=first_sync_strategy,
-            unfavorite_strategy=unfavorite_strategy,
         )
 
     async def get_favorites_sync_platform_state(
@@ -639,9 +622,15 @@ class ConfigService:
         if cookie_text:
             return cookie_text
 
-        if not env_fallback or not hasattr(settings, setting_key):
+        if not env_fallback:
             return None
-        return extract_secret_value(getattr(settings, setting_key))
+        if platform_key == "bilibili":
+            pieces = [f"{name}={secret.get_secret_value()}" for name, secret in (
+                ("SESSDATA", settings.bilibili_sessdata), ("bili_jct", settings.bilibili_bili_jct),
+                ("buvid3", settings.bilibili_buvid3),
+            ) if secret]
+            return "; ".join(pieces) or None
+        return extract_secret_value(getattr(settings, setting_key, None))
 
     def _sync_runtime_setting(self, key: str, value: Any) -> None:
         from app.core.config import settings

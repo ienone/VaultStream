@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../settings/utils/setting_value.dart';
+import '../../accounts/telegram_account_page.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/toast.dart';
@@ -19,136 +20,156 @@ import '../../../theme/design_tokens.dart';
 import '../../settings/providers/favorites_sync_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 
-class FavoritesSyncAutomationPanel extends ConsumerStatefulWidget {
-  const FavoritesSyncAutomationPanel({super.key, this.highlightRunId});
+class FavoritesSyncAutomationPanel extends ConsumerWidget {
+  const FavoritesSyncAutomationPanel({super.key, this.initialPlatform});
 
-  final String? highlightRunId;
-
-  @override
-  ConsumerState<FavoritesSyncAutomationPanel> createState() =>
-      _FavoritesSyncAutomationPanelState();
-}
-
-class _FavoritesSyncAutomationPanelState
-    extends ConsumerState<FavoritesSyncAutomationPanel> {
-  String? _openedRunId;
+  final String? initialPlatform;
 
   @override
-  void didUpdateWidget(FavoritesSyncAutomationPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.highlightRunId != widget.highlightRunId) {
-      _openedRunId = null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final statusAsync = ref.watch(favoritesSyncStatusProvider);
-
-    return statusAsync.when(
-      data: (status) {
-        _openHighlightedRunIfReady(status.recentRuns);
-        return RefreshIndicator(
-          onRefresh: () async => ref.invalidate(favoritesSyncStatusProvider),
-          child: AppPageBody(
-            maxWidth: AppPane.readableMaxWidth,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final platform = initialPlatform;
+    Widget layout(String? heading, List<Widget> children) => AppPageBody(
+      maxWidth: AppPane.readableMaxWidth,
+      child: ListView(
+        key: PageStorageKey(platform ?? 'sync-overview'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        children: [
+          if (heading != null)
+            Row(
               children: [
-                _SyncOverviewCard(status: status),
-                const SizedBox(height: 16),
-                if (status.enabledPlatforms.isNotEmpty)
-                  const _SyncCommandBar(enabled: true),
-                const SizedBox(height: 24),
-                _PlatformStatusGrid(platforms: status.platforms),
-                const SizedBox(height: 24),
-                _SyncPolicyCard(status: status),
-                const SizedBox(height: 24),
-                _RecentRunsList(runs: status.recentRuns),
+                IconButton(
+                  tooltip: '所有平台',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.go('/sources/sync');
+                    }
+                  },
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    heading,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
               ],
+            ),
+          ...children,
+        ],
+      ),
+    );
+    if (platform == 'telegram') {
+      return ref
+          .watch(telegramAccountProvider)
+          .when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (_, _) => layout('Telegram', [
+              TextButton(
+                onPressed: () => ref.invalidate(telegramAccountProvider),
+                child: const Text('读取失败，重试'),
+              ),
+            ]),
+            data: (account) => RefreshIndicator(
+              onRefresh: () async {
+                final _ = await ref.refresh(telegramAccountProvider.future);
+              },
+              child: layout('Telegram', [
+                TelegramSyncControls(account: account),
+                const SizedBox(height: 20),
+                _RecentRunsList(runs: account.recentRuns, platform: 'telegram'),
+              ]),
+            ),
+          );
+    }
+    final provider = favoritesSyncStatusProvider(platform);
+    return ref
+        .watch(provider)
+        .when(
+          data: (status) {
+            final selected = status.platforms
+                .where((p) => p.platform == platform)
+                .firstOrNull;
+            return RefreshIndicator(
+              onRefresh: () async {
+                final _ = await ref.refresh(provider.future);
+              },
+              child: layout(
+                platform == null ? null : _platformLabel(platform),
+                [
+                  if (platform == null) ...[
+                    _PlatformStatusGrid(platforms: status.platforms),
+                    if (status.enabledPlatforms.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const _SyncCommandBar(enabled: true),
+                    ],
+                    const SizedBox(height: 12),
+                    ExpansionTile(
+                      leading: const Icon(Icons.tune_rounded),
+                      title: const Text('同步设置'),
+                      childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      children: [_SyncPolicyCard(status: status)],
+                    ),
+                  ] else if (selected != null) ...[
+                    _PlatformSyncControls(
+                      status: selected,
+                      enabledPlatforms: status.enabledPlatforms,
+                    ),
+                    const SizedBox(height: 12),
+                    _PolicyControlRow(
+                      label: '读取频率',
+                      value: selected.ratePerMinute.round(),
+                      values: const [1, 3, 5, 10, 20],
+                      suffix: '条/分钟',
+                      onChanged: (v) => _updateFavoritesSyncSetting(
+                        context,
+                        ref,
+                        key: 'favorites_sync_rate_${selected.platform}',
+                        value: v,
+                      ),
+                    ),
+                  ] else
+                    const Text('未找到这个平台'),
+                  const SizedBox(height: 20),
+                  _RecentRunsList(
+                    runs: status.recentRuns,
+                    platform: selected?.platform,
+                  ),
+                ],
+              ),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.error_outline_rounded,
+                    size: 44,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    formatApiErrorMessage(error, fallbackMessage: '收藏同步状态加载失败'),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        ref.invalidate(favoritesSyncStatusProvider),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('重试'),
+                  ),
+                ],
+              ),
             ),
           ),
         );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline_rounded,
-                size: 44,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 12),
-              Text(formatApiErrorMessage(error, fallbackMessage: '收藏同步状态加载失败')),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () => ref.invalidate(favoritesSyncStatusProvider),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('重试'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openHighlightedRunIfReady(List<Map<String, dynamic>> runs) {
-    final highlightRunId = widget.highlightRunId;
-    if (highlightRunId == null ||
-        highlightRunId.isEmpty ||
-        _openedRunId == highlightRunId) {
-      return;
-    }
-    Map<String, dynamic>? matchedRun;
-    for (final run in runs) {
-      if (_runString(run, 'run_id') == highlightRunId) {
-        matchedRun = run;
-        break;
-      }
-    }
-    if (matchedRun == null) return;
-
-    _openedRunId = highlightRunId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.go('/tasks/$highlightRunId');
-    });
-  }
-}
-
-class _SyncOverviewCard extends StatelessWidget {
-  const _SyncOverviewCard({required this.status});
-
-  final FavoritesSyncStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          status.enabledPlatforms.isEmpty
-              ? '选择下方平台以启用收藏同步'
-              : '已启用 ${status.enabledPlatforms.length} 个平台',
-          style: theme.textTheme.titleMedium,
-        ),
-        const SizedBox(height: 4),
-        MetadataWrap(
-          items: [
-            status.running ? '调度服务已启动' : '调度服务未启动',
-            '最近同步 ${_formatTime(status.lastSyncAt)}',
-          ],
-          style: theme.textTheme.bodySmall,
-        ),
-      ],
-    );
   }
 }
 
@@ -260,21 +281,6 @@ class _SyncPolicyCard extends ConsumerWidget {
                   value: value,
                 ),
               ),
-              for (final platform in status.platforms.where(
-                (p) => p.capabilities.supported,
-              ))
-                _PolicyControlRow(
-                  label: '${_platformLabel(platform.platform)} 同步速率',
-                  value: platform.ratePerMinute.round(),
-                  values: const [1, 3, 5, 10, 20],
-                  suffix: '条/分钟',
-                  onChanged: (value) => _updateFavoritesSyncSetting(
-                    context,
-                    ref,
-                    key: 'favorites_sync_rate_${platform.platform}',
-                    value: value,
-                  ),
-                ),
             ];
             return Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -312,7 +318,7 @@ class _PolicyControlRow extends StatelessWidget {
     label: label,
     value: '$value',
     options: {
-      for (final option in _withCurrentValue(values, value))
+      for (final option in ({value, ...values}.toList()..sort()))
         '$option': '$option $suffix',
     },
     onSelected: (next) => onChanged(int.parse(next)),
@@ -404,7 +410,7 @@ class _PlatformStatusGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (platforms.isEmpty) {
-      return const _EmptyPanel(message: '暂无可用收藏同步平台');
+      return const _EmptyPanel(message: '暂无可用平台');
     }
 
     return AppSettingGroup(
@@ -418,29 +424,33 @@ class _PlatformStatusGrid extends StatelessWidget {
             title: Text(_platformLabel(platform.platform)),
             subtitle: Text(_platformStateLabel(platform)),
             trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => context.go('/accounts/${platform.platform}'),
+            onTap: () =>
+                context.push('/sources/sync?platform=${platform.platform}'),
           ),
+        ListTile(
+          title: const Text('Telegram'),
+          subtitle: const Text('已保存的消息与频道'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => context.push('/sources/sync?platform=telegram'),
+        ),
       ],
     );
   }
 }
 
-class AccountFavoritesSyncControls extends ConsumerWidget {
-  const AccountFavoritesSyncControls({
-    super.key,
+class _PlatformSyncControls extends ConsumerWidget {
+  const _PlatformSyncControls({
     required this.status,
-    required this.loginAvailable,
+    required this.enabledPlatforms,
   });
+  final List<String> enabledPlatforms;
 
   final FavoritesPlatformStatus status;
-  final bool loginAvailable;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(systemSettingsProvider);
-    final enabled =
-        ref.watch(favoritesSyncStatusProvider).value?.enabledPlatforms ??
-        const <String>[];
+    final enabled = enabledPlatforms;
     final canSync =
         status.enabled ||
         (settings.value != null &&
@@ -460,7 +470,7 @@ class AccountFavoritesSyncControls extends ConsumerWidget {
           shape: const RoundedRectangleBorder(
             borderRadius: AppShape.cardMediaBorder,
           ),
-          title: Text('收藏同步', style: Theme.of(context).textTheme.titleMedium),
+          title: const Text('参与自动同步'),
           value: status.enabled,
           onChanged: settings.hasValue && status.capabilities.supported
               ? (value) => _updateFavoritesSyncSetting(
@@ -482,15 +492,19 @@ class AccountFavoritesSyncControls extends ConsumerWidget {
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
         const SizedBox(height: 8),
-        if (status.capabilities.supported &&
-            status.available &&
-            loginAvailable) ...[
+        if (status.capabilities.supported && status.available) ...[
           _SyncCommandBar(
             key: ValueKey(status.platform),
-            enabled: loginAvailable,
+            enabled: status.authenticated != false || !status.enabled,
             platform: status.platform,
             canSync: canSync,
           ),
+          if (status.authenticated == false)
+            TextButton.icon(
+              icon: const Icon(Icons.login),
+              label: const Text('管理账号'),
+              onPressed: () => context.push('/accounts/${status.platform}'),
+            ),
         ],
       ],
     );
@@ -498,7 +512,8 @@ class AccountFavoritesSyncControls extends ConsumerWidget {
 }
 
 class _RecentRunsList extends ConsumerWidget {
-  const _RecentRunsList({required this.runs});
+  const _RecentRunsList({required this.runs, this.platform});
+  final String? platform;
 
   final List<Map<String, dynamic>> runs;
 
@@ -506,21 +521,23 @@ class _RecentRunsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     if (runs.isEmpty) {
-      return const _EmptyPanel(message: '暂无同步运行记录');
+      return const _EmptyPanel(message: '暂无同步记录');
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '同步运行记录',
+          '最近同步',
           style: theme.textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 8),
         AppSettingGroup(
-          children: [for (final run in runs.take(8)) _RunTile(run: run)],
+          children: [
+            for (final run in runs) _RunTile(run: run, platform: platform),
+          ],
         ),
       ],
     );
@@ -528,49 +545,53 @@ class _RecentRunsList extends ConsumerWidget {
 }
 
 class _RunTile extends ConsumerWidget {
-  const _RunTile({required this.run});
+  const _RunTile({required this.run, this.platform});
+  final String? platform;
 
   final Map<String, dynamic> run;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status = _runString(run, 'status') ?? 'unknown';
-    final runId = _runString(run, 'run_id');
-    final isError = status == 'error';
-    final error = _runString(run, 'error');
-
-    final theme = Theme.of(context);
-    final statusLabel =
-        status == 'success' &&
-            run['result'] is Map &&
-            (run['result'] as Map)['platform_count'] == 0
-        ? '未执行平台同步'
-        : _runStatusLabel(status);
+    final scope = _mapString(run, 'scope');
+    final result = run['result'] as Map?;
+    final reported = result?['results'] as Map?;
+    final Map? measured;
+    if (scope == platform) {
+      measured = result?['result'] as Map?;
+    } else {
+      measured = reported?[platform] as Map?;
+    }
+    final status =
+        measured?['status'] as String? ??
+        _mapString(run, 'status') ??
+        'unknown';
+    final runId = _mapString(run, 'run_id');
+    final completed = status == 'success' || status == 'ok';
+    final added = measured?['imported'] as int?;
+    final label = platform != null
+        ? (measured?['status'] == null && scope == 'all'
+              ? '全平台任务${_runStatusLabel(status)}'
+              : completed && added != null
+              ? (added == 0 ? '没有新收藏' : '新增 $added 条收藏')
+              : _runStatusLabel(status))
+        : (scope == 'all' ? '全部平台' : _platformLabel(scope ?? ''));
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      title: Text(
-        _runString(run, 'scope') == 'all'
-            ? '全部平台'
-            : _platformLabel(_runString(run, 'scope') ?? ''),
+      contentPadding: const EdgeInsetsDirectional.only(start: 12, end: 4),
+      leading: Icon(
+        completed
+            ? Icons.check_circle_outline
+            : (status == 'failed' ||
+                  status == 'error' ||
+                  status == 'partial_success')
+            ? Icons.error_outline
+            : Icons.schedule,
       ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          MetadataWrap(
-            items: [
-              statusLabel,
-              if (_runString(run, 'started_at') != null)
-                _formatTime(_runString(run, 'started_at')),
-            ],
-          ),
-          if (error != null)
-            Text(error, style: TextStyle(color: theme.colorScheme.error)),
-          if (isError && runId != null)
-            TextButton.icon(
-              onPressed: () => _retryRun(context, ref, runId),
-              icon: const Icon(Icons.replay_rounded),
-              label: const Text('重试'),
-            ),
+      title: Text(label),
+      subtitle: MetadataWrap(
+        items: [
+          if (platform == null) _runStatusLabel(status),
+          if (_mapString(run, 'started_at') != null)
+            _formatTime(_mapString(run, 'started_at')),
         ],
       ),
       trailing: runId == null ? null : const Icon(Icons.chevron_right_rounded),
@@ -755,44 +776,6 @@ class _PreviewFavoriteItem extends StatelessWidget {
   }
 }
 
-Future<void> _retryRun(
-  BuildContext context,
-  WidgetRef ref,
-  String runId,
-) async {
-  try {
-    final retryRunId = await ref
-        .read(favoritesSyncActionsProvider)
-        .retryRun(runId);
-    if (context.mounted) {
-      Toast.show(
-        context,
-        '已重新触发同步${retryRunId == null ? '' : ' #${_shortId(retryRunId)}'}',
-      );
-    }
-  } catch (e) {
-    if (context.mounted) {
-      Toast.show(
-        context,
-        formatApiErrorMessage(e, fallbackMessage: '重试同步失败'),
-        isError: true,
-      );
-    }
-  }
-}
-
-String? _mapString(Map<String, dynamic> item, String key) {
-  final value = item[key];
-  if (value == null) return null;
-  final text = value.toString();
-  return text.isEmpty ? null : text;
-}
-
-List<int> _withCurrentValue(List<int> values, int current) {
-  final set = {current, ...values}.toList()..sort();
-  return set;
-}
-
 Future<void> _updateFavoritesSyncSetting(
   BuildContext context,
   WidgetRef ref, {
@@ -826,23 +809,20 @@ String _formatTime(String? value) {
       : DateFormat('MM-dd HH:mm').format(time.toLocal());
 }
 
-String? _runString(Map<String, dynamic> run, String key) {
-  final value = run[key];
+String? _mapString(Map<String, dynamic> map, String key) {
+  final value = map[key];
   if (value == null) return null;
   final text = value.toString();
   return text.isEmpty ? null : text;
 }
 
-String _shortId(String? runId) {
-  if (runId == null || runId.isEmpty) return '-';
-  return runId.length > 8 ? runId.substring(0, 8) : runId;
-}
-
 String _runStatusLabel(String status) {
   return switch (status) {
-    'success' => '成功',
+    'success' || 'ok' => '成功',
     'running' => '运行中',
-    'error' => '失败',
+    'error' || 'failed' => '失败',
+    'partial_success' => '部分失败',
+    'skipped' => '已跳过',
     _ => status,
   };
 }
@@ -861,6 +841,7 @@ String _platformLabel(String platform) {
 String _platformStateLabel(FavoritesPlatformStatus status) {
   if (!status.available) return '不可用';
   if (!status.enabled) return '未启用';
-  if (!status.authenticated) return '未认证';
+  if (status.authenticated == false) return '未认证';
+  if (status.authenticated == null) return '暂时无法检测';
   return '可同步';
 }

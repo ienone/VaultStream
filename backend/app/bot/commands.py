@@ -25,7 +25,7 @@ from telegram.ext import ContextTypes
 from app.core.logging import logger
 from app.utils.url_utils import extract_urls_from_text
 from .messages import HELP_TEXT_START, HELP_TEXT_FULL, MSG_API_ERROR, MSG_TIMEOUT
-from .permissions import get_permission_manager
+from .permissions import check_permission
 
 # --- 辅助函数 ---
 
@@ -52,14 +52,7 @@ async def _check_perm(update: Update, context: ContextTypes.DEFAULT_TYPE, requir
     if not user:
         return False
         
-    perm_manager = get_permission_manager(context.bot_data)
-    if not perm_manager:
-        # 如果未配置权限管理器，默认允许？或者拒绝？为了安全默认拒绝
-        logger.error("Permission manager not found in bot_data")
-        await update.message.reply_text("系统错误：权限配置缺失")
-        return False
-        
-    allowed, reason = perm_manager.check_permission(user.id, require_admin=require_admin)
+    allowed, reason = await check_permission(user.id, require_admin=require_admin)
     if not allowed:
         await update.message.reply_text(reason)
         return False

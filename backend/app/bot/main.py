@@ -20,7 +20,6 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.models import BotChat, BotConfig
 from app.services.bot_config_runtime import get_primary_telegram_runtime
 
-from .permissions import PermissionManager
 from .commands import (
     start_command, help_command, status_command,
     get_command, get_tag_command, get_twitter_command, get_bilibili_command,
@@ -52,29 +51,9 @@ class VaultStreamBot:
         self.channel_id: str | None = None
         self.bot_config_id: int | None = None
         
-        self.admin_ids = []
-        self.whitelist_ids = []
-        self.blacklist_ids = []
-        
-        from app.bot.permissions import PermissionManager
-        self.permission_manager = PermissionManager([], [], [])
-
     async def _load_runtime_config(self) -> bool:
         from app.services.settings_service import get_setting_value
         self.api_token = str(await get_setting_value("api_token", self.api_token) or "")
-        admin_ids = await get_setting_value("telegram_admin_ids", settings.telegram_admin_ids)
-        whitelist_ids = await get_setting_value("telegram_whitelist_ids", settings.telegram_whitelist_ids)
-        blacklist_ids = await get_setting_value("telegram_blacklist_ids", settings.telegram_blacklist_ids)
-        
-        self.admin_ids = self._parse_ids(admin_ids)
-        self.whitelist_ids = self._parse_ids(whitelist_ids)
-        self.blacklist_ids = self._parse_ids(blacklist_ids)
-        
-        self.permission_manager = PermissionManager(
-            self.admin_ids, self.whitelist_ids, self.blacklist_ids
-        )
-        logger.info(f"Bot 权限配置: admins={len(self.admin_ids)}, whitelist={len(self.whitelist_ids)}, blacklist={len(self.blacklist_ids)}")
-        
         async with AsyncSessionLocal() as db:
             cfg, default_chat_id = await get_primary_telegram_runtime(db)
             if not cfg or not cfg.bot_token:
@@ -90,12 +69,6 @@ class VaultStreamBot:
                 logger.warning("当前主 BotConfig 未绑定任何启用的 BotChat，/get 系列命令将无法按频道拉取队列")
 
             return True
-
-    def _parse_ids(self, ids_str: str) -> set:
-        """解析ID列表字符串"""
-        if not ids_str or not ids_str.strip():
-            return set()
-        return {int(id.strip()) for id in ids_str.split(",") if id.strip()}
 
     def _get_headers(self) -> dict:
         """获取 API 请求头"""
@@ -153,7 +126,6 @@ class VaultStreamBot:
         """应用启动后的初始化回调"""
         try:
             # 注入依赖到 bot_data
-            application.bot_data["permission_manager"] = self.permission_manager
             application.bot_data["api_base"] = self.api_base
             application.bot_data["target_platform"] = self.target_platform
             application.bot_data["channel_id"] = self.channel_id

@@ -15,11 +15,10 @@ import httpx
 import qrcode
 from loguru import logger
 from pydantic import BaseModel
-from xhshow import SessionManager, Xhshow
 
 from app.adapters.browser import browser_manager
-from app.adapters.utils.cookie_utils import strip_cookie_wrapper_quotes
-from app.adapters.xiaohongshu_profile import build_xhs_crypto_config
+from app.adapters.base import PlatformAdapter
+from app.adapters.favorites.errors import FavoritesFetchError
 from app.services.config_service import ConfigService
 from app.services.notification_inbox import safely_sync_account_auth_notification
 from app.services.platform_auth import (
@@ -30,6 +29,10 @@ from app.services.platform_auth import (
     XiaohongshuQrLoginDriver,
     ZhihuQrLoginDriver,
 )
+
+
+class LoginCheckUnavailable(Exception):
+    """The platform did not provide a usable login verdict."""
 
 
 class AuthSessionStatus(BaseModel):
@@ -75,27 +78,12 @@ class BrowserAuthService:
             "weibo": WeiboQrLoginDriver,
             "zhihu": ZhihuQrLoginDriver,
         }
-        self.platforms = {
-            "twitter": {"auth_cookie_names": ["auth_token", "ct0"], "domain": ".x.com"},
-            "bilibili": {
-                "check_url": "https://api.bilibili.com/x/web-interface/nav",
-                "auth_cookie_names": ["SESSDATA", "bili_jct"],
-                "domain": ".bilibili.com",
-            },
-            "xiaohongshu": {
-                "check_url": "https://edith.xiaohongshu.com/api/sns/web/v1/user/me",
-                "auth_cookie_names": ["a1", "webId", "web_session"],
-                "domain": ".xiaohongshu.com",
-            },
-            "zhihu": {
-                "check_url": "https://www.zhihu.com/api/v4/me",
-                "domain": ".zhihu.com",
-            },
-            "weibo": {
-                "check_url": "https://m.weibo.cn/api/config",
-                "auth_cookie_names": ["SUB"],
-                "domain": ".weibo.com",
-            },
+        self._checks = {
+            "twitter": self._check_twitter_status,
+            "bilibili": self._check_bilibili_status,
+            "xiaohongshu": self._check_xiaohongshu_status,
+            "zhihu": self._check_zhihu_status,
+            "weibo": self._check_weibo_status,
         }
 
     @property
@@ -103,23 +91,18 @@ class BrowserAuthService:
         return frozenset(self._driver_factories)
 
     async def _check_twitter_status(self, cookie_str: str) -> bool:
-        from app.adapters.base import PlatformAdapter
         from app.adapters.favorites.twitter_fetcher import TwitterBookmarksFetcher, parse_bookmarks
-        from app.adapters.favorites.errors import FavoritesFetchError
         cookies = PlatformAdapter.parse_cookie_str(cookie_str)
         if not cookies.get("auth_token") or not cookies.get("ct0"):
             return False
-        try:
-            payload, refreshed = await TwitterBookmarksFetcher()._read_page(cookies, None)
-            parse_bookmarks(payload)
-            await self._config_service.persist_refreshed_platform_cookies("twitter", cookies, refreshed)
-            return True
-        except FavoritesFetchError:
-            return False
+        payload, refreshed = await TwitterBookmarksFetcher()._read_page(cookies, None)
+        parse_bookmarks(payload)
+        await self._config_service.persist_refreshed_platform_cookies("twitter", cookies, refreshed)
+        return True
 
     async def start_auth_session(self, platform: str) -> AuthSessionStatus:
-        if platform not in self.platforms:
-            raise ValueError(f"不支持的平台: {platform}")
+        if platform not in self._driver_factories:
+            raise ValueError("此平台不支持扫码登录")
         async with self._platform_session_locks.setdefault(platform, asyncio.Lock()):
             await self._cancel_platform_sessions(platform)
             return await self._start_auth_session(platform)
@@ -132,12 +115,7 @@ class BrowserAuthService:
     async def _start_auth_session(self, platform: str) -> AuthSessionStatus:
         session = AuthSession(platform)
         self.sessions[session.session_id] = session
-        factory = self._driver_factories.get(platform)
-        if factory is None:
-            session.status = "failed"
-            session.message = f"尚未实现 {platform} 的二维码登录流程"
-        else:
-            session.task = asyncio.create_task(self._run_qr_flow(session, factory()))
+        session.task = asyncio.create_task(self._run_qr_flow(session, self._driver_factories[platform]()))
         return await self.get_session_status(session.session_id)
 
     async def get_session_status(self, session_id: str) -> AuthSessionStatus:
@@ -153,26 +131,24 @@ class BrowserAuthService:
             captcha_url=session.captcha_url,
         )
 
-    async def get_session_qrcode(self, session_id: str) -> Optional[str]:
-        session = self.sessions.get(session_id)
-        if not session:
-            raise ValueError(f"会话不存在: {session_id}")
-        return session.qrcode_b64
-
     async def check_platform_status(self, platform: str) -> bool:
-        if platform not in self.platforms:
+        check = self._checks.get(platform)
+        if check is None:
+            raise ValueError("此平台不支持登录检测")
+        cookie = await self._config_service.get_platform_cookie_string(platform, fresh=True)
+        if not cookie:
             return False
-        cookie_str = await self._config_service.get_platform_cookie_string(
-            platform,
-            fresh=True,
-        )
-        if not cookie_str:
-            return False
-        check = getattr(self, f"_check_{platform}_status", None)
-        return bool(await check(cookie_str)) if check else False
+        try:
+            return await check(cookie)
+        except FavoritesFetchError as error:
+            if error.auth_required:
+                return False
+            raise LoginCheckUnavailable(error.hint or "暂时无法检测登录状态") from error
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError) as error:
+            raise LoginCheckUnavailable("暂时无法检测登录状态，请稍后重试") from error
 
     async def logout_platform(self, platform: str) -> None:
-        if platform not in self.platforms:
+        if platform not in self._checks:
             return
         async with self._platform_session_locks.setdefault(platform, asyncio.Lock()):
             await self._cancel_platform_sessions(platform)
@@ -262,86 +238,37 @@ class BrowserAuthService:
             await driver.close()
 
     async def _check_bilibili_status(self, cookie_str: str) -> bool:
-        headers = self._cookie_headers(cookie_str)
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(self.platforms["bilibili"]["check_url"], headers=headers)
-                data = response.json()
-                return data.get("code") == 0 and (data.get("data") or {}).get("isLogin") is True
-        except Exception:
-            return False
+        from app.adapters.favorites.bilibili_fetcher import BilibiliFavoritesFetcher
+
+        await BilibiliFavoritesFetcher().current_account(PlatformAdapter.parse_cookie_str(cookie_str))
+        return True
 
     async def _check_xiaohongshu_status(self, cookie_str: str) -> bool:
-        cookie_str = strip_cookie_wrapper_quotes(cookie_str)
-        ua = (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
+        from app.adapters.favorites.xiaohongshu_fetcher import XiaohongshuFavoritesFetcher
+
+        user_id = await XiaohongshuFavoritesFetcher().current_user_id(
+            PlatformAdapter.parse_cookie_str(cookie_str),
         )
-        uri = "/api/sns/web/v1/user/me"
-        cookies = self._parse_cookies(cookie_str)
-        try:
-            config = build_xhs_crypto_config(ua)
-            sign = Xhshow(config).sign_headers_get(
-                uri,
-                cookies,
-                session=SessionManager(config),
-            )
-        except Exception as exc:
-            logger.warning("[xiaohongshu] 检测签名失败: {}", exc)
-            return False
-        headers = {
-            **self._cookie_headers(cookie_str, ua),
-            "origin": "https://www.xiaohongshu.com",
-            "referer": "https://www.xiaohongshu.com/",
-            **sign,
-        }
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(self.platforms["xiaohongshu"]["check_url"], headers=headers)
-                return bool(response.json().get("success"))
-        except Exception as exc:
-            logger.warning("[xiaohongshu] 登录状态检测网络异常: {}", exc)
-            return False
+        if not user_id:
+            raise LoginCheckUnavailable("小红书暂未返回账号信息")
+        return True
 
     async def _check_weibo_status(self, cookie_str: str) -> bool:
-        from app.adapters.base import PlatformAdapter
-        from app.adapters.favorites.errors import FavoritesFetchError
         from app.adapters.weibo_session import WeiboSession
-        try:
-            await WeiboSession(PlatformAdapter.parse_cookie_str(cookie_str)).current_user_id()
-            return True
-        except FavoritesFetchError:
-            return False
+
+        await WeiboSession(PlatformAdapter.parse_cookie_str(cookie_str)).current_user_id()
+        return True
 
     async def _check_zhihu_status(self, cookie_str: str) -> bool:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                response = await client.get(
-                    self.platforms["zhihu"]["check_url"],
-                    headers={**self._cookie_headers(cookie_str), "accept": "application/json, text/plain, */*"},
-                )
-                data = response.json()
-                return "id" in data or "name" in data
-        except Exception:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get("https://www.zhihu.com/api/v4/me",
+                                        headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json", "Cookie": cookie_str})
+        if response.status_code == 401:
             return False
-
-    @staticmethod
-    def _cookie_headers(cookie_str: str, user_agent: str | None = None) -> dict[str, str]:
-        return {
-            "user-agent": user_agent
-            or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-            "cookie": strip_cookie_wrapper_quotes(cookie_str),
-        }
-
-    @staticmethod
-    def _parse_cookies(cookie_str: str) -> dict[str, str]:
-        cookies: dict[str, str] = {}
-        for item in strip_cookie_wrapper_quotes(cookie_str).split(";"):
-            if "=" in item:
-                name, value = item.strip().split("=", 1)
-                cookies[name.strip()] = value.strip()
-        return cookies
+        response.raise_for_status()
+        if response.json().get("id"):
+            return True
+        raise LoginCheckUnavailable("知乎暂未返回账号信息")
 
     async def refresh_zhihu_zse_cookie(
         self,
@@ -378,10 +305,10 @@ class BrowserAuthService:
             logger.warning("未配置 zhihu_cookie，无法刷新 __zse_ck")
             return False
 
-        normalized = strip_cookie_wrapper_quotes(cookie_str)
+        normalized = cookie_str
         cookies = [
             {"name": name, "value": value, "domain": ".zhihu.com", "path": "/"}
-            for name, value in self._parse_cookies(normalized).items()
+            for name, value in PlatformAdapter.parse_cookie_str(normalized).items()
         ]
 
         proxy = await self._config_service.get_http_proxy()
@@ -404,7 +331,7 @@ class BrowserAuthService:
         if not extracted.get("__zse_ck"):
             logger.warning("未能提取到新的 __zse_ck")
             return False
-        merged = self._parse_cookies(normalized)
+        merged = PlatformAdapter.parse_cookie_str(normalized)
         merged.update(extracted)
         changed = await self._config_service.replace_value_if_unchanged(
             "zhihu_cookie", cookie_str,

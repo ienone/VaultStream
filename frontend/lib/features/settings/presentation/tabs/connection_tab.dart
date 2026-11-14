@@ -1,4 +1,3 @@
-import '../../../../core/widgets/app_setting_group.dart';
 import '../../../../core/layout/app_page_body.dart';
 
 import 'package:go_router/go_router.dart';
@@ -41,91 +40,54 @@ class ConnectionTab extends ConsumerWidget {
     if (accountsOnly) {
       final platformHealthAsync = ref.watch(platformHealthProvider);
       return ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 12, 12, 24),
         children: [
-          const SectionHeader(title: '消息账号'),
-          AppSettingGroup(
-            children: [
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                leading: const Icon(Icons.telegram_rounded),
-                selected: selectedPlatform == 'telegram',
-                title: const Text('Telegram'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.go('/accounts/telegram'),
-              ),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 8,
-                ),
-                leading: const Icon(Icons.chat_bubble_outline_rounded),
-                selected: selectedPlatform == 'qq',
-                title: const Text('QQ'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.go('/accounts/qq'),
-              ),
-              ref
-                  .watch(systemSettingsProvider)
-                  .when(
-                    data: (settings) => SettingSwitch(
-                      title: const Text('允许机器人转存收藏'),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      value: parseBoolSetting(
-                        getSettingValue(settings, 'chat_capture_enabled', true),
-                        true,
-                      ),
-                      onChanged: (value) => ref
-                          .read(systemSettingsProvider.notifier)
-                          .updateSetting(
-                            'chat_capture_enabled',
-                            value,
-                            category: 'bot',
-                          ),
-                    ),
-                    loading: () => const LinearProgressIndicator(),
-                    error: (_, _) => SettingLoadFailure(
-                      onRetry: () => ref.invalidate(systemSettingsProvider),
-                    ),
-                  ),
-            ],
-          ),
-          const SizedBox(height: 24),
           const SectionHeader(title: '内容平台'),
           _buildPlatformHealthSection(context, ref, platformHealthAsync),
-          AppSettingGroup(
+          const SizedBox(height: 16),
+          const SectionHeader(title: '聊天账号'),
+          for (final entry in {'telegram': 'Telegram', 'qq': 'QQ'}.entries)
+            ListTile(
+              leading: Icon(
+                entry.key == 'telegram'
+                    ? Icons.telegram_rounded
+                    : Icons.chat_bubble_outline_rounded,
+              ),
+              selected: selectedPlatform == entry.key,
+              title: Text(entry.value),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.go('/accounts/${entry.key}'),
+            ),
+          const SizedBox(height: 12),
+          ExpansionTile(
+            title: const Text('账号设置'),
             children: [
               ref
                   .watch(systemSettingsProvider)
                   .when(
-                    data: (settings) => SettingSwitch(
-                      shape: const RoundedRectangleBorder(),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 8,
-                      ),
-                      title: const Text('自动检查登录状态'),
-                      value: parseBoolSetting(
-                        getSettingValue(
-                          settings,
-                          'enable_cookie_keepalive',
-                          true,
-                        ),
-                        true,
-                      ),
-                      onChanged: (value) => ref
-                          .read(systemSettingsProvider.notifier)
-                          .updateSetting(
-                            'enable_cookie_keepalive',
-                            value,
-                            category: 'automation',
+                    data: (settings) => Column(
+                      children: [
+                        for (final option in {
+                          'chat_capture_enabled': '允许机器人保存到收藏库',
+                          'enable_cookie_keepalive': '自动检查登录状态',
+                        }.entries)
+                          SettingSwitch(
+                            title: Text(option.value),
+                            value: parseBoolSetting(
+                              getSettingValue(settings, option.key, true),
+                              true,
+                            ),
+                            onChanged: (value) => ref
+                                .read(systemSettingsProvider.notifier)
+                                .updateSetting(
+                                  option.key,
+                                  value,
+                                  category: option.key == 'chat_capture_enabled'
+                                      ? 'bot'
+                                      : 'automation',
+                                ),
                           ),
+                      ],
                     ),
                     loading: () => const LinearProgressIndicator(),
                     error: (_, _) => SettingLoadFailure(
@@ -302,122 +264,54 @@ class ConnectionTab extends ConsumerWidget {
     );
   }
 
-  Widget buildBiliAdvancedEditor(BuildContext context, WidgetRef ref) {
-    final settingsAsync = ref.watch(systemSettingsProvider);
-    return settingsAsync.when(
-      data: (settings) {
-        final sessdata =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'bilibili_cookie',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        final jct =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'bilibili_bili_jct',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-        final buvid =
-            settings
-                    .firstWhere(
-                      (s) => s.key == 'bilibili_buvid3',
-                      orElse: () => const SystemSetting(key: '', value: ''),
-                    )
-                    .value
-                as String? ??
-            '';
-
-        return SettingsEditorDraft(
-          initialValues: {'sessdata': sessdata, 'jct': jct, 'buvid': buvid},
-          builder: (context, controllers) {
-            final sessController = controllers['sessdata']!;
-            final jctController = controllers['jct']!;
-            final buvidController = controllers['buvid']!;
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text('SESSDATA（Cookie）'),
-                const SizedBox(height: 8),
-                Semantics(
-                  label: 'SESSDATA（Cookie）',
-                  child: TextField(
-                    controller: sessController,
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                  ),
+  Widget buildBiliAdvancedEditor(BuildContext context, WidgetRef ref) =>
+      SettingsEditorDraft(
+        initialValues: const {'cookie': ''},
+        builder: (context, controllers) {
+          final field = controllers['cookie']!;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              TextField(
+                controller: field,
+                obscureText: true,
+                enableSuggestions: false,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: '哔哩哔哩 Cookie',
+                  hintText: 'SESSDATA=…',
                 ),
-                const SizedBox(height: 16),
-                const Text('bili_jct（CSRF）'),
-                const SizedBox(height: 8),
-                Semantics(
-                  label: 'bili_jct（CSRF）',
-                  child: TextField(
-                    controller: jctController,
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text('buvid3'),
-                const SizedBox(height: 8),
-                Semantics(
-                  label: 'buvid3',
-                  child: TextField(
-                    controller: buvidController,
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: SettingSaveButton(
-                    onPressed: () async {
-                      final notifier = ref.read(
-                        systemSettingsProvider.notifier,
-                      );
-                      await notifier.updateSetting(
+              ),
+              SettingSaveButton(
+                onPressed: () async {
+                  final cookie = field.text.trim();
+                  if (!cookie
+                      .split(';')
+                      .any(
+                        (part) => RegExp(r'^SESSDATA=.+').hasMatch(part.trim()),
+                      )) {
+                    showToast(context, 'Cookie 需要包含 SESSDATA');
+                    return;
+                  }
+                  await ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
                         'bilibili_cookie',
-                        sessController.text,
+                        cookie,
                         category: 'platform',
                       );
-                      await notifier.updateSetting(
-                        'bilibili_bili_jct',
-                        jctController.text,
-                        category: 'platform',
-                      );
-                      await notifier.updateSetting(
-                        'bilibili_buvid3',
-                        buvidController.text,
-                        category: 'platform',
-                      );
-                      if (context.mounted) showToast(context, 'B站高级配置已保存');
-                    },
-                    child: const Text('保存配置'),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-      loading: () => const LoadingGroup(),
-      error: (_, _) => SettingLoadFailure(
-        onRetry: () => ref.invalidate(systemSettingsProvider),
-      ),
-    );
-  }
+                  if (context.mounted) {
+                    field.clear();
+                    ref.invalidate(platformHealthProvider);
+                    showToast(context, '已保存哔哩哔哩登录');
+                  }
+                },
+                child: const Text('保存登录'),
+              ),
+            ],
+          );
+        },
+      );
 
   Future<void> _testConnection(
     BuildContext context,

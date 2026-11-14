@@ -48,5 +48,5 @@ async def list_settings_values(category: Optional[str] = None) -> list[dict[str,
     return await _service().list_values(category)
 
 
-def invalidate_setting_cache(key: str) -> None:
-    _service().invalidate(key)
+async def set_setting_values(values: dict[str, Any], category: str) -> list[SystemSetting]:
+    return await _service().set_values(values, category=category)

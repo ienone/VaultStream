@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/sse_service.dart';
 import '../../core/utils/toast.dart';
 import '../../routing/app_navigation.dart';
 
@@ -17,12 +18,20 @@ class TelegramAccountStatus {
       sessionPresent = json['session_present'] as bool,
       running = json['running'] as bool,
       channelsEnabled = json['channels_enabled'] as bool,
-      savedEnabled = json['saved_enabled'] as bool;
+      savedEnabled = json['saved_enabled'] as bool,
+      recentRuns = (json['recent_runs'] as List).cast<Map<String, dynamic>>();
 
+  final List<Map<String, dynamic>> recentRuns;
   final bool configured, sessionPresent, running, channelsEnabled, savedEnabled;
 }
 
 final telegramAccountProvider = FutureProvider.autoDispose((ref) async {
+  refreshOnEvents(
+    ref,
+    (event) =>
+        event.type == 'background_task_updated' &&
+        event.data['task'] == 'telegram_account_sync',
+  );
   final response = await ref
       .watch(apiClientProvider)
       .get('/telegram-account/status');
@@ -46,56 +55,15 @@ class TelegramAccountPage extends ConsumerStatefulWidget {
 class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
   bool _busy = false;
 
-  Future<void> _update(
-    TelegramAccountStatus status, {
-    bool? channels,
-    bool? saved,
-  }) async {
-    setState(() => _busy = true);
-    try {
-      await ref
-          .read(apiClientProvider)
-          .put(
-            '/telegram-account/options',
-            data: {
-              'channels_enabled': channels ?? status.channelsEnabled,
-              'saved_enabled': saved ?? status.savedEnabled,
-            },
-          );
-      if (!mounted) return;
-      ref.invalidate(telegramAccountProvider);
-      await ref.read(telegramAccountProvider.future);
-    } catch (error) {
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(error), isError: true);
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   Future<void> _login() async {
-    await showDialog<bool>(
-      context: context,
-      builder: (_) => TelegramLoginDialog(client: ref.read(apiClientProvider)),
-    );
-    if (mounted) ref.invalidate(telegramAccountProvider);
-  }
-
-  Future<void> _sync() async {
     setState(() => _busy = true);
     try {
-      final response = await ref
-          .read(apiClientProvider)
-          .post('/telegram-account/sync');
-      final runId = (response.data as Map<String, dynamic>)['run_id'] as String;
-      ref.invalidate(telegramAccountProvider);
-      if (mounted) await context.push('/tasks/${Uri.encodeComponent(runId)}');
+      await showDialog<bool>(
+        context: context,
+        builder: (_) =>
+            TelegramLoginDialog(client: ref.read(apiClientProvider)),
+      );
       if (mounted) ref.invalidate(telegramAccountProvider);
-    } catch (error) {
-      if (mounted) {
-        Toast.show(context, formatApiErrorMessage(error), isError: true);
-      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -143,7 +111,7 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                 !account.configured
                     ? '尚未配置 Telegram 应用凭据'
                     : account.sessionPresent
-                    ? '已保存登录会话'
+                    ? '已连接'
                     : '尚未连接',
               ),
               const SizedBox(height: 12),
@@ -158,44 +126,11 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                     icon: const Icon(Icons.login_rounded),
                     label: Text(account.sessionPresent ? '重新连接' : '连接账号'),
                   ),
-                  FilledButton.icon(
-                    onPressed:
-                        _busy ||
-                            account.running ||
-                            !account.configured ||
-                            !account.sessionPresent ||
-                            !(account.channelsEnabled || account.savedEnabled)
-                        ? null
-                        : _sync,
+                  TextButton.icon(
+                    onPressed: () =>
+                        context.push('/sources/sync?platform=telegram'),
                     icon: const Icon(Icons.sync_rounded),
-                    label: Text(account.running ? '正在同步' : '立即同步'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              AppSettingGroup(
-                children: [
-                  SwitchListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
-                    title: const Text('同步未静音频道'),
-                    value: account.channelsEnabled,
-                    onChanged: _busy
-                        ? null
-                        : (value) => _update(account, channels: value),
-                  ),
-                  SwitchListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 8,
-                    ),
-                    title: const Text('同步 Saved Messages'),
-                    value: account.savedEnabled,
-                    onChanged: _busy
-                        ? null
-                        : (value) => _update(account, saved: value),
+                    label: const Text('收藏同步'),
                   ),
                 ],
               ),
@@ -205,6 +140,114 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class TelegramSyncControls extends ConsumerStatefulWidget {
+  const TelegramSyncControls({super.key, required this.account});
+  final TelegramAccountStatus account;
+  @override
+  ConsumerState<TelegramSyncControls> createState() =>
+      _TelegramSyncControlsState();
+}
+
+class _TelegramSyncControlsState extends ConsumerState<TelegramSyncControls> {
+  bool _busy = false;
+
+  Future<void> _update(
+    TelegramAccountStatus status, {
+    bool? channels,
+    bool? saved,
+  }) async {
+    setState(() => _busy = true);
+    try {
+      await ref
+          .read(apiClientProvider)
+          .put(
+            '/telegram-account/options',
+            data: {
+              'channels_enabled': channels ?? status.channelsEnabled,
+              'saved_enabled': saved ?? status.savedEnabled,
+            },
+          );
+      if (!mounted) return;
+      ref.invalidate(telegramAccountProvider);
+      await ref.read(telegramAccountProvider.future);
+    } catch (error) {
+      if (mounted) {
+        Toast.show(context, formatApiErrorMessage(error), isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _sync() async {
+    setState(() => _busy = true);
+    try {
+      final response = await ref
+          .read(apiClientProvider)
+          .post('/telegram-account/sync');
+      final runId = (response.data as Map<String, dynamic>)['run_id'] as String;
+      ref.invalidate(telegramAccountProvider);
+      if (mounted) await context.push('/tasks/${Uri.encodeComponent(runId)}');
+      if (mounted) ref.invalidate(telegramAccountProvider);
+    } catch (error) {
+      if (mounted) {
+        Toast.show(context, formatApiErrorMessage(error), isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final account = widget.account;
+    final connected = account.configured && account.sessionPresent;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppSettingGroup(
+          children: [
+            SwitchListTile(
+              title: const Text('已保存的消息'),
+              value: account.savedEnabled,
+              onChanged: connected && !_busy
+                  ? (v) => _update(account, saved: v)
+                  : null,
+            ),
+            SwitchListTile(
+              title: const Text('未静音的频道'),
+              value: account.channelsEnabled,
+              onChanged: connected && !_busy
+                  ? (v) => _update(account, channels: v)
+                  : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: connected
+              ? FilledButton.icon(
+                  onPressed:
+                      !_busy &&
+                          !account.running &&
+                          (account.channelsEnabled || account.savedEnabled)
+                      ? _sync
+                      : null,
+                  icon: const Icon(Icons.sync),
+                  label: Text(account.running ? '正在同步' : '立即同步'),
+                )
+              : FilledButton.tonalIcon(
+                  onPressed: () => context.push('/accounts/telegram?from=sync'),
+                  icon: const Icon(Icons.login),
+                  label: const Text('连接 Telegram'),
+                ),
+        ),
+      ],
     );
   }
 }

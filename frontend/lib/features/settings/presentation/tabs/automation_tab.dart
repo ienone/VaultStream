@@ -292,7 +292,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     try {
       final result = await ref.read(aiConnectivityTestProvider).run(target);
       if (context.mounted) {
-        showToast(context, result.ok ? '连接测试通过' : '连接测试失败');
+        showToast(context, result.ok ? '连接正常' : result.error ?? '连接失败');
       }
     } catch (e) {
       if (context.mounted) {
@@ -313,7 +313,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     Widget? footer,
   }) {
     final defaults = switch (target) {
-      'text_llm' => {'api_base': '', 'api_key': '', 'model': ''},
+      'text_llm' => {'base_url': '', 'api_key': '', 'model': ''},
       'summary' => {
         'api_key': '',
         'model': 'gemini-3.1-flash-lite-preview',
@@ -327,7 +327,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
       _ => throw ArgumentError.value(target),
     };
     const labels = {
-      'api_base': 'API 地址',
+      'base_url': 'API 地址',
       'api_key': 'API 密钥',
       'model': '模型名称',
       'api_version': 'API 版本',
@@ -361,10 +361,10 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                       controller: controllers[field]!,
                       label: labels[field]!,
                       obscureText: field == 'api_key',
-                      hint: field == 'api_base'
+                      hint: field == 'base_url'
                           ? 'https://api.example.com/v1'
                           : null,
-                      keyboardType: field == 'api_base'
+                      keyboardType: field == 'base_url'
                           ? TextInputType.url
                           : field == 'output_dimensionality'
                           ? TextInputType.number
@@ -375,58 +375,43 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
                     ),
                     const SizedBox(height: 12),
                   ],
-                  Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 8,
-                    children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.network_check_rounded),
-                        label: const Text('测试连接'),
-                        onPressed: () => _runAiConnectivityTest(
-                          context,
-                          ref,
-                          switch (target) {
-                            'embedding' => 'semantic_search',
-                            'summary' => 'summary_generation',
-                            _ => 'text_llm',
-                          },
-                        ),
-                      ),
-                      _ModelSaveButton(
-                        onSave: () async {
-                          final updates = <String, dynamic>{};
-                          for (final field in defaults.keys) {
-                            final text = controllers[field]!.text.trim();
-                            if (field == 'api_key' && text.isEmpty) continue;
-                            if (field == 'output_dimensionality') {
-                              final dimension = int.tryParse(text);
-                              if (dimension == null ||
-                                  dimension < 128 ||
-                                  dimension > 3072) {
-                                showToast(context, '输出维度须为 128–3072 的整数');
-                                return;
-                              }
-                              updates[field] = dimension;
-                            } else {
-                              updates[field] = text.isEmpty
-                                  ? defaults[field]!
-                                  : text;
-                            }
+                  _ModelSaveButtons(
+                    onSave: (test) async {
+                      final updates = <String, dynamic>{};
+                      for (final field in defaults.keys) {
+                        final text = controllers[field]!.text.trim();
+                        if (field == 'api_key' && text.isEmpty) continue;
+                        if (text == values[field]) continue;
+                        if (field == 'output_dimensionality') {
+                          final dimension = int.tryParse(text);
+                          if (dimension == null ||
+                              dimension < 128 ||
+                              dimension > 3072) {
+                            showToast(context, '输出维度须为 128–3072 的整数');
+                            return;
                           }
-                          final notifier = ref.read(
-                            systemSettingsProvider.notifier,
+                          updates['${target}_$field'] = dimension;
+                        } else {
+                          updates['${target}_$field'] = text.isEmpty
+                              ? defaults[field]!
+                              : text;
+                        }
+                      }
+                      await ref
+                          .read(systemSettingsProvider.notifier)
+                          .updateSettings(
+                            updates,
+                            target == 'text_llm' ? 'llm' : target,
                           );
-                          for (final entry in updates.entries) {
-                            await notifier.updateSetting(
-                              '${target}_${entry.key}',
-                              entry.value,
-                              category: target == 'text_llm' ? 'llm' : target,
-                            );
-                          }
-                          if (context.mounted) showToast(context, '模型配置已保存');
-                        },
-                      ),
-                    ],
+                      if (!context.mounted) return;
+                      controllers['api_key']!.clear();
+                      ref.invalidate(aiCapabilitiesProvider);
+                      if (test) {
+                        await _runAiConnectivityTest(context, ref, target);
+                      } else {
+                        showToast(context, '模型配置已保存');
+                      }
+                    },
                   ),
                   if (footer != null) ...[const SizedBox(height: 24), footer],
                 ],
@@ -647,43 +632,47 @@ class _SettingsField extends StatelessWidget {
   );
 }
 
-class _ModelSaveButton extends StatefulWidget {
-  const _ModelSaveButton({required this.onSave});
+class _ModelSaveButtons extends StatefulWidget {
+  const _ModelSaveButtons({required this.onSave});
 
-  final Future<void> Function() onSave;
+  final Future<void> Function(bool test) onSave;
 
   @override
-  State<_ModelSaveButton> createState() => _ModelSaveButtonState();
+  State<_ModelSaveButtons> createState() => _ModelSaveButtonsState();
 }
 
-class _ModelSaveButtonState extends State<_ModelSaveButton> {
-  bool _saving = false;
+class _ModelSaveButtonsState extends State<_ModelSaveButtons> {
+  bool? _testing;
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
+  Future<void> _submit(bool test) async {
+    setState(() => _testing = test);
     try {
-      await widget.onSave();
+      await widget.onSave(test);
     } catch (error) {
       if (mounted) {
         showToast(
           context,
-          formatApiErrorMessage(error, fallbackMessage: '配置保存失败，请重试'),
+          formatApiErrorMessage(error, fallbackMessage: '保存失败'),
         );
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _testing = null);
     }
   }
 
   @override
-  Widget build(BuildContext context) => FilledButton.tonalIcon(
-    onPressed: _saving ? null : _save,
-    icon: _saving
-        ? const SizedBox.square(
-            dimension: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(Icons.save_outlined),
-    label: Text(_saving ? '保存中…' : '保存配置'),
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.end,
+    spacing: 8,
+    children: [
+      TextButton(
+        onPressed: _testing == null ? () => _submit(true) : null,
+        child: Text(_testing == true ? '正在测试…' : '保存并测试'),
+      ),
+      FilledButton.tonal(
+        onPressed: _testing == null ? () => _submit(false) : null,
+        child: Text(_testing == false ? '正在保存…' : '保存'),
+      ),
+    ],
   );
 }

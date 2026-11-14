@@ -155,13 +155,13 @@ def _aggregate_state(stages: list[ProcessingStage]) -> ProcessingStageState:
 
 
 async def _build_processing_status(content: Content, db: AsyncSession) -> ContentProcessingStatus:
-    config_service = ConfigService()
-    ai_config = await config_service.get_ai_config()
-    archive_config = await config_service.get_archive_media_config()
-    summary_enabled = ai_config.summary.enabled
-    summary_key_ready = bool(ai_config.summary.api_key)
-    embedding_key_ready = bool(ai_config.embedding.api_key)
-    text_llm_ready = bool(ai_config.text_llm.api_key)
+    config = await ConfigService.snapshot(db)
+    summary = await config.get_summary_ai_config()
+    archive_config = await config.get_archive_media_config()
+    summary_enabled = summary.enabled
+    summary_key_ready = bool(summary.api_key)
+    embedding_key_ready = bool((await config.get_embedding_ai_config()).api_key)
+    text_llm_ready = bool((await config.get_text_llm_config()).api_key)
     has_summary = bool((content.summary or "").strip())
     has_chunks = bool(
         isinstance(content.rich_payload, dict)

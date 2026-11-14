@@ -34,9 +34,6 @@ class Settings(BaseSettings):
     telegram_whitelist_ids: str = ""  # 白名单用户ID列表，逗号分隔。为空则默认拒绝普通用户
     telegram_blacklist_ids: str = ""  # 黑名单用户ID列表，逗号分隔
 
-    qq_admin_ids: str = ""
-    qq_whitelist_ids: str = ""
-    qq_blacklist_ids: str = ""
 
     # Napcat/OneBot 11 配置
     enable_napcat: bool = False

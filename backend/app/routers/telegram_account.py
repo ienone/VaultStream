@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr, Field
 
 from app.core.config import settings
 from app.core.dependencies import require_api_token
+from app.services.background_task_state import get_recent_task_runs
 
 router = APIRouter(prefix="/telegram-account", dependencies=[Depends(require_api_token)])
 
@@ -21,6 +22,7 @@ class TelegramAccountStatus(TelegramSyncOptions):
     configured: bool
     session_present: bool
     running: bool
+    recent_runs: list[dict]
 
 
 class TelegramSyncAccepted(BaseModel):
@@ -36,7 +38,8 @@ async def status(request: Request):
     task = worker(request)
     return TelegramAccountStatus(**await task.options(), running=task.running,
         configured=bool(settings.telegram_api_id and settings.telegram_api_hash.get_secret_value()),
-        session_present=Path(settings.telegram_session_path).is_file())
+        session_present=Path(settings.telegram_session_path).is_file(),
+        recent_runs=await get_recent_task_runs("telegram_account_sync", limit=8))
 
 
 @router.put("/options", response_model=TelegramSyncOptions)

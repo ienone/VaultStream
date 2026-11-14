@@ -5,7 +5,7 @@ import httpx
 from telegram import Update
 from telegram.ext import ContextTypes
 from app.core.logging import logger
-from .permissions import get_permission_manager
+from .permissions import check_permission
 
 
 def _get_api_headers(context: ContextTypes.DEFAULT_TYPE) -> dict[str, str]:
@@ -37,13 +37,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Bot 按钮回调: user={user.username}(ID:{user.id}), data={callback_data}")
     
     # 获取依赖
-    perm_manager = get_permission_manager(context.bot_data)
     http_client: httpx.AsyncClient = context.bot_data.get("http_client")
     api_base = context.bot_data.get("api_base")
     
     is_agent_confirmation = callback_data.startswith("agent-confirm:")
     # 内容删除始终需要管理员；Agent 确认允许原请求人处理，归属在下方核验。
-    allowed, reason = perm_manager.check_permission(
+    allowed, reason = await check_permission(
         user.id,
         require_admin=not is_agent_confirmation,
     )

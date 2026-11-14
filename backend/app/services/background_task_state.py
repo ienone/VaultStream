@@ -100,19 +100,20 @@ async def record_task_run_error(
     return await _upsert_run(task_name, run_id or uuid4().hex, status="error", error=str(error)[:1000], result=result)
 
 
-async def get_recent_task_runs(task_name: str, limit: int = _MAX_RECENT_RUNS) -> list[dict[str, Any]]:
+async def get_recent_task_runs(task_name: str, limit: int = _MAX_RECENT_RUNS, *, platform: str | None = None) -> list[dict[str, Any]]:
     bounded_limit = max(0, min(limit, _MAX_RECENT_RUNS))
     if bounded_limit == 0:
         return []
+    run = BackgroundTaskRun
+    query = select(run).where(run.task == task_name)
+    if platform:
+        results = func.json_each(run.result, "$.results").table_valued("key")
+        query = query.where(
+            (run.run_metadata["scope"].as_string() == platform)
+            | select(1).select_from(results).where(results.c.key == platform).exists()
+        )
     async with AsyncSessionLocal() as db:
-        rows = (
-            await db.execute(
-                select(BackgroundTaskRun)
-                .where(BackgroundTaskRun.task == task_name)
-                .order_by(BackgroundTaskRun.started_at.desc())
-                .limit(bounded_limit)
-            )
-        ).scalars().all()
+        rows = (await db.scalars(query.order_by(run.started_at.desc(), run.run_id.desc()).limit(bounded_limit))).all()
     return [_serialize_run(row) for row in rows]
 
 

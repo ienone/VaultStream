@@ -11,8 +11,10 @@ from app.core.db_adapter import AsyncSessionLocal
 from app.core.events import event_bus
 from app.core.logging import logger
 from app.core.time_utils import utcnow
+from app.repositories import SystemRepository
 from app.models import BotChat, BotChatType, BotConfig, BotConfigPlatform
 from app.schemas import (
+    BotAccessUpdate,
     BotConfigCreate,
     BotConfigDeleteResponse,
     BotConfigMutationResponse,
@@ -418,6 +420,32 @@ class BotConfigService:
                         f"{field_name} cannot be empty"
                     )
 
+    async def _update_access(
+        self, db: AsyncSession, platform: BotConfigPlatform, access: BotAccessUpdate | None,
+    ) -> None:
+        if access is None:
+            return
+        changes = access.model_dump(exclude_none=True)
+        repo = SystemRepository(db)
+        if platform == BotConfigPlatform.QQ:
+            fields = {"admins": "admin_qq", "groups": "group_ids", "agent_enabled": "enabled"}
+        else:
+            fields = {"admins": "telegram_admin_ids", "allowed_users": "telegram_whitelist_ids",
+                      "blocked_users": "telegram_blacklist_ids"}
+        if not changes.keys() <= fields.keys():
+            raise BotConfigValidationError("名单字段不适用于此平台")
+        for key, value in changes.items():
+            if key != "agent_enabled" and any(not item.isascii() or not item.isdigit() for item in value):
+                raise BotConfigValidationError("用户和群组 ID 必须是数字")
+        if platform == BotConfigPlatform.QQ:
+            row = await repo.get_setting("qq_bot_agent")
+            policy = dict(row.value) if row else {}
+            policy.update({fields[k]: v for k, v in changes.items()})
+            await repo.upsert_setting("qq_bot_agent", policy, category="bot")
+        else:
+            for key, value in changes.items():
+                await repo.upsert_setting(fields[key], ",".join(value), category="bot")
+
     async def to_response(
         self,
         db: AsyncSession,
@@ -529,6 +557,8 @@ class BotConfigService:
             is_primary=payload.is_primary,
         )
         db.add(cfg)
+        await db.flush()
+        await self._update_access(db, platform, payload.access)
         await db.commit()
         await db.refresh(cfg)
         logger.info(
@@ -557,7 +587,7 @@ class BotConfigService:
             raise BotConfigNotFoundError("Bot config not found")
         self.validate_payload(payload, cfg.platform)
 
-        update_data = payload.model_dump(exclude_unset=True)
+        update_data = payload.model_dump(exclude_unset=True, exclude={"access"})
         if update_data.get("is_primary") is True:
             await db.execute(
                 update(BotConfig)
@@ -576,8 +606,12 @@ class BotConfigService:
         for key, value in update_data.items():
             setattr(cfg, key, value)
         cfg.updated_at = utcnow()
+        await db.flush()
+        await self._update_access(db, cfg.platform, payload.access)
         await db.commit()
         await db.refresh(cfg)
+        if not update_data:
+            return BotConfigMutationResponse(**(await self.to_response(db, cfg)).model_dump())
         logger.info("Bot 配置已更新: id={} name={}", cfg.id, cfg.name)
         return await self._mutation_response(
             db,

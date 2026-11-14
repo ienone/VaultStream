@@ -38,9 +38,24 @@ class SystemSettings extends _$SystemSettings {
     ]);
   }
 
-  Future<void> deleteSetting(String key) async {
-    await ref.read(apiClientProvider).delete('/settings/$key');
-    ref.invalidateSelf();
+  Future<void> updateSettings(
+    Map<String, dynamic> values,
+    String category,
+  ) async {
+    if (values.isEmpty) return;
+    await future;
+    final response = await ref
+        .read(apiClientProvider)
+        .patch('/settings', data: {'values': values, 'category': category});
+    if (!ref.mounted) return;
+    final updated = (response.data as List).map(
+      (item) => SystemSetting.fromJson(item),
+    );
+    state = AsyncData([
+      for (final setting in state.requireValue)
+        if (!values.containsKey(setting.key)) setting,
+      ...updated,
+    ]);
   }
 }
 
@@ -71,12 +86,6 @@ final semanticIndexActionsProvider = Provider<SemanticIndexActions>((ref) {
   return SemanticIndexActions(ref);
 });
 
-final aiModelDiscoveryActionsProvider = Provider<AiModelDiscoveryActions>((
-  ref,
-) {
-  return AiModelDiscoveryActions(ref);
-});
-
 class SemanticReindexResult {
   const SemanticReindexResult({this.runId});
 
@@ -104,22 +113,6 @@ class SemanticIndexActions {
     return SemanticReindexResult(
       runId: rawRunId == null || rawRunId.isEmpty ? null : rawRunId,
     );
-  }
-}
-
-class AiModelDiscoveryActions {
-  const AiModelDiscoveryActions(this.ref);
-
-  final Ref ref;
-
-  Future<List<String>> discover(String target) async {
-    final response = await ref
-        .read(apiClientProvider)
-        .post('/ai/models', data: {'target': target});
-    final data = Map<String, dynamic>.from(response.data as Map);
-    return (data['models'] as List<dynamic>? ?? const [])
-        .map((item) => item.toString())
-        .toList();
   }
 }
 

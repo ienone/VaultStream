@@ -100,6 +100,7 @@ class FavoritesSyncService:
     async def get_status(
         self,
         *,
+        platform: str | None = None,
         sync_task=None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
@@ -114,7 +115,7 @@ class FavoritesSyncService:
         )
         enabled_platforms = config.enabled_platforms
 
-        recent_runs = await get_recent_task_runs("favorites_sync", limit=10)
+        recent_runs = await get_recent_task_runs("favorites_sync", limit=10, platform=platform)
         latest = latest_favorites_runs()
         async with AsyncSessionLocal() as db:
             latest_rows = (await db.execute(select(BackgroundTaskRun, latest.c.platform).join(
@@ -124,12 +125,15 @@ class FavoritesSyncService:
             platform: run.result["results"][platform] if "results" in run.result else run.result["result"]
             for run, platform in latest_rows
         }
-        last_sync_at = max((run.finished_at for run, _ in latest_rows), default=None)
+        last_sync_at = max((run.finished_at for run, _ in latest_rows if run.finished_at is not None), default=None)
         platforms: list[dict[str, Any]] = []
+        queried_platform = platform
         for platform, capability in FAVORITES_CAPABILITIES.items():
+            if queried_platform and platform != queried_platform:
+                continue
             fetcher_cls = task.get_fetcher_cls(platform)
 
-            authenticated = False
+            authenticated = None
             available = fetcher_cls is not None
             error: str | None = capability.limitation if not available else None
             status_error: dict[str, Any] | None = None
@@ -151,6 +155,7 @@ class FavoritesSyncService:
                         exc,
                     )
                 except FavoritesFetchError as exc:
+                    authenticated = False if exc.auth_required else None
                     available = exc.code != "cli_unavailable"
                     error = exc.message
                     status_error = {
@@ -207,9 +212,6 @@ class FavoritesSyncService:
             "recent_runs": recent_runs,
             "policies": {
                 "duplicate_strategy": config.duplicate_strategy,
-                "scope_strategy": config.scope_strategy,
-                "first_sync_strategy": config.first_sync_strategy,
-                "unfavorite_strategy": config.unfavorite_strategy,
             },
             "platforms": platforms,
         }
@@ -330,12 +332,9 @@ class FavoritesSyncService:
                 request_id=request_id,
             )
 
-        recent_runs = await get_recent_task_runs("favorites_sync", limit=20)
-        source_run = next(
-            (run for run in recent_runs if run.get("run_id") == source_run_id),
-            None,
-        )
-        if source_run is None:
+        async with AsyncSessionLocal() as db:
+            source_run = await db.get(BackgroundTaskRun, source_run_id)
+        if source_run is None or source_run.task != "favorites_sync":
             raise self._error(
                 404,
                 message=f"Favorites sync run not found: {source_run_id}",
@@ -344,7 +343,7 @@ class FavoritesSyncService:
                 request_id=request_id,
             )
 
-        scope = str(source_run.get("scope") or "all").strip().lower()
+        scope = str((source_run.run_metadata or {}).get("scope") or "all").strip().lower()
         platform = None if scope == "all" else scope
         if platform and platform not in sync_task.get_supported_platforms():
             raise self._error(

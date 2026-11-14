@@ -7,12 +7,17 @@ final botConfigActionsProvider = Provider<BotConfigActions>((ref) {
   return BotConfigActions(ref);
 });
 
+final botConfigsProvider = FutureProvider.autoDispose<List<BotConfigRecord>>(
+  (ref) => ref.watch(botConfigActionsProvider).listConfigs(),
+);
+
 enum TelegramServiceAction { start, stop, restart }
 
 class BotConfigRecord {
   const BotConfigRecord({
     required this.id,
     required this.platform,
+    required this.primary,
     required this.enabled,
     required this.botTokenConfigured,
     this.napcatHttpUrl,
@@ -23,6 +28,7 @@ class BotConfigRecord {
       id: (json['id'] as num).toInt(),
       platform: json['platform']?.toString() ?? '',
       enabled: json['enabled'] == true,
+      primary: json['is_primary'] == true,
       botTokenConfigured:
           (json['bot_token_masked']?.toString().trim().isNotEmpty ?? false),
       napcatHttpUrl: json['napcat_http_url']?.toString(),
@@ -33,6 +39,7 @@ class BotConfigRecord {
   final String platform;
   final bool enabled;
   final bool botTokenConfigured;
+  final bool primary;
   final String? napcatHttpUrl;
 
   bool get hasUsableCredentials => switch (platform) {
@@ -60,7 +67,6 @@ class BotChatSyncResult {
 
 class BotConfigSaveResult {
   const BotConfigSaveResult({
-    required this.saved,
     this.configId,
     this.followUpKind,
     this.followUpRunId,
@@ -70,7 +76,6 @@ class BotConfigSaveResult {
 
   factory BotConfigSaveResult.fromJson(Map<String, dynamic> json) {
     return BotConfigSaveResult(
-      saved: true,
       configId: (json['id'] as num?)?.toInt(),
       followUpKind: json['follow_up_kind']?.toString(),
       followUpRunId: json['follow_up_run_id']?.toString(),
@@ -79,7 +84,6 @@ class BotConfigSaveResult {
     );
   }
 
-  final bool saved;
   final int? configId;
   final String? followUpKind;
   final String? followUpRunId;
@@ -109,79 +113,56 @@ class BotConfigActions {
         .toList();
   }
 
-  Future<BotConfigSaveResult> saveCredentials({
+  Future<BotConfigSaveResult?> saveConfig({
     required String platform,
+    required BotConfigRecord? existing,
     required String telegramToken,
     required String napcatHttpUrl,
+    required Map<String, dynamic> access,
   }) async {
-    final configs = await listConfigs();
-    final existing = configs
-        .where((item) => item.platform == platform)
-        .firstOrNull;
+    final telegram = platform == 'telegram';
+    final value = (telegram ? telegramToken : napcatHttpUrl).trim();
+    final keepCredential =
+        existing != null &&
+        ((telegram && value.isEmpty && existing.botTokenConfigured) ||
+            (!telegram && value.isNotEmpty && value == existing.napcatHttpUrl));
+    if (!keepCredential && value.isEmpty) {
+      throw StateError(telegram ? '请填写 Bot Token' : '请填写 Napcat 地址');
+    }
+    final payload = <String, dynamic>{
+      if (!keepCredential) (telegram ? 'bot_token' : 'napcat_http_url'): value,
+      if (access.isNotEmpty) 'access': access,
+    };
+    if (payload.isEmpty) return null;
     final dio = ref.read(apiClientProvider);
-
-    if (platform == 'telegram' && telegramToken.trim().isNotEmpty) {
-      final payload = {'bot_token': telegramToken.trim(), 'enabled': true};
-      if (existing == null) {
-        final response = await dio.post(
-          '/bot-config',
-          data: {
-            'platform': 'telegram',
-            'name': 'Main Telegram Bot',
-            ...payload,
-          },
-        );
-        ref.invalidate(botStatusProvider);
-        return BotConfigSaveResult.fromJson(
-          Map<String, dynamic>.from(response.data as Map),
-        );
-      } else {
-        final response = await dio.patch(
-          '/bot-config/${existing.id}',
-          data: payload,
-        );
-        ref.invalidate(botStatusProvider);
-        return BotConfigSaveResult.fromJson(
-          Map<String, dynamic>.from(response.data as Map),
-        );
-      }
+    final response = existing == null
+        ? await dio.post(
+            '/bot-config',
+            data: {
+              ...payload,
+              'platform': platform,
+              'enabled': true,
+              'name': telegram ? 'Telegram Bot' : 'QQ Bot',
+            },
+          )
+        : await dio.patch('/bot-config/${existing.id}', data: payload);
+    if (!keepCredential) {
+      ref.invalidate(botConfigsProvider);
+      ref.invalidate(botStatusProvider);
     }
-
-    if (platform == 'qq' && napcatHttpUrl.trim().isNotEmpty) {
-      final payload = {
-        'napcat_http_url': napcatHttpUrl.trim(),
-        'enabled': true,
-      };
-      if (existing == null) {
-        final response = await dio.post(
-          '/bot-config',
-          data: {'platform': 'qq', 'name': 'Main QQ Bot', ...payload},
-        );
-        ref.invalidate(botStatusProvider);
-        return BotConfigSaveResult.fromJson(
-          Map<String, dynamic>.from(response.data as Map),
-        );
-      } else {
-        final response = await dio.patch(
-          '/bot-config/${existing.id}',
-          data: payload,
-        );
-        ref.invalidate(botStatusProvider);
-        return BotConfigSaveResult.fromJson(
-          Map<String, dynamic>.from(response.data as Map),
-        );
-      }
-    }
-
-    return const BotConfigSaveResult(saved: false);
+    return BotConfigSaveResult.fromJson(
+      Map<String, dynamic>.from(response.data as Map),
+    );
   }
 
   Future<void> controlTelegram(TelegramServiceAction action) async {
-    await ref
+    final response = await ref
         .read(apiClientProvider)
         .post('/bot-config/service/telegram/${action.name}');
     ref.invalidate(botStatusProvider);
-    ref.invalidate(botRuntimeProvider);
+    if (response.data['status'] == 'error') {
+      throw StateError(response.data['error'] ?? '服务操作失败');
+    }
   }
 
   Future<int> resolveEnabledConfigId(String chatType) async {

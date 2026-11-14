@@ -28,7 +28,7 @@ active
 
 ## 实现逻辑
 
-系统配置来自环境变量和持久化 setting。`ConfigService` 提供类型转换和业务配置读取。AI capability、模型连通性、模型发现和平台解析由 `AIDiagnosticsService` 聚合；平台认证与后台任务诊断分别由专用 service 承担，system router 只负责 contract、依赖注入和 HTTP 错误映射。
+系统配置来自环境变量和持久化 setting。`ConfigService` 提供类型转换和业务配置读取。AI capability、模型连通性和平台解析由 `AIDiagnosticsService` 聚合；平台认证与后台任务诊断分别由专用 service 承担，system router 只负责 contract、依赖注入和 HTTP 错误映射。
 
 后台诊断的运行时间字段复用 UTC 日期响应类型，接收账本查询返回的 datetime，并序列化为带时区的字符串。解析失败条目同时返回关联内容标题，供处理页识别内容；仅列出仍处于解析失败状态的现存内容，每条内容取最近一次失败任务，避免已删除或已恢复内容继续出现在待处理列表。
 

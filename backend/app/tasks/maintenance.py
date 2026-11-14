@@ -17,20 +17,22 @@ async def _recorded_platform_check(
     label: str,
     platform: str,
     check_coro,
+    *,
+    reports_login: bool,
 ):
     try:
         success = await check_coro
     except Exception as e:
         logger.warning("{} keepalive raised: {}", label, e)
         await record_task_run_error(task_name, None, e)
-        await safely_sync_account_auth_notification(platform, is_valid=False)
-        return False
+        return None
 
     if success:
         await record_task_run_success(task_name)
     else:
         await record_task_run_error(task_name, None, f"{label} keepalive check failed")
-    await safely_sync_account_auth_notification(platform, is_valid=success)
+    if reports_login:
+        await safely_sync_account_auth_notification(platform, is_valid=success)
     return success
 
 
@@ -39,6 +41,8 @@ async def _run_platform_keepalive_if_allowed(
     label: str,
     platform: str,
     check_factory: Callable[[], Awaitable[bool]],
+    *,
+    reports_login: bool = True,
 ) -> bool | None:
     """Run one scheduled platform check only while the live policy allows it."""
     policy = await AutomationPolicyService().cookie_keepalive()
@@ -52,6 +56,7 @@ async def _run_platform_keepalive_if_allowed(
         label,
         platform,
         check_factory(),
+        reports_login=reports_login,
     )
 
 async def zhihu_keepalive_loop():
@@ -72,11 +77,12 @@ async def zhihu_keepalive_loop():
             "Zhihu",
             "zhihu",
             browser_auth_service.refresh_zhihu_zse_cookie,
+            reports_login=False,
         )
         if success is None:
             continue
         if not success:
-            logger.warning("Zhihu zse refresh failed. The primary cookie might be invalid.")
+            logger.warning("Zhihu fingerprint refresh failed.")
         else:
             logger.info("Zhihu zse refresh succeeded in background.")
 

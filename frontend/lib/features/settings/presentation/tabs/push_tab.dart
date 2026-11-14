@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show listEquals;
+
 import '../../../../core/layout/app_page_body.dart';
 
 import 'package:frontend/core/network/api_client.dart';
@@ -38,12 +40,15 @@ class _PushTabState extends ConsumerState<PushTab> {
   bool _isControllingTelegram = false;
   bool _isSyncingChats = false;
   bool _isGeneratingDigest = false;
-  String _botPlatform = 'telegram';
+  String get _botPlatform => widget.platform ?? 'telegram';
+  bool _qqAgentEnabled = false;
+  Map<String, dynamic> _originalAccess = {};
   final _updatingChats = <int>{};
   final _chatErrors = <int, String>{};
 
   final _tgTokenController = TextEditingController();
-  final _qqUrlController = TextEditingController(text: 'http://127.0.0.1:3000');
+  final _qqUrlController = TextEditingController();
+  bool _loadedCredentials = false;
   final _adminsCtrl = TextEditingController();
   final _whiteCtrl = TextEditingController();
   final _blackCtrl = TextEditingController();
@@ -51,9 +56,13 @@ class _PushTabState extends ConsumerState<PushTab> {
   bool _initialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    _botPlatform = widget.platform ?? 'telegram';
+  void didUpdateWidget(PushTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.platform != widget.platform) {
+      _initialized = false;
+      _loadedCredentials = false;
+      _tgTokenController.clear();
+    }
   }
 
   @override
@@ -70,72 +79,79 @@ class _PushTabState extends ConsumerState<PushTab> {
   void _initFromSettings(List<SystemSetting> settings) {
     if (_initialized) return;
     _initialized = true;
-    _adminsCtrl.text = _getSetting(settings, '${_botPlatform}_admin_ids');
-    _whiteCtrl.text = _getSetting(settings, '${_botPlatform}_whitelist_ids');
-    _blackCtrl.text = _getSetting(settings, '${_botPlatform}_blacklist_ids');
+    final values = {for (final row in settings) row.key: row.value};
+    if (_botPlatform == 'qq') {
+      final policy = values['qq_bot_agent'] as Map? ?? const {};
+      _adminsCtrl.text = (policy['admin_qq'] as List? ?? const []).join(', ');
+      _whiteCtrl.text = (policy['group_ids'] as List? ?? const []).join(', ');
+      _qqAgentEnabled = policy['enabled'] == true;
+    } else {
+      _adminsCtrl.text = (values['telegram_admin_ids'] ?? '').toString();
+      _whiteCtrl.text = (values['telegram_whitelist_ids'] ?? '').toString();
+      _blackCtrl.text = (values['telegram_blacklist_ids'] ?? '').toString();
+    }
+    _originalAccess = _access();
   }
 
-  String _getSetting(List<SystemSetting> settings, String key) {
-    return settings
-                .firstWhere(
-                  (s) => s.key == key,
-                  orElse: () => const SystemSetting(key: '', value: ''),
-                )
-                .value
-            as String? ??
-        '';
+  Map<String, dynamic> _access() {
+    List<String> ids(TextEditingController field) =>
+        field.text
+            .split(RegExp(r'[,，\s]+'))
+            .where((part) => part.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return {
+      'admins': ids(_adminsCtrl),
+      if (_botPlatform == 'qq') ...{
+        'groups': ids(_whiteCtrl),
+        'agent_enabled': _qqAgentEnabled,
+      } else ...{
+        'allowed_users': ids(_whiteCtrl),
+        'blocked_users': ids(_blackCtrl),
+      },
+    };
   }
 
-  void _reloadPermissionFields() {
-    final settings = ref.read(systemSettingsProvider).value;
-    if (settings == null) return;
-    _adminsCtrl.text = _getSetting(settings, '${_botPlatform}_admin_ids');
-    _whiteCtrl.text = _getSetting(settings, '${_botPlatform}_whitelist_ids');
-    _blackCtrl.text = _getSetting(settings, '${_botPlatform}_blacklist_ids');
+  BotConfigRecord? _platformConfig(List<BotConfigRecord> configs) {
+    final matches = configs.where((row) => row.platform == _botPlatform);
+    return matches.where((row) => row.primary).firstOrNull ??
+        matches.where((row) => row.enabled).firstOrNull ??
+        matches.firstOrNull;
   }
 
   Future<void> _saveConfig() async {
+    final configs = ref.read(botConfigsProvider).requireValue;
+    final platform = _botPlatform;
+    final access = _access();
+    final changed = Map.of(access)
+      ..removeWhere(
+        (k, value) => value is List<String>
+            ? listEquals(value, _originalAccess[k] as List<String>?)
+            : value == _originalAccess[k],
+      );
     setState(() => _isSaving = true);
     try {
       final saveResult = await ref
           .read(botConfigActionsProvider)
-          .saveCredentials(
-            platform: _botPlatform,
+          .saveConfig(
+            platform: platform,
+            existing: _platformConfig(configs),
+            access: changed,
             telegramToken: _tgTokenController.text,
             napcatHttpUrl: _qqUrlController.text,
           );
-      if (!saveResult.saved) {
-        throw StateError(
-          _botPlatform == 'telegram'
-              ? '请填写 Telegram Bot Token。'
-              : '请填写 Napcat HTTP 地址。',
-        );
-      }
-      // 保存权限配置
-      final notifier = ref.read(systemSettingsProvider.notifier);
-      await notifier.updateSetting(
-        '${_botPlatform}_admin_ids',
-        _adminsCtrl.text,
-        category: 'bot',
-      );
-      await notifier.updateSetting(
-        '${_botPlatform}_whitelist_ids',
-        _whiteCtrl.text,
-        category: 'bot',
-      );
-      await notifier.updateSetting(
-        '${_botPlatform}_blacklist_ids',
-        _blackCtrl.text,
-        category: 'bot',
-      );
+      if (!mounted) return;
+      _tgTokenController.clear();
+      _originalAccess = access;
+      if (changed.isNotEmpty) ref.invalidate(systemSettingsProvider);
       if (mounted) {
-        if (saveResult.followUpFailed) {
+        if (saveResult?.followUpFailed == true) {
           showToast(context, '配置已保存，但机器人同步失败，请查看任务详情。');
-        } else if (saveResult.followUpStatus == 'accepted') {
+        } else if (saveResult?.followUpStatus == 'accepted') {
           showToast(context, '配置已保存，正在同步群组。');
-        } else if (saveResult.followUpRunId != null) {
+        } else if (saveResult?.followUpRunId != null) {
           showToast(context, '机器人配置已保存并应用。');
-          await _pollBotStatus();
         } else {
           showToast(context, '机器人配置已保存。');
         }
@@ -149,23 +165,8 @@ class _PushTabState extends ConsumerState<PushTab> {
     }
   }
 
-  /// 轮询 bot 状态，最多等待 ~8 秒，等 bot 心跳上线后再刷新 UI
-  Future<void> _pollBotStatus() async {
-    for (int i = 0; i < 4; i++) {
-      await Future.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
-      ref.invalidate(botStatusProvider);
-      // 等待 provider 完成获取
-      try {
-        final status = await ref.read(botStatusProvider.future);
-        if (status.isRunning || status.isNapcatEnabled) return;
-      } catch (_) {}
-    }
-  }
-
   Future<void> _refreshBotStatus({bool showMessage = true}) async {
     ref.invalidate(botStatusProvider);
-    ref.invalidate(botRuntimeProvider);
     ref.invalidate(botChatsProvider);
     try {
       await ref.read(botStatusProvider.future);
@@ -199,14 +200,8 @@ class _PushTabState extends ConsumerState<PushTab> {
       };
       await ref.read(botConfigActionsProvider).controlTelegram(typedAction);
 
-      if (action == 'start' || action == 'restart') {
-        await _pollBotStatus();
-      } else {
-        await _refreshBotStatus(showMessage: false);
-      }
-
       if (mounted) {
-        showToast(context, 'Telegram Bot $actionLabel指令已发送');
+        showToast(context, 'Telegram Bot 已$actionLabel');
       }
     } catch (e) {
       if (mounted) {
@@ -352,6 +347,15 @@ class _PushTabState extends ConsumerState<PushTab> {
         ? null
         : ref.watch(botStatusProvider);
     settingsAsync?.whenData(_initFromSettings);
+    final configs =
+        widget.platform != null && !widget.targetsOnly && !widget.monitoringOnly
+        ? ref.watch(botConfigsProvider)
+        : null;
+    if (!_loadedCredentials && configs?.hasValue == true) {
+      _qqUrlController.text =
+          _platformConfig(configs!.requireValue)?.napcatHttpUrl ?? '';
+      _loadedCredentials = true;
+    }
 
     final content = ListView(
       shrinkWrap: widget.platform != null,
@@ -430,26 +434,20 @@ class _PushTabState extends ConsumerState<PushTab> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                ExpansionTile(
+                  key: PageStorageKey('bot-access-$_botPlatform'),
+                  leading: const Icon(Icons.manage_accounts_outlined),
+                  title: const Text('连接与权限'),
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const SectionHeader(title: '凭证与权限'),
-                    if (widget.platform == null)
-                      Semantics(
-                        label: '推送平台',
-                        child: AppFilterMenu(
-                          label: '推送平台',
-                          value: _botPlatform,
-                          options: const {
-                            'telegram': 'Telegram',
-                            'qq': 'QQ (Napcat)',
-                          },
-                          enabled: !_isSaving,
-                          onSelected: (value) {
-                            setState(() => _botPlatform = value);
-                            _reloadPermissionFields();
-                          },
-                        ),
+                    if (configs?.hasError == true)
+                      SettingLoadFailure(
+                        onRetry: () => ref.invalidate(botConfigsProvider),
+                      ),
+                    if (settingsAsync?.hasError == true)
+                      SettingLoadFailure(
+                        onRetry: () => ref.invalidate(systemSettingsProvider),
                       ),
                     const SizedBox(height: 20),
                     if (_botPlatform == 'telegram')
@@ -458,7 +456,14 @@ class _PushTabState extends ConsumerState<PushTab> {
                         obscureText: true,
                         enableSuggestions: false,
                         autocorrect: false,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
+                          hintText:
+                              configs?.value != null &&
+                                  _platformConfig(configs!.requireValue)
+                                          ?.botTokenConfigured ==
+                                      true
+                              ? '已配置，留空保留'
+                              : null,
                           labelText: 'Bot Token',
                         ),
                       )
@@ -467,64 +472,60 @@ class _PushTabState extends ConsumerState<PushTab> {
                         controller: _qqUrlController,
                         decoration: const InputDecoration(
                           labelText: 'Napcat HTTP API 地址',
+                          hintText: 'http://127.0.0.1:3000',
                         ),
                       ),
                     const SizedBox(height: 20),
+                    if (_botPlatform == 'qq')
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('启用 QQ 助手'),
+                        value: _qqAgentEnabled,
+                        onChanged: _isSaving
+                            ? null
+                            : (v) => setState(() => _qqAgentEnabled = v),
+                      ),
                     _buildPermissionField(
                       controller: _adminsCtrl,
-                      label: '超级管理员用户 ID',
+                      label: _botPlatform == 'qq' ? '管理员 QQ 号' : '管理员用户 ID',
                       hint: '多个 ID 用逗号分隔',
                     ),
                     const SizedBox(height: 20),
                     _buildPermissionField(
                       controller: _whiteCtrl,
-                      label: '白名单用户 ID',
+                      label: _botPlatform == 'qq' ? '允许使用助手的群号' : '允许使用的用户 ID',
                       hint: '多个 ID 用逗号分隔',
                     ),
-                    const SizedBox(height: 20),
-                    _buildPermissionField(
-                      controller: _blackCtrl,
-                      label: '黑名单用户 ID',
-                      hint: '多个 ID 用逗号分隔',
-                    ),
+                    if (_botPlatform == 'telegram') ...[
+                      const SizedBox(height: 20),
+                      _buildPermissionField(
+                        controller: _blackCtrl,
+                        label: '禁止访问的用户 ID',
+                        hint: '多个 ID 用逗号分隔',
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Align(
                       alignment: Alignment.centerRight,
                       child: FilledButton(
-                        onPressed: _isSaving ? null : _saveConfig,
+                        onPressed:
+                            _isSaving ||
+                                configs?.hasValue != true ||
+                                settingsAsync?.hasValue != true
+                            ? null
+                            : _saveConfig,
                         child: Text(_isSaving ? '保存中…' : '保存配置'),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '群组与频道',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '同步群组与频道',
-                      onPressed: _isSyncingChats ? null : _syncConfiguredChats,
-                      icon: const Icon(Icons.sync_rounded),
-                    ),
-                    IconButton(
-                      tooltip: '添加目标',
-                      onPressed: _showAddChatDialog,
-                      icon: const Icon(Icons.add_rounded),
-                    ),
-                  ],
-                ),
-                _buildGroupManagement(context, ref),
                 Wrap(
                   spacing: 8,
                   children: [
                     TextButton(
-                      onPressed: () => context.go('/sources'),
-                      child: const Text('消息监听'),
+                      onPressed: () => context.go('/sources/chats'),
+                      child: const Text('管理聊天来源'),
                     ),
                     TextButton(
                       onPressed: () =>

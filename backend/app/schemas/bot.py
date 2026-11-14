@@ -87,7 +87,18 @@ class BotChatToggleResponse(BaseModel):
     enabled: bool
 
 
+class BotAccessUpdate(BaseModel):
+    admins: list[str] | None = None
+    allowed_users: list[str] | None = None
+    blocked_users: list[str] | None = None
+    groups: list[str] | None = None
+    agent_enabled: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class BotConfigCreate(BaseModel):
+    access: BotAccessUpdate | None = None
     platform: BotConfigPlatform
     name: str
     bot_token: Optional[str] = None
@@ -99,6 +110,7 @@ class BotConfigCreate(BaseModel):
 
 
 class BotConfigUpdate(BaseModel):
+    access: BotAccessUpdate | None = None
     name: Optional[str] = None
     bot_token: Optional[str] = None
     napcat_http_url: Optional[str] = None

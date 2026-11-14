@@ -1,53 +1,28 @@
-"""
-Bot 权限检查模块
-"""
-from typing import Optional, Set, Tuple
+"""Effective Telegram permissions for commands, callbacks, and captures."""
+from sqlalchemy import select
+
+from app.core.config import settings
+from app.core.db_adapter import AsyncSessionLocal
+from app.models import SystemSetting
+
 from .messages import MSG_NO_PERMISSION, MSG_BLACKLISTED, MSG_ADMIN_ONLY
 
 
-class PermissionManager:
-    """权限管理器"""
-    
-    def __init__(self, admin_ids: Set[int], whitelist_ids: Set[int], blacklist_ids: Set[int]):
-        self.admin_ids = admin_ids
-        self.whitelist_ids = whitelist_ids
-        self.blacklist_ids = blacklist_ids
-    
-    def check_permission(self, user_id: int, require_admin: bool = False) -> Tuple[bool, Optional[str]]:
-        """
-        检查用户权限
-        
-        Args:
-            user_id: 用户ID
-            require_admin: 是否需要管理员权限
-        
-        Returns:
-            (是否允许, 拒绝原因)
-        """
-        # 检查黑名单
-        if user_id in self.blacklist_ids:
-            return False, MSG_BLACKLISTED
-        
-        # 检查管理员权限
-        if require_admin:
-            if user_id not in self.admin_ids:
-                return False, MSG_ADMIN_ONLY
-            return True, None
-        
-        # 管理员自动拥有普通命令权限。
-        if user_id in self.admin_ids:
-            return True, None
-
-        # 白名单为空时 fail closed，避免启用 Bot 后默认暴露给所有 Telegram 用户。
-        if not self.whitelist_ids:
-            return False, MSG_NO_PERMISSION
-
-        if user_id not in self.whitelist_ids:
-            return False, MSG_NO_PERMISSION
-
+async def check_permission(user_id: int | str, *, require_admin: bool = False) -> tuple[bool, str | None]:
+    keys = ("telegram_admin_ids", "telegram_whitelist_ids", "telegram_blacklist_ids")
+    async with AsyncSessionLocal() as db:
+        overrides = dict((await db.execute(
+            select(SystemSetting.key, SystemSetting.value).where(SystemSetting.key.in_(keys))
+        )).all())
+    admins, allowed, blocked = (
+        {item.strip() for item in str(overrides.get(key, getattr(settings, key)) or "").split(",") if item.strip()}
+        for key in keys
+    )
+    uid = str(user_id)
+    if uid in blocked:
+        return False, MSG_BLACKLISTED
+    if uid in admins:
         return True, None
-
-
-def get_permission_manager(bot_data: dict) -> PermissionManager:
-    """从 bot_data 获取权限管理器实例"""
-    return bot_data.get("permission_manager")
+    if require_admin:
+        return False, MSG_ADMIN_ONLY
+    return (True, None) if uid in allowed else (False, MSG_NO_PERMISSION)

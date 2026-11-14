@@ -7,9 +7,8 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import os
 import time
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Body, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +22,6 @@ from app.models import (
 )
 from app.schemas import (
     AIConnectivityTestResponse,
-    AIModelDiscoveryResponse,
     SystemSettingDeleteResponse,
     SystemSettingResponse, SystemSettingUpdate, DashboardStats, 
     QueueStats, TagStats, QueueOverviewStats, DistributionStatusStats,
@@ -36,7 +34,7 @@ from app.schemas import (
     FavoritesSyncPreviewRequest, FavoritesSyncPreviewResponse,
     FavoritesSyncTriggerRequest, BackgroundTaskDiagnosticsResponse,
     BackgroundTaskRunResponse,
-    PlatformParseTestResponse,
+    PlatformParseTestResponse, PlatformHealthResponse,
 )
 from app.core.logging import logger
 from app.core.dependencies import require_api_token
@@ -52,10 +50,7 @@ from app.services.favorites_sync_service import (
     FavoritesSyncServiceError,
     get_favorites_sync_service,
 )
-from app.services.platform_health_service import (
-    PlatformHealthService,
-    get_platform_health_service,
-)
+from app.services.platform_health_service import list_platform_accounts
 from app.services.system_diagnostics_service import (
     SystemDiagnosticsService,
     get_system_diagnostics_service,
@@ -68,11 +63,12 @@ _storage_usage_cache: dict = {"value": 0, "expires_at": 0.0}
 _STORAGE_CACHE_TTL = 300  # 5 minutes
 
 
+class SettingsPatch(BaseModel):
+    values: dict[str, object] = Field(min_length=1)
+    category: str = "general"
+
+
 class AIConnectivityTestRequest(BaseModel):
-    target: str
-
-
-class AIModelDiscoveryRequest(BaseModel):
     target: str
 
 
@@ -142,8 +138,6 @@ async def health_check(
             "db": "ok" if db_ok else "error",
             "queue": "ok" if queue_ok else "error",
             "fts": "ok" if fts_ok else db_health.get("fts", {}).get("status", "error"),
-            "workers": "ok",
-            "providers": "ok",
         },
         "checks": {
             "database": db_health,
@@ -352,6 +346,21 @@ async def get_setting(
         ))
     return setting
 
+def _validate_setting(key: str, value: object) -> None:
+    if key == "chat_capture_enabled" and type(value) is not bool:
+        raise HTTPException(status_code=422, detail="chat_capture_enabled must be a boolean")
+
+
+@router.patch("/settings", response_model=List[SystemSettingResponse])
+async def update_settings(payload: SettingsPatch, _: None = Depends(require_api_token)):
+    from app.services.settings_service import set_setting_values
+
+    for key, value in payload.values.items():
+        _validate_setting(key, value)
+    rows = await set_setting_values(payload.values, payload.category)
+    return [_serialize_setting_for_response(row) for row in rows]
+
+
 @router.put("/settings/{key}", response_model=SystemSettingResponse)
 async def update_setting(
     key: str,
@@ -360,8 +369,7 @@ async def update_setting(
     _: None = Depends(require_api_token),
 ):
     """创建或更新设置"""
-    if key == "chat_capture_enabled" and type(update.value) is not bool:
-        raise HTTPException(status_code=422, detail="chat_capture_enabled must be a boolean")
+    _validate_setting(key, update.value)
     from app.services.settings_service import set_setting_value
     setting = await set_setting_value(key, update.value, category, update.description)
     return _serialize_setting_for_response(setting)
@@ -392,29 +400,22 @@ async def delete_setting(
 @router.get("/favorites-sync/status", response_model=FavoritesSyncStatusResponse)
 async def get_favorites_sync_status(
     request: Request,
+    platform: str | None = Query(None),
     service: FavoritesSyncService = Depends(get_favorites_sync_service),
     _: None = Depends(require_api_token),
 ):
     """Get favorites sync runtime/settings status for frontend panel."""
     sync_task = getattr(request.app.state, "favorites_sync_task", None)
     return await service.get_status(
+        platform=platform,
         sync_task=sync_task,
         request_id=getattr(request.state, "request_id", None),
     )
 
 
-@router.get("/platform-health")
-async def get_platform_health(
-    request: Request,
-    service: PlatformHealthService = Depends(get_platform_health_service),
-    _: None = Depends(require_api_token),
-):
-    """Aggregate platform login, cookie and favorites-sync health in one API."""
-    sync_task = getattr(request.app.state, "favorites_sync_task", None)
-    return await service.get_status(
-        sync_task=sync_task,
-        request_id=getattr(request.state, "request_id", None),
-    )
+@router.get("/platform-health", response_model=PlatformHealthResponse)
+async def get_platform_health(db: AsyncSession = Depends(get_db), _: None = Depends(require_api_token)):
+    return await list_platform_accounts(db)
 
 
 @router.get("/ai/capabilities")
@@ -445,19 +446,6 @@ async def test_ai_connectivity(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.post("/ai/models", response_model=AIModelDiscoveryResponse)
-async def discover_ai_models(
-    payload: AIModelDiscoveryRequest,
-    diagnostics: AIDiagnosticsService = Depends(get_ai_diagnostics_service),
-    _: None = Depends(require_api_token),
-):
-    """Discover models exposed by a configured OpenAI-compatible provider."""
-    try:
-        return await diagnostics.discover_models(payload.target)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"model discovery failed: {exc}")
 @router.post(
     "/platform-health/parse-test",
     response_model=PlatformParseTestResponse,

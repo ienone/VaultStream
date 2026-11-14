@@ -92,6 +92,8 @@ class BilibiliFavoritesFetcher(BaseFavoritesFetcher):
                 headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/"},
             ) as client:
                 response = await client.get("https://api.bilibili.com" + path, params=params, cookies=cookies)
+            if response.status_code == 401:
+                raise _failure("auth_required", "Bilibili 登录已失效", auth=True)
             if response.status_code == 429:
                 await source_reading.http_cooldown("bilibili", response.headers.get("Retry-After"))
                 raise _failure("rate_limited", "Bilibili 请求频率受限")
@@ -115,6 +117,12 @@ class BilibiliFavoritesFetcher(BaseFavoritesFetcher):
         await ConfigService().persist_refreshed_platform_cookies("bilibili", original, cookies)
         return payload["data"]
 
+    async def current_account(self, cookies: dict[str, str]) -> _Account:
+        data = await self._get("/x/web-interface/nav", cookies)
+        if data.get("isLogin") is False:
+            raise _failure("auth_required", "Bilibili 登录已失效", auth=True)
+        return _Account.model_validate(data)
+
     async def fetch_favorites(
         self, *, max_items: int = 50, cursor: str | None = None,
     ) -> tuple[list[FavoriteItem], str | None]:
@@ -128,9 +136,7 @@ class BilibiliFavoritesFetcher(BaseFavoritesFetcher):
         if not cookies.get("SESSDATA"):
             raise _failure("auth_required", "未配置 Bilibili 登录", auth=True)
         try:
-            account = _Account.model_validate(await self._get("/x/web-interface/nav", cookies))
-            if not account.isLogin:
-                raise _failure("auth_required", "Bilibili 登录已失效", auth=True)
+            account = await self.current_account(cookies)
             if resume and resume.mid != account.mid:
                 raise _failure("invalid_cursor", "Bilibili 账号已变化，请重置收藏游标")
             folders = _Folders.model_validate(await self._get(

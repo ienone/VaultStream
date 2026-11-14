@@ -1,7 +1,6 @@
 """One write boundary for Bot saves; link previews never enter this service."""
 from __future__ import annotations
 
-from app.core.config import settings
 from app.services.settings_service import get_setting_value_fresh
 
 CHAT_SOURCES = {"qq_bot", "telegram_bot"}
@@ -17,8 +16,11 @@ async def require_chat_capture_admin(source: str, user_id: str) -> None:
         options = await get_setting_value_fresh("qq_bot_agent", {})
         admins = options.get("admin_qq", []) if options.get("enabled") is True else []
     elif source == "telegram_bot":
-        value = await get_setting_value_fresh("telegram_admin_ids", settings.telegram_admin_ids)
-        admins = str(value or "").split(",")
+        from app.bot.permissions import check_permission
+        allowed, reason = await check_permission(user_id, require_admin=True)
+        if not allowed:
+            raise ValueError(reason)
+        return
     else:
         raise ValueError("不支持的聊天入口。")
     if not user_id or user_id not in {str(value).strip() for value in admins}:
