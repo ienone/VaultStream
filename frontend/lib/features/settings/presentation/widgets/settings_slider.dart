@@ -70,28 +70,41 @@ class _SettingsSliderState extends State<SettingsSlider> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Wrap(
-        spacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      Row(
         children: [
-          Text(widget.title, style: Theme.of(context).textTheme.bodyLarge),
+          Expanded(
+            child: Text(
+              widget.title,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ),
+          const SizedBox(width: 16),
           Text(
             widget.formatValue(_value),
-            style: Theme.of(context).textTheme.bodyLarge,
+            style: Theme.of(context).textTheme.labelLarge
+                ?.copyWith(color: Theme.of(context).colorScheme.primary),
           ),
         ],
       ),
       Semantics(
         label: widget.title,
-        child: Slider(
-          value: _value,
-          min: widget.min,
-          max: widget.max,
-          divisions: widget.divisions,
-          label: widget.formatValue(_value),
-          onChangeStart: _saving ? null : (_) => _dragging = true,
-          onChanged: _saving ? null : (value) => setState(() => _value = value),
-          onChangeEnd: _saving ? null : _save,
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 6,
+            tickMarkShape: SliderTickMarkShape.noTickMark,
+          ),
+          child: Slider(
+            value: _value,
+            min: widget.min,
+            max: widget.max,
+            divisions: widget.divisions,
+            label: widget.formatValue(_value),
+            onChangeStart: _saving ? null : (_) => _dragging = true,
+            onChanged: _saving
+                ? null
+                : (value) => setState(() => _value = value),
+            onChangeEnd: _saving ? null : _save,
+          ),
         ),
       ),
     ],

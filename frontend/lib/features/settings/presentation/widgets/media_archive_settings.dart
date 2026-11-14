@@ -7,6 +7,7 @@ import '../../models/system_setting.dart';
 import 'setting_components.dart';
 import 'settings_editor_draft.dart';
 import 'settings_slider.dart';
+import '../../utils/setting_value.dart';
 
 class MediaArchiveSettings extends ConsumerWidget {
   const MediaArchiveSettings({super.key});
@@ -22,139 +23,81 @@ class MediaArchiveSettings extends ConsumerWidget {
   ) {
     return settingsAsync.when(
       data: (settings) {
-        bool parseBool(dynamic val, {bool defaultVal = true}) {
-          if (val == null) return defaultVal;
-          if (val is bool) return val;
-          if (val is String) return val.toLowerCase() == 'true';
-          return defaultVal;
-        }
-
-        int parseInt(dynamic val, {int defaultVal = 0}) {
-          if (val == null) return defaultVal;
-          if (val is int) return val;
-          if (val is num) return val.toInt();
-          if (val is String) return int.tryParse(val) ?? defaultVal;
-          return defaultVal;
-        }
-
-        final enableProcessing = parseBool(
-          settings
-              .firstWhere(
-                (s) => s.key == 'enable_archive_media_processing',
-                orElse: () => const SystemSetting(key: '', value: true),
-              )
-              .value,
-          defaultVal: true,
+        final enableProcessing = parseBoolSetting(
+          getSettingValue(settings, 'enable_archive_media_processing', true),
+          true,
         );
-        final enableImages = parseBool(
-          settings
-              .firstWhere(
-                (s) => s.key == 'enable_archive_image_processing',
-                orElse: () => const SystemSetting(key: '', value: true),
-              )
-              .value,
-          defaultVal: true,
+        final enableImages = parseBoolSetting(
+          getSettingValue(settings, 'enable_archive_image_processing', true),
+          true,
         );
-        final enableVideos = parseBool(
-          settings
-              .firstWhere(
-                (s) => s.key == 'enable_archive_video_processing',
-                orElse: () => const SystemSetting(key: '', value: true),
-              )
-              .value,
-          defaultVal: true,
+        final enableVideos = parseBoolSetting(
+          getSettingValue(settings, 'enable_archive_video_processing', true),
+          true,
+        );
+        final webpQuality = parseIntSetting(
+          getSettingValue(settings, 'archive_image_webp_quality', 80),
+          80,
+        );
+        final maxCount = parseIntSetting(
+          getSettingValue(settings, 'archive_image_max_count', 0),
+          0,
+        );
+        final videoMaxCount = parseIntSetting(
+          getSettingValue(settings, 'archive_video_max_count', 0),
+          0,
+        );
+        final videoMaxBytes = parseIntSetting(
+          getSettingValue(settings, 'archive_video_max_bytes', 0),
+          0,
         );
 
-        final webpQuality = parseInt(
-          settings
-              .firstWhere(
-                (s) => s.key == 'archive_image_webp_quality',
-                orElse: () => const SystemSetting(key: '', value: 80),
-              )
-              .value,
-          defaultVal: 80,
-        );
-
-        final maxCount = parseInt(
-          settings
-              .firstWhere(
-                (s) => s.key == 'archive_image_max_count',
-                orElse: () => const SystemSetting(key: '', value: 0),
-              )
-              .value,
-        );
-        final videoMaxCount = parseInt(
-          settings
-              .firstWhere(
-                (s) => s.key == 'archive_video_max_count',
-                orElse: () => const SystemSetting(key: '', value: 0),
-              )
-              .value,
-        );
-        final videoMaxBytes = parseInt(
-          settings
-              .firstWhere(
-                (s) => s.key == 'archive_video_max_bytes',
-                orElse: () => const SystemSetting(key: '', value: 0),
-              )
-              .value,
-        );
-
-        const switchShape = RoundedRectangleBorder();
-        return SettingGroup(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SwitchListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 4,
-              ),
-              shape: switchShape,
-              title: const Text('自动归档远程媒体'),
-              value: enableProcessing,
-              onChanged: (val) => ref
-                  .read(systemSettingsProvider.notifier)
-                  .updateSetting(
-                    'enable_archive_media_processing',
-                    val,
-                    category: 'storage',
+            SettingGroup(
+              children: [
+                SettingSwitch(
+                  title: const Text('自动归档远程媒体'),
+                  value: enableProcessing,
+                  onChanged: (val) => ref
+                      .read(systemSettingsProvider.notifier)
+                      .updateSetting(
+                        'enable_archive_media_processing',
+                        val,
+                        category: 'storage',
+                      ),
+                ),
+                if (enableProcessing) ...[
+                  SettingSwitch(
+                    title: const Text('归档远程图片'),
+                    value: enableImages,
+                    onChanged: (val) => ref
+                        .read(systemSettingsProvider.notifier)
+                        .updateSetting(
+                          'enable_archive_image_processing',
+                          val,
+                          category: 'storage',
+                        ),
                   ),
+                  SettingSwitch(
+                    title: const Text('归档远程视频'),
+                    value: enableVideos,
+                    onChanged: (val) => ref
+                        .read(systemSettingsProvider.notifier)
+                        .updateSetting(
+                          'enable_archive_video_processing',
+                          val,
+                          category: 'storage',
+                        ),
+                  ),
+                ],
+              ],
             ),
             if (enableProcessing) ...[
-              SwitchListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 4,
-                ),
-                shape: switchShape,
-                title: const Text('归档远程图片'),
-                value: enableImages,
-                onChanged: (val) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_archive_image_processing',
-                      val,
-                      category: 'storage',
-                    ),
-              ),
-              SwitchListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 4,
-                ),
-                shape: switchShape,
-                title: const Text('归档远程视频'),
-                value: enableVideos,
-                onChanged: (val) => ref
-                    .read(systemSettingsProvider.notifier)
-                    .updateSetting(
-                      'enable_archive_video_processing',
-                      val,
-                      category: 'storage',
-                    ),
-              ),
-
+              const SizedBox(height: 24),
               SettingSection(
-                title: '归档质量与限制',
+                title: '媒体质量与数量',
                 child: _buildStorageAdvanced(
                   context,
                   ref,
@@ -205,7 +148,7 @@ class MediaArchiveSettings extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SettingsSlider(
-              title: 'WebP 压缩质量',
+              title: '图片压缩质量',
               value: quality.toDouble(),
               min: 10,
               max: 100,
@@ -234,7 +177,7 @@ class MediaArchiveSettings extends ConsumerWidget {
                     SizedBox(
                       width: fieldWidth,
                       child: limitField(
-                        '单条内容最多图片数',
+                        '每条内容的图片上限',
                         '0 表示不限数量。',
                         'archive_image_max_count',
                       ),
@@ -242,7 +185,7 @@ class MediaArchiveSettings extends ConsumerWidget {
                     SizedBox(
                       width: fieldWidth,
                       child: limitField(
-                        '单条内容最多视频数',
+                        '每条内容的视频上限',
                         '0 表示不限数量。',
                         'archive_video_max_count',
                       ),
@@ -250,7 +193,7 @@ class MediaArchiveSettings extends ConsumerWidget {
                     SizedBox(
                       width: fieldWidth,
                       child: limitField(
-                        '单个视频上限（MB）',
+                        '单个视频大小上限（MB）',
                         '0 表示使用默认上限。',
                         'archive_video_max_bytes',
                       ),
@@ -319,32 +262,41 @@ class _ArchiveLimitFieldState extends State<_ArchiveLimitField> {
   }
 
   @override
-  Widget build(BuildContext context) => TextField(
-    controller: widget.controller,
-    enabled: !_saving,
-    keyboardType: TextInputType.numberWithOptions(decimal: widget.bytes),
-    onSubmitted: (_) => _save(),
-    onChanged: (_) {
-      if (_error != null) setState(() => _error = null);
-    },
-    decoration: InputDecoration(
-      labelText: widget.title,
-      helperText: widget.help,
-      helperMaxLines: 2,
-      errorText: _error,
-      suffixIcon: _saving
-          ? const Padding(
-              padding: EdgeInsets.all(14),
-              child: SizedBox.square(
-                dimension: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          : IconButton(
-              tooltip: '保存${widget.title}',
-              onPressed: _save,
-              icon: const Icon(Icons.check_rounded),
-            ),
-    ),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(widget.title, style: Theme.of(context).textTheme.bodyLarge),
+      const SizedBox(height: 8),
+      Semantics(
+        label: widget.title,
+        child: TextField(
+          controller: widget.controller,
+          enabled: !_saving,
+          keyboardType: TextInputType.numberWithOptions(decimal: widget.bytes),
+          onSubmitted: (_) => _save(),
+          onChanged: (_) {
+            if (_error != null) setState(() => _error = null);
+          },
+          decoration: InputDecoration(
+            helperText: widget.help,
+            helperMaxLines: 2,
+            errorText: _error,
+            suffixIcon: _saving
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    tooltip: '保存${widget.title}',
+                    onPressed: _save,
+                    icon: const Icon(Icons.check_rounded),
+                  ),
+          ),
+        ),
+      ),
+    ],
   );
 }

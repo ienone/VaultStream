@@ -84,19 +84,16 @@ class SettingSection extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Semantics(
-          header: true,
-          child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-        ),
-        const SizedBox(height: 16),
-        child,
-      ],
-    ),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Semantics(
+        header: true,
+        child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+      ),
+      const SizedBox(height: 16),
+      child,
+    ],
   );
 }
 
@@ -295,6 +292,8 @@ class SettingsTextField extends StatelessWidget {
     this.hint,
     this.obscureText = false,
     this.keyboardType,
+    this.minLines,
+    this.maxLines = 1,
   });
 
   final TextEditingController controller;
@@ -303,6 +302,8 @@ class SettingsTextField extends StatelessWidget {
   final String? hint;
   final bool obscureText;
   final TextInputType? keyboardType;
+  final int? minLines;
+  final int? maxLines;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -324,6 +325,8 @@ class SettingsTextField extends StatelessWidget {
           controller: controller,
           obscureText: obscureText,
           keyboardType: keyboardType,
+          minLines: minLines,
+          maxLines: maxLines,
           autocorrect: false,
           enableSuggestions: false,
           decoration: InputDecoration(hintText: hint),

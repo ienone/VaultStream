@@ -18,9 +18,9 @@ class SystemTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final content = ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
       children: [
-        const SectionHeader(title: '主题'),
+        const SectionHeader(title: '主题', padding: EdgeInsets.only(bottom: 16)),
         AppChoiceSegments<ThemeMode>(
           options: const {
             ThemeMode.system: '跟随系统',
@@ -60,27 +60,24 @@ class _AppAboutSectionState extends State<_AppAboutSection> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('VaultStream', style: theme.textTheme.titleMedium),
-                if (version != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '版本 $version',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('VaultStream', style: theme.textTheme.titleMedium),
+              if (version != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '版本 $version',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
           const SizedBox(height: 12),
           ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            contentPadding: EdgeInsets.zero,
             shape: const RoundedRectangleBorder(
               borderRadius: AppShape.cardMediaBorder,
             ),

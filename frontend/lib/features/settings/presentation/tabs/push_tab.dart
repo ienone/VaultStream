@@ -361,7 +361,15 @@ class _PushTabState extends ConsumerState<PushTab> {
       physics: embedded ? const NeverScrollableScrollPhysics() : null,
       padding: embedded
           ? EdgeInsets.zero
-          : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          : EdgeInsets.symmetric(
+              horizontal:
+                  widget.platform == null &&
+                      !widget.targetsOnly &&
+                      !widget.monitoringOnly
+                  ? 24
+                  : 16,
+              vertical: 24,
+            ),
       children: widget.targetsOnly || widget.monitoringOnly
           ? [
               Padding(
@@ -394,7 +402,10 @@ class _PushTabState extends ConsumerState<PushTab> {
             ]
           : [
               if (widget.platform == null) ...[
-                const SectionHeader(title: '应用内摘要'),
+                const SectionHeader(
+                  title: '应用内摘要',
+                  padding: EdgeInsets.only(bottom: 12),
+                ),
                 settingsAsync!.when(
                   data: (settings) => _buildDigestSettings(settings),
                   loading: () => const LinearProgressIndicator(),
@@ -553,69 +564,73 @@ class _PushTabState extends ConsumerState<PushTab> {
       getSettingValue(settings, 'notification_digest_interval_hours', 24),
       24,
     );
-    const intervalOptions = <int>[6, 12, 24, 168];
-    final selectedInterval = intervalOptions.contains(interval) ? interval : 24;
+    final intervalOptions = <int>{6, 12, 24, 168, interval}.toList()..sort();
 
-    return SettingGroup(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SwitchListTile(
-          key: const ValueKey('notification-digest-enabled'),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 8,
-          ),
-          shape: const RoundedRectangleBorder(),
+        SettingSwitch(
+          contentPadding: EdgeInsets.zero,
           title: const Text('定期生成摘要'),
           value: enabled,
-          onChanged: (value) =>
-              _updateDigestSetting('enable_notification_digest', value),
+          onChanged: (value) => ref
+              .read(systemSettingsProvider.notifier)
+              .updateSetting(
+                'enable_notification_digest',
+                value,
+                category: 'notifications',
+              ),
         ),
-
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
-              final inline = constraints.maxWidth >= 400 * scale;
-              return Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SizedBox(
-                    width: inline ? 200 * scale : constraints.maxWidth,
-                    child: AppFilterMenu(
-                      label: enabled ? '定时周期' : '定时周期（定时已关闭）',
-                      value: selectedInterval.toString(),
-                      options: const {
-                        '6': '每 6 小时',
-                        '12': '每 12 小时',
-                        '24': '每天',
-                        '168': '每周',
-                      },
-                      onOpened: () =>
-                          FocusManager.instance.primaryFocus?.unfocus(),
-                      onSelected: (value) => _updateDigestSetting(
-                        'notification_digest_interval_hours',
-                        int.parse(value),
-                      ),
-                    ),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: _isGeneratingDigest ? null : _generateDigestNow,
-                    icon: _isGeneratingDigest
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.summarize_rounded),
-                    label: Text(_isGeneratingDigest ? '生成中' : '立即生成摘要'),
-                  ),
-                ],
-              );
-            },
-          ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final inline =
+                constraints.maxWidth >=
+                400 * MediaQuery.textScalerOf(context).scale(16) / 16;
+            final field = AppFilterMenu(
+              label: '生成周期',
+              value: '$interval',
+              options: {
+                for (final hours in intervalOptions)
+                  '$hours': switch (hours) {
+                    24 => '每天',
+                    168 => '每周',
+                    _ => '每 $hours 小时',
+                  },
+              },
+              onOpened: () => FocusManager.instance.primaryFocus?.unfocus(),
+              onSelected: (value) => _updateDigestSetting(
+                'notification_digest_interval_hours',
+                int.parse(value),
+              ),
+            );
+            final action = FilledButton.tonalIcon(
+              onPressed: _isGeneratingDigest ? null : _generateDigestNow,
+              icon: _isGeneratingDigest
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.summarize_rounded),
+              label: Text(_isGeneratingDigest ? '生成中…' : '立即生成'),
+            );
+            return inline
+                ? Row(
+                    children: [
+                      Expanded(child: field),
+                      const SizedBox(width: 16),
+                      action,
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      field,
+                      const SizedBox(height: 16),
+                      Align(alignment: Alignment.centerRight, child: action),
+                    ],
+                  );
+          },
         ),
       ],
     );

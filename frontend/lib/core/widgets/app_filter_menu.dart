@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:material_ui/material_ui.dart';
 
 import 'app_select_menu.dart';
@@ -85,15 +83,7 @@ class AppFilterMenuRow extends StatelessWidget {
         children: [
           for (var i = 0; i < menus.length; i++)
             SizedBox(
-              width: inline
-                  ? math.min(
-                      minimums[i] + extra,
-                      math.max(
-                        minimums[i],
-                        280 * MediaQuery.textScalerOf(context).scale(16) / 16,
-                      ),
-                    )
-                  : box.maxWidth,
+              width: inline ? minimums[i] + extra : box.maxWidth,
               child: menus[i],
             ),
         ],

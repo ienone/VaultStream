@@ -19,9 +19,12 @@ class ProcessingAutomationPanel extends ConsumerWidget {
         onRetry: () => ref.invalidate(systemSettingsProvider),
       ),
       data: (settings) => ListView(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         children: [
-          const SectionHeader(title: '自动处理'),
+          const SectionHeader(
+            title: '自动处理',
+            padding: EdgeInsets.only(bottom: 12),
+          ),
           SettingGroup(
             children: [
               _toggle(ref, settings, '解析新内容', 'enable_parse_worker', true),
@@ -43,7 +46,10 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const SectionHeader(title: '内容整理'),
+          const SectionHeader(
+            title: '内容整理',
+            padding: EdgeInsets.only(bottom: 12),
+          ),
           SettingGroup(
             children: [
               _toggle(
@@ -74,7 +80,10 @@ class ProcessingAutomationPanel extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 24),
-          const SectionHeader(title: '媒体归档'),
+          const SectionHeader(
+            title: '媒体归档',
+            padding: EdgeInsets.only(bottom: 12),
+          ),
           const MediaArchiveSettings(),
         ],
       ),
@@ -90,7 +99,6 @@ class ProcessingAutomationPanel extends ConsumerWidget {
     String category = 'automation',
     String? subtitle,
   }) => SettingSwitch(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
     title: Text(title),
     subtitle: subtitle == null ? null : Text(subtitle),
     value: parseBoolSetting(

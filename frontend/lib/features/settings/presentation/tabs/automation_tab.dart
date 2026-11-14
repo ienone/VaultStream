@@ -3,7 +3,6 @@ import '../../../../core/layout/app_page_body.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 
 import '../../providers/settings_provider.dart';
@@ -34,7 +33,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     final settingsAsync = ref.watch(systemSettingsProvider);
     final content = widget.view == AutomationView.policy
         ? ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             children: [
               _buildAutomationPolicySettings(context, ref, settingsAsync),
               const SizedBox(height: 24),
@@ -46,7 +45,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
             ],
           )
         : ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             children: [
               _buildLlmSettings(
                 context,
@@ -66,49 +65,25 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
   ) {
     return settingsAsync.when(
       data: (settings) {
-        final discoveryPatrolEnabled = parseBoolSetting(
-          getSettingValue(settings, 'enable_discovery_patrol', true),
-          true,
-        );
-        final aiScoringEnabled = parseBoolSetting(
-          getSettingValue(settings, 'enable_ai_scoring', true),
-          true,
-        );
-        return SettingGroup(
-          children: [
-            SettingSwitch(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 8,
-              ),
-              shape: const RoundedRectangleBorder(),
-              title: const Text('自动检查新内容'),
-              value: discoveryPatrolEnabled,
-              onChanged: (value) => ref
-                  .read(systemSettingsProvider.notifier)
-                  .updateSetting(
-                    'enable_discovery_patrol',
-                    value,
-                    category: 'automation',
-                  ),
-            ),
-            SettingSwitch(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 8,
-              ),
-              shape: const RoundedRectangleBorder(),
-              title: const Text('AI 评分'),
-              value: aiScoringEnabled,
-              onChanged: (value) => ref
-                  .read(systemSettingsProvider.notifier)
-                  .updateSetting(
-                    'enable_ai_scoring',
-                    value,
-                    category: 'automation',
-                  ),
-            ),
-          ],
+        final scoringEnabled =
+            parseBoolSetting(
+              getSettingValue(settings, 'enable_discovery_patrol', true),
+              true,
+            ) &&
+            parseBoolSetting(
+              getSettingValue(settings, 'enable_ai_scoring', true),
+              true,
+            );
+        return SettingSwitch(
+          contentPadding: EdgeInsets.zero,
+          title: Text('自动评分', style: Theme.of(context).textTheme.titleMedium),
+          subtitle: const Text('按兴趣偏好筛选新内容'),
+          value: scoringEnabled,
+          onChanged: (value) =>
+              ref.read(systemSettingsProvider.notifier).updateSettings({
+                'enable_discovery_patrol': value,
+                'enable_ai_scoring': value,
+              }, 'automation'),
         );
       },
       loading: () => const LoadingGroup(),
@@ -124,68 +99,71 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     AsyncValue<DiscoverySettings> settingsAsync,
   ) {
     return settingsAsync.when(
-      data: (settings) => SettingGroup(
+      data: (settings) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: _buildInterestProfileEditor(
-              context,
-              ref,
-              settings.interestProfile,
-            ),
+          _buildInterestProfileEditor(context, ref, settings.interestProfile),
+          const SizedBox(height: 24),
+          SettingsSlider(
+            title: '进入动态的最低评分',
+            min: 0,
+            max: 10,
+            divisions: 20,
+            formatValue: (value) => '${value.toStringAsFixed(1)} / 10',
+            errorMessage: '评分阈值保存失败',
+            value: settings.scoreThreshold,
+            onSaved: (value) => ref
+                .read(discoverySettingsStateProvider.notifier)
+                .updateSettings(scoreThreshold: value),
           ),
-
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: SettingsSlider(
-              title: '进入动态的最低评分',
-              min: 0,
-              max: 10,
-              divisions: 20,
-              formatValue: (value) => '${value.toStringAsFixed(1)} / 10',
-              errorMessage: '评分阈值保存失败',
-              value: settings.scoreThreshold,
-              onSaved: (value) => ref
-                  .read(discoverySettingsStateProvider.notifier)
-                  .updateSettings(scoreThreshold: value),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: AppFilterMenuRow(
-              menus: [
-                AppFilterMenu(
-                  label: '候选保留时间',
-                  value: '${settings.retentionDays}',
-                  options: {
-                    for (final day in ({
-                      1,
-                      3,
-                      7,
-                      15,
-                      30,
-                      settings.retentionDays,
-                    }.toList()..sort()))
-                      '$day': '$day 天',
-                  },
-                  onOpened: () => FocusScope.of(context).unfocus(),
-                  onSelected: (value) => ref
-                      .read(discoverySettingsStateProvider.notifier)
-                      .updateSettings(retentionDays: int.parse(value)),
+          const Divider(height: 48),
+          SettingSection(
+            title: '自动清理',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AppFilterMenuRow(
+                  menus: [
+                    AppFilterMenu(
+                      label: '新内容保留时间',
+                      value: '${settings.retentionDays}',
+                      options: {
+                        for (final day in ({
+                          1,
+                          3,
+                          7,
+                          15,
+                          30,
+                          settings.retentionDays,
+                        }.toList()..sort()))
+                          '$day': '$day 天',
+                      },
+                      onOpened: () => FocusScope.of(context).unfocus(),
+                      onSelected: (value) => ref
+                          .read(discoverySettingsStateProvider.notifier)
+                          .updateSettings(retentionDays: int.parse(value)),
+                    ),
+                    AppFilterMenu(
+                      label: '过期后',
+                      value: settings.cleanupMode,
+                      options: const {
+                        'hard_delete': '永久删除',
+                        'expire_only': '仅标记过期',
+                        'archive': '移除并保留数据',
+                      },
+                      onOpened: () => FocusScope.of(context).unfocus(),
+                      onSelected: (value) => ref
+                          .read(discoverySettingsStateProvider.notifier)
+                          .updateSettings(cleanupMode: value),
+                    ),
+                  ],
                 ),
-                AppFilterMenu(
-                  label: '清理方式',
-                  value: settings.cleanupMode,
-                  options: const {
-                    'hard_delete': '删除',
-                    'expire_only': '仅标记过期',
-                    'archive': '归档',
-                  },
-                  onOpened: () => FocusScope.of(context).unfocus(),
-                  onSelected: (value) => ref
-                      .read(discoverySettingsStateProvider.notifier)
-                      .updateSettings(cleanupMode: value),
+                const SizedBox(height: 12),
+                Text(
+                  '已收藏、关联事件或推送的内容不会清理。保留时间只对新内容生效。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -209,35 +187,24 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
       builder: (context, controllers) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: controllers['profile'],
-            minLines: 3,
+          SettingsTextField(
+            label: '兴趣偏好',
+            hint: '感兴趣的主题、作者或关键词',
+            controller: controllers['profile']!,
+            minLines: 2,
             maxLines: 6,
-            decoration: const InputDecoration(
-              labelText: '兴趣偏好',
-              hintText: '感兴趣的主题、作者或关键词',
-            ),
           ),
-          const Gap(12),
+          const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
-            child: FilledButton.tonal(
+            child: SettingSaveButton(
               onPressed: () async {
-                try {
-                  await ref
-                      .read(discoverySettingsStateProvider.notifier)
-                      .updateSettings(
-                        interestProfile: controllers['profile']!.text,
-                      );
-                  if (context.mounted) showToast(context, '兴趣偏好已更新');
-                } catch (error) {
-                  if (context.mounted) {
-                    showToast(
-                      context,
-                      formatApiErrorMessage(error, fallbackMessage: '兴趣偏好保存失败'),
+                await ref
+                    .read(discoverySettingsStateProvider.notifier)
+                    .updateSettings(
+                      interestProfile: controllers['profile']!.text,
                     );
-                  }
-                }
+                if (context.mounted) showToast(context, '兴趣偏好已更新');
               },
               child: const Text('保存偏好'),
             ),
@@ -253,12 +220,14 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
     AsyncValue<List<SystemSetting>> settingsAsync,
     AsyncValue<Map<String, dynamic>> semanticStatusAsync,
   ) => settingsAsync.when(
-    data: (settings) => SettingGroup(
+    data: (settings) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SettingSection(
           title: '通用模型',
           child: _buildModelConfigEditor(context, ref, 'text_llm'),
         ),
+        const Divider(height: 48),
         SettingSection(
           title: '向量模型',
           child: _buildModelConfigEditor(
@@ -272,6 +241,7 @@ class _AutomationTabState extends ConsumerState<AutomationTab> {
             ),
           ),
         ),
+        const Divider(height: 48),
         SettingSection(
           title: '摘要模型',
           child: _buildModelConfigEditor(context, ref, 'summary'),
