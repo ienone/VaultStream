@@ -1,5 +1,6 @@
 import '../../../core/widgets/app_setting_group.dart';
 import '../../../core/layout/app_page_body.dart';
+import '../../../core/layout/responsive_layout.dart';
 
 import 'package:material_ui/material_ui.dart';
 
@@ -35,39 +36,33 @@ class FavoritesSyncAutomationPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final platform = initialPlatform;
-    Widget layout(String? heading, List<Widget> children) => AppPageBody(
-      maxWidth: AppPane.readableMaxWidth,
-      child: ListView(
-        key: PageStorageKey(platform ?? 'sync-overview'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        children: [
-          if (heading != null)
-            Row(
-              children: [
-                if (showBackButton)
-                  IconButton(
-                    tooltip: '所有平台',
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go('/sources/sync');
-                      }
-                    },
-                  ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    heading,
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                ),
-              ],
+    Widget layout(String? heading, List<Widget> children) => Scaffold(
+      appBar: heading == null
+          ? null
+          : AppBar(
+              automaticallyImplyLeading: false,
+              toolbarHeight: WindowMetrics.of(context).toolbarHeight,
+              leading: showBackButton
+                  ? BackButton(
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.go('/sources/sync');
+                        }
+                      },
+                    )
+                  : null,
+              title: Text(heading),
             ),
-          ...children,
-        ],
+      body: AppPageBody(
+        maxWidth: AppPane.readableMaxWidth,
+        child: ListView(
+          key: PageStorageKey(platform ?? 'sync-overview'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          children: children,
+        ),
       ),
     );
     if (platform == 'telegram') {
@@ -435,11 +430,6 @@ class FavoritesSyncPlatformList extends ConsumerWidget {
         data: (status) => ListView(
           padding: const EdgeInsets.all(12),
           children: [
-            ListTile(
-              title: const Text('全部平台'),
-              selected: selectedPlatform == 'all',
-              onTap: () => onSelected('all'),
-            ),
             _PlatformStatusGrid(
               platforms: status.platforms,
               selectedPlatform: selectedPlatform,
@@ -463,14 +453,26 @@ class _PlatformStatusGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (platforms.isEmpty) {
-      return const _EmptyPanel(message: '暂无可用平台');
-    }
-
     return AppSettingGroup(
       children: [
+        if (onSelected != null)
+          ListTile(
+            shape: onSelected == null
+                ? null
+                : const RoundedRectangleBorder(
+                    borderRadius: AppShape.cardMediaBorder,
+                  ),
+            title: const Text('全部平台'),
+            selected: selectedPlatform == 'all',
+            onTap: () => onSelected!('all'),
+          ),
         for (final platform in platforms)
           ListTile(
+            shape: onSelected == null
+                ? null
+                : const RoundedRectangleBorder(
+                    borderRadius: AppShape.cardMediaBorder,
+                  ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 4,
@@ -484,6 +486,11 @@ class _PlatformStatusGrid extends StatelessWidget {
                 : context.push('/sources/sync?platform=${platform.platform}'),
           ),
         ListTile(
+          shape: onSelected == null
+              ? null
+              : const RoundedRectangleBorder(
+                  borderRadius: AppShape.cardMediaBorder,
+                ),
           selected: selectedPlatform == 'telegram',
           title: const Text('Telegram'),
           subtitle: const Text('已保存的消息与频道'),

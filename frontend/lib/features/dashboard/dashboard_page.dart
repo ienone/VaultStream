@@ -341,6 +341,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage>
         return Scaffold(
           backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
           appBar: WorkspaceAppBar(
+            toolbarHeight: WindowMetrics.of(context).toolbarHeight,
             tabs: WorkspaceTabs(
               controller: _tabs,
               labels: const ['最新', '稍后看', '事件'],

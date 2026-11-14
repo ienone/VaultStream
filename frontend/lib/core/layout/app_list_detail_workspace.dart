@@ -18,6 +18,7 @@ class AppListDetailWorkspace extends StatefulWidget {
     required this.list,
     required this.selectedId,
     required this.detailBuilder,
+    this.showOverview = false,
     this.onClose,
     this.emptyDetail = const WorkspacePlaceholder(
       loading: false,
@@ -36,6 +37,9 @@ class AppListDetailWorkspace extends StatefulWidget {
   }
 
   final Widget list;
+
+  /// 展开主内容用于卡片浏览，其他工作区保留固定分栏。
+  final bool showOverview;
   final Widget emptyDetail;
   final Object? selectedId;
   final VoidCallback? onClose;
@@ -194,7 +198,8 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
   @override
   void didUpdateWidget(AppListDetailWorkspace oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedId != widget.selectedId) {
+    if (oldWidget.selectedId != widget.selectedId ||
+        (oldWidget.onClose == null) != (widget.onClose == null)) {
       _detailRoute = _ownerRoute;
       _syncHistory();
     }
@@ -222,13 +227,14 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
         context,
         availableSize: constraints.biggest,
       );
+      final split = wide && !widget.showOverview;
       final listVisible = widget.selectedId == null || (wide && !_focused);
       final readerVisible = widget.selectedId != null;
       final maxListWidth = math.max(
         280.0,
         math.min(480.0, constraints.maxWidth - 360),
       );
-      final listWidth = wide
+      final listWidth = split
           ? _listWidth.clamp(280.0, maxListWidth)
           : constraints.maxWidth;
       final readerWidth = wide && !_focused
@@ -270,7 +276,8 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
       return _WorkspaceBackScope(
         register: _registerDetailRoute,
         child: SharedLayoutTransition(
-          value: readerVisible && _previewingBack && !wide
+          value:
+              readerVisible && _previewingBack && (!wide || widget.showOverview)
               ? paneWidth + (constraints.maxWidth - paneWidth) * _back.value
               : paneWidth,
           animate: animate && (!_previewingBack || !readerVisible),
@@ -333,6 +340,10 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                                         appBarTheme: Theme.of(context)
                                             .appBarTheme
                                             .copyWith(
+                                              centerTitle: true,
+                                              toolbarHeight: WindowMetrics.of(
+                                                context,
+                                              ).toolbarHeight,
                                               backgroundColor: Theme.of(context)
                                                   .colorScheme
                                                   .surfaceContainerLow,
@@ -360,7 +371,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                           alignment: Alignment.topLeft,
                           minWidth: readerWidth,
                           maxWidth: readerWidth,
-                          child: wide && !readerVisible
+                          child: split && !readerVisible
                               ? widget.emptyDetail
                               : TickerMode(
                                   enabled: readerVisible,
@@ -385,7 +396,7 @@ class _AppListDetailWorkspaceState extends State<AppListDetailWorkspace>
                     ),
                   ],
                 ),
-                if (wide && listVisible)
+                if (split && listVisible)
                   Positioned(
                     left: paneWidth - 16,
                     top: 0,

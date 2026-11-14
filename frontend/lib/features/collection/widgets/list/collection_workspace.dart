@@ -14,10 +14,12 @@ class CollectionWorkspace extends StatelessWidget {
     this.preview,
     required this.emptyDetail,
     this.defaultSelection = false,
+    this.showOverview = false,
   });
   final Widget list;
   final Widget emptyDetail;
   final bool defaultSelection;
+  final bool showOverview;
   final int? selectedId;
   final ShareCard? preview;
   final VoidCallback onClose;
@@ -31,6 +33,7 @@ class CollectionWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AppListDetailWorkspace(
     list: list,
+    showOverview: showOverview,
     selectedId: selectedId,
     onClose: defaultSelection ? null : onClose,
     emptyDetail: emptyDetail,

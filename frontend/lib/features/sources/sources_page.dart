@@ -1,5 +1,7 @@
 import '../accounts/account_detail_page.dart';
 import '../../core/layout/app_page_body.dart';
+import '../../core/layout/responsive_layout.dart';
+import '../../core/widgets/app_setting_group.dart';
 import '../../core/layout/app_list_detail_workspace.dart';
 import '../../core/network/api_client.dart';
 import '../discovery/providers/discovery_sources_provider.dart';
@@ -247,6 +249,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
   }
 
   PreferredSizeWidget _workspaceHeader(BuildContext context) => WorkspaceAppBar(
+    toolbarHeight: WindowMetrics.of(context).toolbarHeight,
     tabs: WorkspaceTabs(
       controller: _tabs,
       labels: [for (final section in SourcesSection.values) section.label],
@@ -279,17 +282,31 @@ class _SourcesPageState extends ConsumerState<SourcesPage>
                 enabled: widget.tab == SourcesSection.monitoring,
                 child: wide
                     ? ListView(
+                        padding: const EdgeInsets.all(12),
                         children: [
-                          for (final entry in {
-                            'telegram': 'Telegram',
-                            'qq': 'QQ',
-                          }.entries)
-                            ListTile(
-                              title: Text(entry.value),
-                              selected: _monitorPlatform == entry.key,
-                              onTap: () =>
-                                  setState(() => _monitorPlatform = entry.key),
-                            ),
+                          AppSettingGroup(
+                            children: [
+                              for (final entry in {
+                                'telegram': 'Telegram',
+                                'qq': 'QQ',
+                              }.entries)
+                                ListTile(
+                                  leading: Icon(
+                                    entry.key == 'telegram'
+                                        ? Icons.send_outlined
+                                        : Icons.chat_bubble_outline_rounded,
+                                  ),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: AppShape.cardMediaBorder,
+                                  ),
+                                  title: Text(entry.value),
+                                  selected: _monitorPlatform == entry.key,
+                                  onTap: () => setState(
+                                    () => _monitorPlatform = entry.key,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ],
                       )
                     : const PushTab(monitoringOnly: true),

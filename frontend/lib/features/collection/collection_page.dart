@@ -2,6 +2,7 @@ import '../../core/layout/app_list_detail_workspace.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../layout/root_page_actions.dart';
+import '../../main.dart';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,6 +58,8 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   String? _lastAppliedRouteFilterSignature;
   ShareCard? _preview;
   int? _lastReadId;
+  static const _listViewKey = 'collection_list_view';
+  late bool _listView = sharedPrefs.getBool(_listViewKey) ?? false;
 
   @override
   void initState() {
@@ -123,6 +126,12 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
     final uri = GoRouterState.of(context).uri;
     final query = {...uri.queryParametersAll}..remove('item');
     context.replace(uri.replace(queryParameters: query).toString());
+  }
+
+  void _switchView(bool listView) {
+    setState(() => _listView = listView);
+    sharedPrefs.setBool(_listViewKey, listView);
+    if (!listView && widget.selectedContentId != null) _navigateClose();
   }
 
   /// 路由 query 是筛选的可分享表示，只在 query 真正变化时覆盖当前筛选。
@@ -219,8 +228,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
         items?.where((item) => item.id == _lastReadId).firstOrNull ??
         items?.firstOrNull;
     final selectedId =
-        widget.selectedContentId ?? (wide ? defaultItem?.id : null);
+        widget.selectedContentId ??
+        (wide && _listView ? defaultItem?.id : null);
+    final showOverview = !_listView && widget.selectedContentId == null;
     return CollectionWorkspace(
+      showOverview: showOverview,
       selectedId: selectedId,
       defaultSelection: widget.selectedContentId == null,
       emptyDetail: WorkspacePlaceholder(
@@ -256,7 +268,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
               key: ValueKey(selection.isSelectionMode),
               child: selection.isSelectionMode
                   ? _buildSelectionAppBar(selection, collectionAsync.value)
-                  : _buildAppBar(filter),
+                  : _buildAppBar(
+                      filter,
+                      wide: wide,
+                      showOverview: showOverview,
+                    ),
             ),
           ),
         ),
@@ -306,7 +322,7 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
                 ),
                 loading: () => LayoutBuilder(
                   builder: (context, constraints) => CollectionSkeleton(
-                    columns: !wide
+                    columns: !wide || showOverview
                         ? (constraints.maxWidth /
                                   (300 *
                                       MediaQuery.textScalerOf(context)
@@ -370,7 +386,11 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
 
   // --- 顶栏 ---
 
-  PreferredSizeWidget _buildAppBar(CollectionFilterState filter) {
+  PreferredSizeWidget _buildAppBar(
+    CollectionFilterState filter, {
+    required bool wide,
+    required bool showOverview,
+  }) {
     return AppBar(
       automaticallyImplyLeading: false,
       leading: buildRootPageLeading(context),
@@ -401,7 +421,19 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
           ],
         ),
       ),
-      actions: [const RootPageActions()],
+      actions: [
+        if (wide)
+          IconButton(
+            tooltip: showOverview ? '列表视图' : '卡片视图',
+            icon: Icon(
+              showOverview
+                  ? Icons.view_sidebar_outlined
+                  : Icons.grid_view_rounded,
+            ),
+            onPressed: () => _switchView(showOverview),
+          ),
+        const RootPageActions(),
+      ],
     );
   }
 

@@ -2,6 +2,8 @@ import '../../routing/navigation_scope.dart';
 import '../../routing/content_route_extra.dart';
 import '../../routing/page_origin.dart';
 import '../../core/layout/app_page_body.dart';
+import '../../core/layout/responsive_layout.dart';
+import '../../core/widgets/app_setting_group.dart';
 import '../../core/widgets/workspace_tabs.dart';
 import '../collection/content_detail_page.dart';
 import '../collection/models/content.dart';
@@ -275,6 +277,7 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
       ),
       list: Scaffold(
         appBar: WorkspaceAppBar(
+          toolbarHeight: WindowMetrics.of(context).toolbarHeight,
           tabs: _DistributionDomainTabs(
             view: _distributionView,
             onChanged: _showView,
@@ -282,17 +285,30 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
         ),
         body: targets
             ? ListView(
+                padding: const EdgeInsets.all(12),
                 children: [
-                  for (final platform in {
-                    'telegram': 'Telegram',
-                    'qq': 'QQ',
-                  }.entries)
-                    ListTile(
-                      title: Text(platform.value),
-                      selected: _targetPlatform == platform.key,
-                      onTap: () =>
-                          setState(() => _targetPlatform = platform.key),
-                    ),
+                  AppSettingGroup(
+                    children: [
+                      for (final platform in {
+                        'telegram': 'Telegram',
+                        'qq': 'QQ',
+                      }.entries)
+                        ListTile(
+                          leading: Icon(
+                            platform.key == 'telegram'
+                                ? Icons.send_outlined
+                                : Icons.chat_bubble_outline_rounded,
+                          ),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: AppShape.cardMediaBorder,
+                          ),
+                          title: Text(platform.value),
+                          selected: _targetPlatform == platform.key,
+                          onTap: () =>
+                              setState(() => _targetPlatform = platform.key),
+                        ),
+                    ],
+                  ),
                 ],
               )
             : _buildDistributionContent(

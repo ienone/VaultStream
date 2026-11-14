@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show listEquals;
 
 import '../../../../core/layout/app_page_body.dart';
+import '../../../../theme/design_tokens.dart';
 
 import 'package:frontend/core/network/api_client.dart';
 import 'package:material_ui/material_ui.dart';
@@ -364,7 +365,7 @@ class _PushTabState extends ConsumerState<PushTab> {
     final content = ListView(
       shrinkWrap: embedded,
       physics: embedded ? const NeverScrollableScrollPhysics() : null,
-      padding: widget.platform != null
+      padding: embedded
           ? EdgeInsets.zero
           : const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       children: widget.targetsOnly || widget.monitoringOnly
@@ -540,7 +541,12 @@ class _PushTabState extends ConsumerState<PushTab> {
               const SizedBox(height: 40),
             ],
     );
-    return AppPageBody(child: content);
+    return AppPageBody(
+      maxWidth: widget.targetsOnly || widget.monitoringOnly
+          ? AppPane.readableMaxWidth
+          : AppPane.workspaceMaxWidth,
+      child: content,
+    );
   }
 
   Widget _buildDigestSettings(List<SystemSetting> settings) {
