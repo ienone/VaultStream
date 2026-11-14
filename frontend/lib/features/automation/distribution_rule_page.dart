@@ -76,37 +76,27 @@ class DistributionRulePage extends ConsumerWidget {
     DistributionRuleCreate data,
     List<int> chatIds,
   ) async {
-    try {
-      final actions = ref.read(distributionRulesProvider.notifier);
-      if (ruleId == null) {
-        await actions.createRule(data, chatIds: chatIds);
-      } else {
-        await actions.updateRule(
-          ruleId!,
-          DistributionRuleUpdate.fromJson(data.toJson()),
-          chatIds: chatIds,
-        );
-        ref.invalidate(distributionRuleDetailProvider(ruleId!));
-        ref.invalidate(distributionTargetsProvider(ruleId!));
-      }
-      ref.invalidate(botChatsProvider);
-      ref.invalidate(contentQueueProvider);
-      if (context.mounted) {
-        Toast.show(context, '规则已保存');
-        ref
-            .read(ruleEditorKeyProvider(routeKey))
-            .currentState
-            ?.allowExitAfterSave();
-        context.go('/automation/distribution/rules');
-      }
-    } catch (error) {
-      if (context.mounted) {
-        Toast.show(
-          context,
-          formatApiErrorMessage(error, fallbackMessage: '保存失败'),
-          isError: true,
-        );
-      }
+    final actions = ref.read(distributionRulesProvider.notifier);
+    if (ruleId == null) {
+      await actions.createRule(data, chatIds: chatIds);
+    } else {
+      await actions.updateRule(
+        ruleId!,
+        DistributionRuleUpdate.fromJson(data.toJson()),
+        chatIds: chatIds,
+      );
+      ref.invalidate(distributionRuleDetailProvider(ruleId!));
+      ref.invalidate(distributionTargetsProvider(ruleId!));
+    }
+    ref.invalidate(botChatsProvider);
+    ref.invalidate(contentQueueProvider);
+    if (context.mounted) {
+      Toast.show(context, '规则已保存');
+      ref
+          .read(ruleEditorKeyProvider(routeKey))
+          .currentState
+          ?.allowExitAfterSave();
+      context.go('/automation/distribution/rules');
     }
   }
 }

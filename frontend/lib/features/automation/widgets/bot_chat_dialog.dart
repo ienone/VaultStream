@@ -72,9 +72,10 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
   @override
   Widget build(BuildContext context) {
     return AdaptiveFormDialog(
-      title: isEditing ? '编辑群组或频道' : widget.createTitle,
+      title: isEditing ? '编辑会话' : widget.createTitle,
       contentBuilder: (context, width, short) => Form(
         key: _formKey,
+        canPop: !_submitting,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -84,6 +85,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                 child: AppFilterMenu(
                   label: '会话类型',
                   value: _chatType,
+                  enabled: !_submitting,
                   options: {
                     if (widget.platform != 'qq') ...{
                       'channel': 'TG 频道',
@@ -130,9 +132,11 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
                 borderRadius: AppShape.cardMediaBorder,
               ),
               contentPadding: EdgeInsets.zero,
-              title: Text(widget.monitoringOnly ? '启用此来源' : '启用此目标'),
+              title: const Text('启用会话'),
               value: _enabled,
-              onChanged: (value) => setState(() => _enabled = value),
+              onChanged: _submitting
+                  ? null
+                  : (value) => setState(() => _enabled = value),
             ),
             const SizedBox(height: 8),
             if (!widget.monitoringOnly)
@@ -151,7 +155,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
         overflowSpacing: 8,
         children: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: _submitting ? null : () => Navigator.of(context).pop(),
             child: const Text('取消'),
           ),
           FilledButton(
@@ -182,6 +186,7 @@ class _BotChatDialogState extends ConsumerState<BotChatDialog> {
       Semantics(
         label: label,
         child: TextFormField(
+          enabled: !_submitting,
           controller: controller,
           keyboardType: keyboardType,
           validator: validator,

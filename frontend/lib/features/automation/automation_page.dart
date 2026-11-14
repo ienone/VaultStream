@@ -4,6 +4,7 @@ import '../../routing/page_origin.dart';
 import '../../core/layout/app_page_body.dart';
 import '../../core/layout/responsive_layout.dart';
 import '../../core/widgets/app_setting_group.dart';
+import '../../core/widgets/app_choice_segments.dart';
 import '../../core/widgets/workspace_tabs.dart';
 import '../collection/content_detail_page.dart';
 import '../collection/models/content.dart';
@@ -41,18 +42,35 @@ class DistributionPage extends ConsumerStatefulWidget {
   });
 
   static void showTargets(BuildContext context) {
+    var platform = 'telegram';
     showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
-          child: SizedBox(
-            height: MediaQuery.sizeOf(context).height * .8,
-            child: Column(
-              children: [
-                ListTile(title: const Text('推送目标')),
-                const Expanded(child: PushTab(targetsOnly: true)),
-              ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => Dialog(
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * .8,
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('推送目标'),
+                    trailing: IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ),
+                  Expanded(
+                    child: _PushTargets(
+                      platform: platform,
+                      onPlatformChanged: (value) =>
+                          setState(() => platform = value),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -74,6 +92,34 @@ class DistributionPage extends ConsumerStatefulWidget {
 }
 
 enum _DistributionDomainView { queue, history, rules, targets }
+
+class _PushTargets extends StatelessWidget {
+  const _PushTargets({required this.platform, required this.onPlatformChanged});
+
+  final String platform;
+  final ValueChanged<String> onPlatformChanged;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: AppChoiceSegments<String>(
+          options: const {'telegram': 'Telegram', 'qq': 'QQ'},
+          selected: {platform},
+          onChanged: (values) => onPlatformChanged(values.single),
+        ),
+      ),
+      Expanded(
+        child: PushTab(
+          key: ValueKey(platform),
+          targetsOnly: true,
+          platform: platform,
+        ),
+      ),
+    ],
+  );
+}
 
 class _DistributionDomainTabs extends StatefulWidget {
   const _DistributionDomainTabs({required this.view, required this.onChanged});
@@ -409,7 +455,10 @@ class _DistributionPageState extends ConsumerState<DistributionPage> {
   }) {
     return switch (_distributionView) {
       _DistributionDomainView.rules => _buildRules(selectedRuleId),
-      _DistributionDomainView.targets => const PushTab(targetsOnly: true),
+      _DistributionDomainView.targets => _PushTargets(
+        platform: _targetPlatform,
+        onPlatformChanged: (value) => setState(() => _targetPlatform = value),
+      ),
       _ => AppPageBody(
         maxWidth: AppPane.readableMaxWidth,
         child: _buildQueueList(activeContentId),

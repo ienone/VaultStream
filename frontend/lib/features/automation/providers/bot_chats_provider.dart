@@ -44,10 +44,14 @@ class BotChats extends _$BotChats {
     String? newChatId,
   }) async {
     final dio = ref.watch(apiClientProvider);
-    final payload = <String, dynamic>{...update.toJson()};
-    if (newChatId case final id?) {
-      payload['chat_id'] = id;
-    }
+    final payload = <String, dynamic>{
+      'title': update.title,
+      'nsfw_chat_id': update.nsfwChatId,
+      'enabled': ?update.enabled,
+      'is_monitoring': ?update.isMonitoring,
+      'is_push_target': ?update.isPushTarget,
+      'chat_id': ?newChatId,
+    };
     final response = await dio.patch('/bot/chats/$botChatId', data: payload);
     final updatedChat = BotChat.fromJson(response.data);
     ref.invalidateSelf();

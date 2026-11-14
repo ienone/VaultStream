@@ -1,6 +1,7 @@
 import '../../../core/widgets/app_multi_select.dart';
 import '../../../core/widgets/app_filter_menu.dart';
 import '../../../core/layout/app_page_body.dart';
+import '../../../core/network/api_client.dart';
 
 import 'dart:convert';
 
@@ -37,6 +38,10 @@ class DistributionRuleEditor extends StatefulWidget {
 }
 
 class DistributionRuleEditorState extends State<DistributionRuleEditor> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameFieldKey = GlobalKey<FormFieldState<String>>();
+  final _targetsFieldKey = GlobalKey<FormFieldState<Set<int>>>();
+  final _nameFocus = FocusNode();
   late final TextEditingController _name;
   late final TextEditingController _include;
   late final TextEditingController _exclude;
@@ -66,8 +71,6 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
     _render,
     _interval,
   ]);
-  bool get _canSave =>
-      !_saving && _name.text.trim().isNotEmpty && _targets.isNotEmpty;
   bool get _dirty => _snapshot() != _initialDraft;
   void _changed() => setState(() {});
 
@@ -105,6 +108,7 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
 
   @override
   void dispose() {
+    _nameFocus.dispose();
     for (final c in _controllers) {
       c.dispose();
     }
@@ -142,7 +146,21 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
       .toList();
 
   Future<void> _save() async {
-    if (!_canSave) return;
+    if (_saving) return;
+    if (!_formKey.currentState!.validate()) {
+      final invalid = _nameFieldKey.currentState!.hasError
+          ? _nameFieldKey.currentContext!
+          : _targetsFieldKey.currentContext!;
+      if (_nameFieldKey.currentState!.hasError) _nameFocus.requestFocus();
+      await Scrollable.ensureVisible(
+        invalid,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : AppMotion.standard,
+        alignment: .15,
+      );
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -183,6 +201,13 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
         ),
         _targets.toList(),
       );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () =>
+              _error = formatApiErrorMessage(error, fallbackMessage: '规则保存失败'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -218,6 +243,7 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
       child: AppPageBody(
         maxWidth: AppPane.readableMaxWidth,
         child: Form(
+          key: _formKey,
           canPop: _exitAllowed || (!_saving && !_dirty),
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop) _close();
@@ -233,7 +259,12 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       TextFormField(
+                        key: _nameFieldKey,
+                        focusNode: _nameFocus,
                         controller: _name,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        validator: (value) =>
+                            value?.trim().isNotEmpty == true ? null : '请输入规则名称',
                         decoration: const InputDecoration(labelText: '规则名称'),
                       ),
                       SwitchListTile(
@@ -277,18 +308,44 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
                         ),
                       ),
                       _heading('发送方式'),
-                      AppMultiSelect(
-                        label: '发送目标',
-                        hint: chats.isEmpty ? '尚无可用目标' : '请选择推送目标',
-                        options: {
-                          for (final chat in chats)
-                            '${chat.id}':
-                                '${chat.displayName}${!chat.enabled || !chat.isAccessible || !chat.isPushTarget ? '（当前不可用）' : ''}',
-                        },
-                        selected: _targets.map((id) => '$id').toSet(),
-                        onChanged: (values) => setState(() {
-                          _targets = values.map(int.parse).toSet();
-                        }),
+                      FormField<Set<int>>(
+                        key: _targetsFieldKey,
+                        initialValue: _targets,
+                        autovalidateMode: AutovalidateMode.onUserInteraction,
+                        validator: (value) =>
+                            value?.isNotEmpty == true ? null : '请选择发送目标',
+                        builder: (field) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AppMultiSelect(
+                              label: '发送目标',
+                              hint: chats.isEmpty ? '尚无可用目标' : '请选择推送目标',
+                              options: {
+                                for (final chat in chats)
+                                  '${chat.id}':
+                                      '${chat.displayName}${!chat.enabled || !chat.isAccessible || !chat.isPushTarget ? '（当前不可用）' : ''}',
+                              },
+                              selected: _targets.map((id) => '$id').toSet(),
+                              onChanged: (values) => setState(() {
+                                _targets = values.map(int.parse).toSet();
+                                field.didChange(_targets);
+                              }),
+                            ),
+                            if (field.errorText case final error?)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: 8,
+                                  left: 16,
+                                ),
+                                child: Text(
+                                  error,
+                                  style: TextStyle(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -374,7 +431,7 @@ class DistributionRuleEditorState extends State<DistributionRuleEditor> {
                         child: const Text('取消'),
                       ),
                       FilledButton(
-                        onPressed: _canSave ? _save : null,
+                        onPressed: _saving ? null : _save,
                         child: Text(_saving ? '正在保存…' : '保存规则'),
                       ),
                     ],

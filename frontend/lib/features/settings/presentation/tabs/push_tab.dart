@@ -261,37 +261,31 @@ class _PushTabState extends ConsumerState<PushTab> {
       ? '添加推送目标'
       : '添加群组或频道';
 
-  Future<void> _showAddChatDialog() async {
+  Future<void> _showChatDialog([BotChat? existing]) async {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => BotChatDialog(
+        chat: existing,
         createTitle: _addChatLabel,
         monitoringOnly: widget.monitoringOnly,
         platform: widget.platform,
         resolveBotConfigId: _resolveBotConfigId,
+        onUpdate: (id, update, chatId) async {
+          await ref
+              .read(botChatsProvider.notifier)
+              .updateChat(id, update, newChatId: chatId);
+          if (mounted) showToast(context, '会话已保存');
+        },
         onCreate: (chat) async {
-          try {
-            await ref
-                .read(botChatsProvider.notifier)
-                .createChat(
-                  chat.copyWith(
-                    isMonitoring: widget.monitoringOnly,
-                    isPushTarget: widget.targetsOnly,
-                  ),
-                );
-            ref.invalidate(botChatsProvider);
-            if (mounted) {
-              showToast(context, '群组或频道已添加');
-            }
-          } catch (e) {
-            if (mounted) {
-              showToast(
-                context,
-                formatApiErrorMessage(e, fallbackMessage: '添加失败'),
+          await ref
+              .read(botChatsProvider.notifier)
+              .createChat(
+                chat.copyWith(
+                  isMonitoring: widget.monitoringOnly,
+                  isPushTarget: widget.targetsOnly,
+                ),
               );
-            }
-            rethrow;
-          }
+          if (mounted) showToast(context, '群组或频道已添加');
         },
       ),
     );
@@ -388,7 +382,7 @@ class _PushTabState extends ConsumerState<PushTab> {
                       label: Text(_isSyncingChats ? '同步中…' : '同步群组与频道'),
                     ),
                     OutlinedButton.icon(
-                      onPressed: _showAddChatDialog,
+                      onPressed: _showChatDialog,
                       icon: const Icon(Icons.add_rounded),
                       label: Text(_addChatLabel),
                     ),
@@ -750,65 +744,72 @@ class _PushTabState extends ConsumerState<PushTab> {
     required bool disambiguate,
   }) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_updatingChats.contains(chat.id)) const LinearProgressIndicator(),
-          if (_chatErrors[chat.id] case final error?)
-            Text(error, style: TextStyle(color: theme.colorScheme.error)),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            shape: const RoundedRectangleBorder(),
-            title: Text(
-              chat.displayName,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            subtitle: Text(
-              [
-                chat.chatTypeLabel,
-                if (disambiguate)
-                  chat.username == null ? chat.chatId : '@${chat.username}',
-                if (widget.targetsOnly && chat.enabled)
-                  chat.isPushTarget ? '允许推送' : '不推送',
-                if (widget.monitoringOnly && chat.enabled)
-                  chat.isMonitoring ? '接收动态' : '不接收动态',
-                if (!chat.isAccessible) '无法访问',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            value: widget.targetsOnly
-                ? chat.enabled && chat.isPushTarget
-                : widget.monitoringOnly
-                ? chat.enabled && chat.isMonitoring
-                : chat.enabled,
-            onChanged:
-                _updatingChats.contains(chat.id) ||
-                    ((widget.targetsOnly || widget.monitoringOnly) &&
-                        !chat.enabled)
-                ? null
-                : (value) => _updateChat(
-                    chat.id,
-                    enabled: !widget.targetsOnly && !widget.monitoringOnly
-                        ? value
-                        : null,
-                    isMonitoring: widget.monitoringOnly ? value : null,
-                    isPushTarget: widget.targetsOnly ? value : null,
-                  ),
+    final updating = _updatingChats.contains(chat.id);
+    final enabled = widget.targetsOnly
+        ? chat.enabled && chat.isPushTarget
+        : widget.monitoringOnly
+        ? chat.enabled && chat.isMonitoring
+        : chat.enabled;
+    final purpose = widget.targetsOnly
+        ? '允许推送'
+        : widget.monitoringOnly
+        ? '接收动态'
+        : '启用会话';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (updating) const LinearProgressIndicator(),
+        ListTile(
+          title: Text(chat.displayName),
+          subtitle: Text(
+            [
+              chat.chatTypeLabel,
+              if (disambiguate)
+                chat.username == null ? chat.chatId : '@${chat.username}',
+              if (!chat.enabled) '已停用',
+              if (!chat.isAccessible) '无法访问',
+            ].join(' · '),
           ),
-          if ((widget.targetsOnly || widget.monitoringOnly) && !chat.enabled)
-            TextButton(
-              onPressed: () =>
-                  context.go('/accounts/${chat.isQQ ? 'qq' : 'telegram'}'),
-              child: const Text('会话已停用 · 管理连接'),
+          onTap: updating ? null : () => _showChatDialog(chat),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                label: '$purpose：${chat.displayName}',
+                child: Switch(
+                  value: enabled,
+                  onChanged:
+                      updating ||
+                          ((widget.targetsOnly || widget.monitoringOnly) &&
+                              !chat.enabled)
+                      ? null
+                      : (value) => _updateChat(
+                          chat.id,
+                          enabled: !widget.targetsOnly && !widget.monitoringOnly
+                              ? value
+                              : null,
+                          isMonitoring: widget.monitoringOnly ? value : null,
+                          isPushTarget: widget.targetsOnly ? value : null,
+                        ),
+                ),
+              ),
+              IconButton(
+                tooltip: '编辑会话',
+                onPressed: updating ? null : () => _showChatDialog(chat),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            ],
+          ),
+        ),
+        if (_chatErrors[chat.id] case final error?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Text(
+              error,
+              style: TextStyle(color: theme.colorScheme.error),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
