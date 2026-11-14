@@ -182,8 +182,13 @@ def _summary_for_task(
         )
     if task == "bot_runtime_control":
         runtime = _mapping(result.get("runtime"))
-        runtime_status = _text(runtime.get("status")) or status
-        return f"Telegram Bot 服务控制结果：{runtime_status}。"
+        return {
+            "started": "Telegram Bot 已启动。",
+            "restarted": "Telegram Bot 已重启。",
+            "already_running": "Telegram Bot 已在运行。",
+            "stopped": "Telegram Bot 已停止。",
+            "not_running": "Telegram Bot 未在运行。",
+        }.get(runtime.get("status"), "Telegram Bot 服务操作已完成。")
     return f"{title}已完成。" if status in TASK_SUCCESS_STATUSES else f"{title}状态：{status}。"
 
 
@@ -196,6 +201,10 @@ def _failure_summary(error: str | None) -> str:
         return "正文提取失败：清理结果包含无效行号。"
     if "FloodWaitError" in error:
         return "Telegram 限制了请求频率，同步未完成。"
+    if "httpx.ConnectError" in error:
+        return "连接失败，任务未完成。"
+    if "httpx.ReadTimeout" in error or "httpx.ConnectTimeout" in error:
+        return "请求超时，任务未完成。"
     # SQL and structured-output dumps belong in diagnostics, not the result.
     if "[SQL:" in error or "validation error" in error or "Traceback" in error:
         return "任务未完成，错误记录见诊断详情。"
@@ -328,19 +337,6 @@ def _sections_for_task(
                     _item("已更新", result.get("updated"), "positive"),
                     _item("不可访问", result.get("inaccessible"), "negative" if _int(result.get("inaccessible")) else "neutral"),
                     _item("失败", result.get("failed"), "negative" if _int(result.get("failed")) else "neutral"),
-                ],
-            )
-        ]
-    if task == "bot_runtime_control":
-        runtime = _mapping(result.get("runtime"))
-        return [
-            _section(
-                "服务控制结果",
-                [
-                    _item("动作", result.get("action") or metadata.get("action")),
-                    _item("状态", runtime.get("status")),
-                    _item("进程 ID", runtime.get("pid")),
-                    _item("原因", result.get("reason") or metadata.get("reason")),
                 ],
             )
         ]
