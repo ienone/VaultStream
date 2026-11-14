@@ -1,3 +1,4 @@
+import '../../../core/constants/platform_constants.dart';
 import '../../../core/widgets/app_setting_group.dart';
 import '../../../core/layout/app_page_body.dart';
 import '../../../core/layout/responsive_layout.dart';
@@ -103,7 +104,7 @@ class FavoritesSyncAutomationPanel extends ConsumerWidget {
               child: layout(
                 platform == null
                     ? (showPlatformLinks ? null : '全部平台')
-                    : _platformLabel(platform),
+                    : PlatformConstants.getName(platform),
                 [
                   if (platform == null) ...[
                     if (showPlatformLinks)
@@ -478,7 +479,7 @@ class _PlatformStatusGrid extends StatelessWidget {
               vertical: 4,
             ),
             selected: selectedPlatform == platform.platform,
-            title: Text(_platformLabel(platform.platform)),
+            title: Text(PlatformConstants.getName(platform.platform)),
             subtitle: Text(_platformStateLabel(platform)),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => onSelected != null
@@ -640,7 +641,7 @@ class _RunTile extends ConsumerWidget {
               : completed && added != null
               ? (added == 0 ? '没有新收藏' : '新增 $added 条收藏')
               : _runStatusLabel(status))
-        : (scope == 'all' ? '全部平台' : _platformLabel(scope ?? ''));
+        : (scope == 'all' ? '全部平台' : PlatformConstants.getName(scope ?? ''));
     return ListTile(
       contentPadding: const EdgeInsetsDirectional.only(start: 12, end: 4),
       leading: Icon(
@@ -691,7 +692,7 @@ Future<void> _showPreviewDialog(
   final theme = Theme.of(context);
   final label = preview.platform == 'all'
       ? '全平台'
-      : _platformLabel(preview.platform);
+      : PlatformConstants.getName(preview.platform);
   await showDialog<void>(
     context: context,
     builder: (dialogContext) => AdaptiveFormDialog(
@@ -749,7 +750,7 @@ class _PreviewPlatformSection extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final title = Text(
-      _platformLabel(item.platform),
+      PlatformConstants.getName(item.platform),
       style: theme.textTheme.titleMedium,
     );
     if (item.status == 'failed') {
@@ -890,17 +891,6 @@ String _runStatusLabel(String status) {
     'partial_success' => '部分失败',
     'skipped' => '已跳过',
     _ => status,
-  };
-}
-
-String _platformLabel(String platform) {
-  return switch (platform) {
-    'zhihu' => '知乎',
-    'xiaohongshu' => '小红书',
-    'twitter' => 'Twitter / X',
-    'bilibili' => 'Bilibili',
-    'weibo' => '微博',
-    _ => platform,
   };
 }
 

@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 from typing import Any
 
 from app.adapters.errors import MissingParserModelKey
+from app.utils.platform_names import platform_name
 
 
 TASK_ERROR_STATUSES = frozenset({"error", "failed"})
@@ -105,6 +106,9 @@ def _summary_for_task(
     if status == "running":
         return f"{title}正在运行。"
     if status in TASK_ERROR_STATUSES:
+        if task == "favorites_sync" and result.get("failed_platforms"):
+            platforms = "、".join(platform_name(str(p)) for p in result["failed_platforms"])
+            return f"{platforms}同步未完成。"
         return _failure_summary(error)
     if result.get("skipped") is True and task in {"content_scoring", "content_summary", "content_embedding", "content_distribution"}:
         reason = result.get("reason")
@@ -453,12 +457,16 @@ def _favorites_platform_rows(result: Mapping[str, Any]) -> list[dict[str, str]]:
     for platform, raw in platform_results.items():
         item = _mapping(raw)
         status = _text(item.get("status")) or "unknown"
+        if status == "failed" and not any(
+            _int(item.get(key)) for key in ("fetched", "imported", "skipped", "failed", "failed_items_total")
+        ):
+            continue
         summary = (
             f"拉取 {_int(item.get('fetched'))} · 导入 {_int(item.get('imported'))} · "
             f"跳过 {_int(item.get('skipped'))} · 失败 "
             f"{_int(item.get('failed_items_total') or item.get('failed'))}"
         )
-        rows.append(_item(str(platform), summary, "negative" if status == "failed" else "positive" if status == "success" else "neutral"))
+        rows.append(_item(platform_name(str(platform)), summary, "negative" if status == "failed" else "positive" if status == "success" else "neutral"))
     return rows
 
 

@@ -17,6 +17,11 @@ class PlatformConstants {
   static const Map<String, String> platformNames = {
     telegram: 'Telegram',
     qq: 'QQ',
+    'zhihu': '知乎',
+    'xiaohongshu': '小红书',
+    'twitter': 'X',
+    'weibo': '微博',
+    'bilibili': '哔哩哔哩',
   };
 
   /// 检查平台是否支持

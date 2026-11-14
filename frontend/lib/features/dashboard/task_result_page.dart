@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/constants/platform_constants.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/toast.dart';
 import '../../core/widgets/metadata_wrap.dart';
@@ -116,7 +117,10 @@ class _TaskResultBody extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _TaskSummary(run: run),
-                if (run.presentation.resultSections.isNotEmpty) ...[
+                if (run.presentation.resultSections.isNotEmpty ||
+                    (run.presentation.kind == 'favorites_sync' &&
+                        _favoritesPlatformResults(run.result)
+                            .any(_hasFavoriteFailure))) ...[
                   const SizedBox(height: 24),
                   _BusinessResult(run: run),
                 ],
@@ -263,7 +267,8 @@ class _BusinessResult extends StatelessWidget {
           _ResultSection(section: presentation.resultSections[index]),
         ],
         if (favoritesResults.any(_hasFavoriteFailure)) ...[
-          const Divider(height: AppSpacing.xxl),
+          if (presentation.resultSections.isNotEmpty)
+            const Divider(height: AppSpacing.xxl),
           _FavoritesFailureSection(runId: run.runId, results: favoritesResults),
         ],
       ],
@@ -292,7 +297,7 @@ class _FavoritesFailureSection extends ConsumerWidget {
           overflowSpacing: AppSpacing.xs,
           children: [
             Text(
-              '未同步的内容',
+              '同步问题',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -372,17 +377,18 @@ class _FavoritePlatformFailure extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        platform,
+                        PlatformConstants.getName(platform),
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      Text(
-                        '$total 个失败项',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colors.error,
+                      if (total > 0)
+                        Text(
+                          '$total 条内容同步失败',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colors.error,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

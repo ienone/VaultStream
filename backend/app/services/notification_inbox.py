@@ -14,16 +14,11 @@ from app.models import BackgroundTaskRun, Content, NotificationMessage
 from app.services.background_task_state import task_content_join
 from app.services.config_service import ConfigService
 from app.services.task_run_presentation import build_task_run_presentation, task_content_subject, TASK_ERROR_STATUSES, TASK_SUCCESS_STATUSES
+from app.utils.platform_names import platform_name
 
 NotificationState = Literal["active", "unread", "read", "muted", "snoozed", "all"]
 
 _MANUAL_TRIGGERS = {"manual", "retry", "user", "api"}
-_ACCOUNT_LABELS = {
-    "bilibili": "哔哩哔哩",
-    "xiaohongshu": "小红书",
-    "zhihu": "知乎",
-    "weibo": "微博",
-}
 
 
 
@@ -216,7 +211,7 @@ async def sync_account_auth_notification(
     if existing_payload.get("status") == "invalid":
         return serialize_notification(row)
 
-    label = _ACCOUNT_LABELS.get(normalized, normalized)
+    label = platform_name(normalized)
     return await record_notification(
         dedupe_key=dedupe_key,
         category="account",

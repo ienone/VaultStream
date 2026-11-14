@@ -6,6 +6,7 @@ from app.adapters.favorites import FAVORITES_CAPABILITIES
 from app.models import NotificationMessage
 from app.services.browser_auth_service import browser_auth_service
 from app.services.config_service import ConfigService
+from app.utils.platform_names import platform_name
 
 
 async def list_platform_accounts(db: AsyncSession) -> dict:
@@ -14,14 +15,12 @@ async def list_platform_accounts(db: AsyncSession) -> dict:
         NotificationMessage.source_type == "platform_auth",
         NotificationMessage.payload["status"].as_string() == "invalid",
     )))
-    labels = {"zhihu": "知乎", "xiaohongshu": "小红书", "twitter": "X",
-              "weibo": "微博", "bilibili": "哔哩哔哩"}
     platforms = []
-    for platform, label in labels.items():
+    for platform in ("zhihu", "xiaohongshu", "twitter", "weibo", "bilibili"):
         configured = bool(await config.get_platform_cookie_string(platform))
         platforms.append({
             "platform": platform,
-            "label": label,
+            "label": platform_name(platform),
             "login": "not_configured" if not configured else "invalid" if platform in invalid else "configured",
             "qr_login": platform in browser_auth_service.qr_platforms,
             "favorites_supported": platform in FAVORITES_CAPABILITIES,
