@@ -207,15 +207,17 @@ class _CollectionPageState extends ConsumerState<CollectionPage> {
   }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => _buildWorkspace(context, box.biggest),
-  );
-
-  Widget _buildWorkspace(BuildContext context, Size availableSize) {
+  Widget build(BuildContext context) {
     ref.listen<String>(
       collectionFilterProvider.select((state) => state.searchQuery),
       (_, query) => _syncSearchText(query),
     );
+    return LayoutBuilder(
+      builder: (context, box) => _buildWorkspace(context, box.biggest),
+    );
+  }
+
+  Widget _buildWorkspace(BuildContext context, Size availableSize) {
     final filter = ref.watch(collectionFilterProvider);
     final collectionAsync = ref.watch(collectionProvider);
     final selection = ref.watch(batchSelectionProvider);

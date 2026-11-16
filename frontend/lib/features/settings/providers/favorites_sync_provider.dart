@@ -258,8 +258,9 @@ final favoritesSyncStatusProvider = FutureProvider.autoDispose
       refreshOnEvents(
         ref,
         (event) =>
-            event.type == 'background_task_updated' &&
-            event.data['task'] == 'favorites_sync',
+            event.type == 'account_auth_updated' ||
+            (event.type == 'background_task_updated' &&
+                event.data['task'] == 'favorites_sync'),
       );
       final dio = ref.watch(apiClientProvider);
       final response = await dio.get(

@@ -111,7 +111,7 @@ class _TelegramAccountPageState extends ConsumerState<TelegramAccountPage> {
                 !account.configured
                     ? '尚未配置 Telegram 应用凭据'
                     : account.sessionPresent
-                    ? '已连接'
+                    ? '已保存登录会话'
                     : '尚未连接',
               ),
               const SizedBox(height: 12),

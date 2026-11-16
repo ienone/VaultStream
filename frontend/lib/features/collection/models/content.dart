@@ -82,6 +82,7 @@ abstract class ContentDetail with _$ContentDetail {
     @JsonKey(name: 'clean_url') String? cleanUrl,
     required String status,
     // 解析失败诊断（后端 ContentDetail schema 已提供）
+    @JsonKey(name: 'parse_wait_reason') String? parseWaitReason,
     @JsonKey(name: 'failure_count') @Default(0) int failureCount,
     @JsonKey(name: 'last_error') String? lastError,
     @JsonKey(name: 'last_error_type') String? lastErrorType,

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/sse_service.dart';
 
 class PlatformHealthStatus {
   PlatformHealthStatus.fromJson(Map<String, dynamic> json)
@@ -32,6 +33,7 @@ class PlatformHealthResponse {
 final platformHealthProvider = FutureProvider<PlatformHealthResponse>((
   ref,
 ) async {
+  refreshOnEvents(ref, (event) => event.type == 'account_auth_updated');
   final cancelToken = CancelToken();
   ref.onDispose(cancelToken.cancel);
   final response = await ref

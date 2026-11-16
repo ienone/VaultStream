@@ -898,6 +898,6 @@ String _platformStateLabel(FavoritesPlatformStatus status) {
   if (!status.available) return '不可用';
   if (!status.enabled) return '未启用';
   if (status.authenticated == false) return '未认证';
-  if (status.authenticated == null) return '暂时无法检测';
+  if (status.authenticated == null) return '尚未确认登录有效性';
   return '可同步';
 }

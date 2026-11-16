@@ -202,8 +202,19 @@ class ParseStatusBanner extends StatelessWidget {
         icon: Icons.hourglass_top_rounded,
         background: scheme.surfaceContainerHigh,
         foreground: scheme.onSurface,
-        title: detail.status == 'processing' ? '正在解析' : '等待解析',
+        title: detail.status == 'processing'
+            ? '正在解析'
+            : switch (detail.parseWaitReason) {
+                'paused' => '自动解析已暂停',
+                'worker_unavailable' => '解析服务暂不可用',
+                'not_queued' => '尚未安排解析',
+                _ => '等待解析',
+              },
         message: '',
+        action: onReParse != null &&
+                {'paused', 'not_queued'}.contains(detail.parseWaitReason)
+            ? TextButton(onPressed: onReParse, child: const Text('立即解析'))
+            : null,
       );
     }
 
