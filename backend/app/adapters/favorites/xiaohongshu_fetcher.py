@@ -223,10 +223,10 @@ class XiaohongshuFavoritesFetcher(BaseFavoritesFetcher):
         if not user_id:
             logger.warning("[xhs favorites] failed to resolve current user")
             raise FavoritesFetchError(
-                code="auth_required",
+                code="invalid_response",
                 message="Failed to resolve Xiaohongshu user",
-                hint="账号信息读取失败，请重新登录后重试",
-                auth_required=True,
+                hint="小红书未返回有效账号信息",
+                retryable=True,
             )
 
         items: list[FavoriteItem] = []

@@ -143,12 +143,14 @@ async def process_media_repair_task(task: Task) -> None:
             raise RuntimeError(f"{result['incomplete']} media assets remain incomplete")
         if not await task_queue.mark_complete(task):
             raise RuntimeError('media repair task already settled')
-        await record_task_run_success('media_repair', run['run_id'], **result)
     except (Exception, asyncio.CancelledError) as error:
-        await task_queue.mark_failed(task, reason=str(error) or 'Media repair cancelled')
+        if not await task_queue.mark_failed(task, reason=str(error) or 'Media repair cancelled'):
+            raise
         await record_task_run_error('media_repair', run['run_id'], error)
         if isinstance(error, asyncio.CancelledError):
             raise
+    else:
+        await record_task_run_success('media_repair', run['run_id'], **result)
     finally:
         from app.core.events import event_bus
         await event_bus.publish('content_updated', {'id': task.payload['content_id']})

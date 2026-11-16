@@ -20,7 +20,7 @@ from app.adapters.browser import browser_manager
 from app.adapters.base import PlatformAdapter
 from app.adapters.favorites.errors import FavoritesFetchError
 from app.services.config_service import ConfigService
-from app.services.notification_inbox import safely_sync_account_auth_notification
+from app.services.account_auth_state import observe_account_auth
 from app.services.platform_auth import (
     BilibiliQrLoginDriver,
     QrLoginDriver,
@@ -139,13 +139,15 @@ class BrowserAuthService:
         if not cookie:
             return False
         try:
-            return await check(cookie)
+            is_valid = await check(cookie)
         except FavoritesFetchError as error:
-            if error.auth_required:
-                return False
-            raise LoginCheckUnavailable(error.hint or "暂时无法检测登录状态") from error
+            if not error.auth_required:
+                raise LoginCheckUnavailable(error.hint or "暂时无法检测登录状态") from error
+            is_valid = False
         except (httpx.HTTPError, ValueError, TypeError, AttributeError, KeyError) as error:
             raise LoginCheckUnavailable("暂时无法检测登录状态，请稍后重试") from error
+        await observe_account_auth(platform, is_valid=is_valid, expected_cookie=cookie)
+        return is_valid
 
     async def logout_platform(self, platform: str) -> None:
         if platform not in self._checks:
@@ -187,10 +189,8 @@ class BrowserAuthService:
             description=f"{session.platform} 自动化登录 Cookie",
         )
         logger.info("[{}] Cookie 已持久化", session.platform)
-        await safely_sync_account_auth_notification(
-            session.platform,
-            is_valid=True,
-            configured=True,
+        await observe_account_auth(
+            session.platform, is_valid=True, expected_cookie=session.cookie_str,
         )
 
     async def _run_qr_flow(self, session: AuthSession, driver: QrLoginDriver) -> None:

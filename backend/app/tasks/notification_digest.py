@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from app.services.worker_runtime import start_worker
 from datetime import datetime, timedelta
 
 from loguru import logger
@@ -35,7 +36,7 @@ class NotificationDigestTask:
     def start(self) -> None:
         if self._task and not self._task.done():
             return
-        self._task = asyncio.create_task(self._run_loop())
+        self._task = start_worker("notification-digest", self._run_loop)
 
     async def stop(self) -> None:
         if self._task and not self._task.done():

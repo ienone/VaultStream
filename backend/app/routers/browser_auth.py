@@ -61,7 +61,6 @@ async def check_platform_status(platform: str):
         raise HTTPException(status_code=503, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-    await safely_sync_account_auth_notification(platform, is_valid=is_valid)
     return CheckResponse(is_valid=is_valid, platform=platform)
 
 

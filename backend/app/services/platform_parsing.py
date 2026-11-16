@@ -7,7 +7,7 @@ from typing import AsyncIterator
 
 from app.adapters import AdapterFactory, PlatformAdapter, managed_adapter, close_adapter
 from app.adapters.base import ParsedContent
-from app.adapters.errors import PageExtractionRequired
+from app.adapters.errors import AuthRequiredAdapterError, PageExtractionRequired
 from app.models import Platform
 from app.services.config_service import ConfigService
 
@@ -55,6 +55,17 @@ class ConfiguredParser(PlatformAdapter):
     async def parse(self, url: str) -> ParsedContent:
         try:
             return await self.adapter.parse(url)
+        except AuthRequiredAdapterError:
+            # A public page or paid resource requiring login does not prove that
+            # the saved credential expired. Verify the account endpoint first.
+            if self.cookies:
+                from app.services.browser_auth_service import browser_auth_service, LoginCheckUnavailable
+                from app.core.logging import logger
+                try:
+                    await browser_auth_service.check_platform_status(self.platform.value)
+                except (LoginCheckUnavailable, ValueError):
+                    logger.info("{} 解析要求登录，账号状态暂无法确认", self.platform.value)
+            raise
         except PageExtractionRequired as error:
             from app.adapters.universal_adapter import UniversalAdapter
             from app.adapters.utils.tiered_fetcher import FetchResult, fetch_rendered_page

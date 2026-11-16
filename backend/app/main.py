@@ -3,6 +3,7 @@ FastAPI 主应用
 """
 import sys
 import asyncio
+from app.services.worker_runtime import start_worker
 import signal
 
 # 针对 Windows 的修复：Playwright 需要 ProactorEventLoop
@@ -119,7 +120,7 @@ async def lifespan(app: FastAPI):
     parse_workers = []
     for i in range(settings.parse_worker_count):
         w = TaskWorker()
-        parse_workers.append(asyncio.create_task(w.start()))
+        parse_workers.append(start_worker(f"parse-worker-{i}", w.start))
     logger.info("后台任务工作器已启动 (worker_count={})", settings.parse_worker_count)
     
     # 启动分发队列 Worker

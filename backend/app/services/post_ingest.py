@@ -110,13 +110,16 @@ async def process_content_task(task: Task) -> None:
         result = await asyncio.wait_for(execute(), timeout=task_queue.EXECUTION_TIMEOUT.total_seconds())
         if not await task_queue.mark_complete(task):
             raise RuntimeError("content task already settled")
-        await record_task_run_success(run_name, run_id, content_id=content_id, **{
-            key: value for key, value in result.items() if key != "content_id"
-        })
     except (Exception, asyncio.CancelledError) as error:
-        await task_queue.mark_failed(task, reason=str(error) or "Task cancelled")
+        changed = await task_queue.mark_failed(task, reason=str(error) or "Task cancelled")
+        if not changed:
+            raise
         await record_task_run_error(run_name, run_id, str(error) or "Task cancelled", content_id=content_id)
         if isinstance(error, asyncio.CancelledError):
             raise
+    else:
+        await record_task_run_success(run_name, run_id, content_id=content_id, **{
+            key: value for key, value in result.items() if key != "content_id"
+        })
     finally:
         await event_bus.publish("content_updated", {"id": content_id})

@@ -79,20 +79,10 @@ class ContentParser:
                     self.execute_parse(content_id, claimed_task=claimed_task, force=task_data.get("force") is True),
                     timeout=TaskQueue.EXECUTION_TIMEOUT.total_seconds(),
                 )
-                await record_task_run_success(
-                    run_name,
-                    run_id,
-                    trigger=trigger,
-                    content_id=content_id,
-                    task_id=task_id,
-                    task_db_id=claimed_task.id,
-                    skipped=result.skipped,
-                    reason=result.reason,
-                    status=result.status,
-                    title=result.title,
-                )
             except asyncio.CancelledError:
-                await self._settle_parse_error(content_id, claimed_task, RuntimeError("Parsing cancelled"), "cancelled")
+                changed = await self._settle_parse_error(content_id, claimed_task, RuntimeError("Parsing cancelled"), "cancelled")
+                if not changed:
+                    raise
                 await record_task_run_error(
                     run_name,
                     run_id,
@@ -106,10 +96,14 @@ class ContentParser:
                 raise
             except Exception as e:
                 reason = self._task_failure_reason(e)
-                await self._settle_parse_error(
+                changed = await self._settle_parse_error(
                     content_id, claimed_task, e,
                     f"{reason}: {type(e).__name__}: {e}",
                 )
+                if not changed:
+                    # A committed Task is authoritative; reconciliation will
+                    # settle its run even if publishing the result failed.
+                    raise
                 await record_task_run_error(
                     run_name,
                     run_id,
@@ -120,6 +114,19 @@ class ContentParser:
                     task_db_id=claimed_task.id,
                     error_type=type(e).__name__,
                     reason=reason,
+                )
+            else:
+                await record_task_run_success(
+                    run_name,
+                    run_id,
+                    trigger=trigger,
+                    content_id=content_id,
+                    task_id=task_id,
+                    task_db_id=claimed_task.id,
+                    skipped=result.skipped,
+                    reason=result.reason,
+                    status=result.status,
+                    title=result.title,
                 )
 
     async def execute_parse(

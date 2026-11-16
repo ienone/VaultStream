@@ -175,7 +175,7 @@ async def resolve_agent_confirmation_notification(
 async def sync_account_auth_notification(
     platform: str,
     *,
-    is_valid: bool,
+    is_valid: bool | None,
     configured: bool | None = None,
 ) -> dict[str, Any] | None:
     """Project an authoritative platform credential check into the inbox."""
@@ -190,7 +190,7 @@ async def sync_account_auth_notification(
     if not configured:
         status = "not_configured"
     else:
-        status = "valid" if is_valid else "invalid"
+        status = "configured" if is_valid is None else "valid" if is_valid else "invalid"
     dedupe_key = f"account-auth:{normalized}"
 
     async with AsyncSessionLocal() as db:
@@ -228,7 +228,7 @@ async def sync_account_auth_notification(
 async def safely_sync_account_auth_notification(
     platform: str,
     *,
-    is_valid: bool,
+    is_valid: bool | None,
     configured: bool | None = None,
 ) -> dict[str, Any] | None:
     """Keep inbox projection failures from changing the auth operation result."""

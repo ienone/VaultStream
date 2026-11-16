@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from app.services.worker_runtime import start_worker
 from typing import Any, Optional
 
 from sqlalchemy import and_, or_, select
@@ -24,6 +25,7 @@ from app.services.background_task_state import (
 from app.services.content_service import ContentService
 from app.services.automation_policy import AutomationPolicyService
 from app.services.config_service import ConfigService
+from app.services.account_auth_state import account_login, observe_account_auth
 from app.services.source_reading import source_reading, SourceCoolingDown
 
 
@@ -57,7 +59,7 @@ class FavoritesSyncTask:
         return self._fetchers.get(platform)
 
     def is_running(self) -> bool:
-        return bool(self._task and not self._task.done())
+        return self._lock.locked()
 
     async def create_run(
         self,
@@ -80,9 +82,9 @@ class FavoritesSyncTask:
         ]
 
     def start(self):
-        if self.is_running():
+        if self._task and not self._task.done():
             return
-        self._task = asyncio.create_task(self._sync_loop())
+        self._task = start_worker("favorites-sync", self._sync_loop)
         logger.info("FavoritesSyncTask started")
 
     async def stop(self):
@@ -127,6 +129,17 @@ class FavoritesSyncTask:
         task_id = ensure_task_id()
         with log_context(task_id=task_id):
             async with self._lock:
+                enabled = await self.load_enabled_platforms()
+                if trigger == "scheduler" and run_id is None:
+                    eligible = []
+                    for platform in enabled:
+                        cookie = await self._config_service.get_platform_cookie_string(platform, fresh=True)
+                        observation = await self._config_service.get_value_fresh(f"account_auth:{platform}")
+                        if account_login(platform, cookie, observation) != "invalid":
+                            eligible.append(platform)
+                    enabled = eligible
+                    if not enabled:
+                        return {}
                 run = await record_task_run_started(
                     "favorites_sync",
                     run_id=run_id,
@@ -134,7 +147,6 @@ class FavoritesSyncTask:
                     trigger=trigger,
                 )
                 run_id = str(run["run_id"])
-                enabled = await self.load_enabled_platforms()
                 results: dict[str, dict] = {}
                 for index, platform in enumerate(enabled):
                     if index and platform not in await self.load_enabled_platforms():
@@ -240,7 +252,21 @@ class FavoritesSyncTask:
 
     async def _sync_platform_by_name_inner(self, platform: str) -> dict:
         fetcher_cls = self._fetchers[platform]
-        return await self._sync_platform(fetcher_cls())
+        return await self._observe_auth_result(platform, self._sync_platform, fetcher_cls())
+
+    async def _observe_auth_result(self, platform: str, operation, fetcher: BaseFavoritesFetcher) -> dict:
+        cookie = await self._config_service.get_platform_cookie_string(platform, fresh=True)
+        try:
+            result = await operation(fetcher)
+        except FavoritesFetchError as error:
+            if error.auth_required:
+                await observe_account_auth(platform, is_valid=False, expected_cookie=cookie)
+            raise
+        if result.get("auth_required") or result.get("status") in {"success", "partial_success"}:
+            await observe_account_auth(
+                platform, is_valid=not result.get("auth_required", False), expected_cookie=cookie,
+            )
+        return result
 
     async def preview_all_platforms(self) -> dict:
         enabled = await self.load_enabled_platforms()
@@ -254,7 +280,7 @@ class FavoritesSyncTask:
         fetcher_cls = self._fetchers.get(platform)
         if fetcher_cls is None:
             raise ValueError(f"Unknown platform: {platform}")
-        return await self._preview_platform(fetcher_cls())
+        return await self._observe_auth_result(platform, self._preview_platform, fetcher_cls())
 
     @staticmethod
     def _build_preview_summary(platform: str, previews: list[dict]) -> dict:
@@ -565,7 +591,7 @@ class FavoritesSyncTask:
         return {
             "platform": platform,
             "status": "failed",
-            "authenticated": not error.auth_required,
+            "authenticated": False if error.auth_required else None,
             "max_items": max_items,
             "cursor_present": cursor_present,
             "fetched": 0,
@@ -584,7 +610,7 @@ class FavoritesSyncTask:
         return {
             "platform": platform,
             "status": "failed",
-            "authenticated": not error.auth_required,
+            "authenticated": False if error.auth_required else None,
             "fetched": 0,
             "imported": 0,
             "failed": 0,

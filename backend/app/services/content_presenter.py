@@ -10,6 +10,10 @@ from app.services.media_manifest import load_content_media_assets, build_media_m
 from app.services.media_segments import build_media_segment_items
 from bs4 import BeautifulSoup
 from markdown_it import MarkdownIt
+from sqlalchemy import select
+from app.models import ContentStatus, Task, TaskStatus
+from app.services.automation_policy import AutomationPolicyService
+from app.services.worker_runtime import parse_workers_available
 
 _excerpt_markdown = MarkdownIt()
 
@@ -58,6 +62,21 @@ def compute_display_title(content, max_len: int = 60, fallback: str = "无标题
 async def build_content_detail(session, content, base_url: str, *, for_edit: bool = False, asset_refs: bool = False) -> ContentDetail:
     """Resolve stored references once, from asset records to response sources."""
     detail = ContentDetail.model_validate(content)
+    if detail.status == ContentStatus.UNPROCESSED:
+        task = await session.scalar(select(Task).where(
+            Task.task_type == "parse_content",
+            Task.payload["content_id"].as_integer() == content.id,
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.RUNNING]),
+        ).order_by(Task.id.desc()).limit(1))
+        if task is None:
+            detail.parse_wait_reason = "not_queued"
+        elif not parse_workers_available():
+            detail.parse_wait_reason = "worker_unavailable"
+        elif (task.status == TaskStatus.PENDING and task.payload.get("trigger") != "manual"
+              and not (await AutomationPolicyService().parse_worker_poll()).allowed):
+            detail.parse_wait_reason = "paused"
+        else:
+            detail.parse_wait_reason = "queued"
     detail.media_assets = []
     detail.effective_layout_type = compute_effective_layout_type(detail)
     assets = (await load_content_media_assets(

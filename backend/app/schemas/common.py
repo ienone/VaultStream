@@ -387,7 +387,7 @@ class FavoritesSyncPlatformPreview(BaseModel):
 
     platform: str
     status: str
-    authenticated: bool = False
+    authenticated: bool | None = None
     max_items: int
     cursor_present: bool = False
     fetched: int = 0

@@ -4,6 +4,7 @@
 定期清理过期的发现流内容。
 """
 import asyncio
+from app.services.worker_runtime import start_worker
 
 from loguru import logger
 from sqlalchemy import delete, exists, select, update
@@ -51,7 +52,7 @@ class DiscoveryCleanupTask:
     def start(self):
         if self._task and not self._task.done():
             return
-        self._task = asyncio.create_task(self._cleanup_loop())
+        self._task = start_worker("discovery-cleanup", self._cleanup_loop)
 
     async def stop(self):
         if self._task and not self._task.done():

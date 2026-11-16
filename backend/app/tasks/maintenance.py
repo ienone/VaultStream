@@ -1,4 +1,5 @@
 import asyncio
+from app.services.worker_runtime import start_worker
 import random
 from collections.abc import Awaitable, Callable
 
@@ -9,7 +10,6 @@ from app.services.background_task_state import (
     record_task_run_success,
 )
 from app.services.automation_policy import AutomationPolicyService
-from app.services.notification_inbox import safely_sync_account_auth_notification
 
 
 async def _recorded_platform_check(
@@ -31,8 +31,6 @@ async def _recorded_platform_check(
         await record_task_run_success(task_name)
     else:
         await record_task_run_error(task_name, None, f"{label} keepalive check failed")
-    if reports_login:
-        await safely_sync_account_auth_notification(platform, is_valid=success)
     return success
 
 
@@ -145,23 +143,13 @@ class CookieKeepAliveTask:
         self._tasks: list[asyncio.Task] = []
 
     def start(self):
-        try:
-            if self._tasks and any(not t.done() for t in self._tasks):
-                return
-            asyncio.create_task(self._start())
-        except Exception as e:
-            logger.error(f"Failed to start cookie keepalive tasks: {e}")
-
-    async def _start(self):
-        try:
-            self._tasks = [
-                asyncio.create_task(zhihu_keepalive_loop()),
-                asyncio.create_task(xiaohongshu_keepalive_loop()),
-                asyncio.create_task(weibo_keepalive_loop()),
-            ]
-            logger.info("Successfully launched cookie keepalive tasks.")
-        except Exception as e:
-            logger.error(f"Failed to start cookie keepalive tasks: {e}")
+        if self._tasks and any(not task.done() for task in self._tasks):
+            return
+        self._tasks = [
+            start_worker("cookie-zhihu", zhihu_keepalive_loop),
+            start_worker("cookie-xiaohongshu", xiaohongshu_keepalive_loop),
+            start_worker("cookie-weibo", weibo_keepalive_loop),
+        ]
 
     async def stop(self):
         for task in self._tasks:

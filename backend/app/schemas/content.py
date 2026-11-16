@@ -126,6 +126,7 @@ class ContentDetail(BaseModel):
     url: str
     clean_url: Optional[str]
     status: ContentStatus
+    parse_wait_reason: Literal["queued", "paused", "worker_unavailable", "not_queued"] | None = None
     
     failure_count: int = 0
     last_error_type: Optional[str] = None

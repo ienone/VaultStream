@@ -188,6 +188,14 @@ class ConfigService:
             for key, value in values.items():
                 self._cache[key] = value
                 self._sync_runtime_setting(key, value)
+            for key in values:
+                if key in {f"{platform}_cookie" for platform in ("zhihu", "xiaohongshu", "twitter", "weibo", "bilibili")}:
+                    from app.services.account_auth_state import observe_account_auth
+                    platform = key.removesuffix("_cookie")
+                    await observe_account_auth(
+                        platform, is_valid=None,
+                        expected_cookie=await self.get_platform_cookie_string(platform, fresh=True),
+                    )
             return rows
 
     async def load_all_to_memory(self) -> None:
@@ -275,6 +283,8 @@ class ConfigService:
                               "description": None, "updated_at": None}
         async with self._session_factory() as db:
             for setting in await SystemRepository(db).list_settings():
+                if setting.category == "account_auth":
+                    continue
                 value = setting.value
                 if is_sensitive_setting_key(setting.key):
                     value = as_configured_placeholder(value, source="db") or ""

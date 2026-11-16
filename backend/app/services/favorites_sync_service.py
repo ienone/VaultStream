@@ -11,9 +11,7 @@ from app.models import BackgroundTaskRun
 
 from app.adapters.favorites.base import FavoriteItem
 from app.adapters.favorites import FAVORITES_CAPABILITIES
-from app.adapters.favorites.errors import FavoritesFetchError
 from app.core.api_errors import build_error_payload
-from app.core.logging import logger
 from app.schemas import (
     FavoritesSyncItemRetryRequest,
     FavoritesSyncItemsRetryRequest,
@@ -137,52 +135,16 @@ class FavoritesSyncService:
             available = fetcher_cls is not None
             error: str | None = capability.limitation if not available else None
             status_error: dict[str, Any] | None = None
-            if fetcher_cls is not None and platform in enabled_platforms:
-                try:
-                    authenticated = await fetcher_cls().check_auth()
-                except ImportError as exc:
-                    available = False
-                    error = str(exc)
-                    status_error = build_error_payload(
-                        message=str(exc),
-                        code="dependency_missing",
-                        hint="依赖缺失，请检查后端运行环境",
-                        request_id=request_id,
-                    )
-                    logger.warning(
-                        "[favorites status] check_auth import error for {}: {}",
-                        platform,
-                        exc,
-                    )
-                except FavoritesFetchError as exc:
-                    authenticated = False if exc.auth_required else None
-                    available = exc.code != "cli_unavailable"
-                    error = exc.message
-                    status_error = {
-                        "detail": exc.message,
-                        **exc.as_dict(),
-                        "request_id": request_id,
-                    }
-                    logger.warning(
-                        "[favorites status] structured check_auth failure for {}: "
-                        "code={} message={}",
-                        platform,
-                        exc.code,
-                        exc.message,
-                    )
-                except Exception as exc:
-                    available = False
-                    error = str(exc)
-                    status_error = build_error_payload(
-                        message=str(exc),
-                        code="auth_check_failed",
-                        hint="认证检查失败，请稍后重试",
-                        request_id=request_id,
-                    )
-                    logger.exception(
-                        "[favorites status] check_auth failed for {}",
-                        platform,
-                    )
+            from app.services.account_auth_state import account_login, credential_id
+            cookie = await self.config_service.get_platform_cookie_string(platform, fresh=True)
+            observation = await self.config_service.get_value_fresh(f"account_auth:{platform}")
+            login = account_login(platform, cookie, observation)
+            if login in {"not_configured", "invalid"}:
+                authenticated = False
+                error = "登录已失效，请重新登录" if login == "invalid" else "尚未配置登录"
+            elif (observation and observation.get("credential_id") == credential_id(platform, cookie)
+                  and observation.get("status") == "valid"):
+                authenticated = True
 
             platform_state = (
                 await self.config_service.get_favorites_sync_platform_state(

@@ -173,16 +173,19 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
                             risk_code,
                             risk_message or resp.text[:160],
                         )
+                        if resp.status_code == 401:
+                            raise FavoritesFetchError(
+                                code="auth_required", message="Zhihu auth expired or invalid",
+                                hint="知乎登录状态失效，请重新登录", auth_required=True,
+                            )
                         refreshed = await self._try_refresh_zhihu_fingerprint(url, cookies)
                         if refreshed and attempt < self._MAX_RETRY - 1:
                             await asyncio.sleep(exponential_backoff(attempt, jitter_max=0.5))
                             continue
-                        logger.warning("[zhihu favorites] auth failed, status={}", resp.status_code)
                         raise FavoritesFetchError(
-                            code="auth_required",
-                            message="Zhihu auth expired or invalid",
-                            hint="知乎登录状态失效，请重新登录",
-                            auth_required=True,
+                            code="verification_required",
+                            message="Zhihu rejected the request",
+                            hint="知乎拒绝访问或要求安全验证",
                         )
 
                     if resp.status_code == 429:
@@ -249,10 +252,10 @@ class ZhihuFavoritesFetcher(BaseFavoritesFetcher):
         if "url_token" not in me_data:
             logger.warning("[zhihu favorites] failed to resolve current user")
             raise FavoritesFetchError(
-                code="auth_required",
+                code="invalid_response",
                 message="Failed to resolve Zhihu account",
-                hint="无法读取知乎账号信息，请重新登录",
-                auth_required=True,
+                hint="知乎未返回有效账号信息",
+                retryable=True,
             )
 
         user_id = me_data["url_token"]

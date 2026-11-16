@@ -4,6 +4,7 @@
 定期检查到期的发现源并抓取新内容入库。
 """
 import asyncio
+from app.services.worker_runtime import start_worker
 from datetime import timedelta
 
 from loguru import logger
@@ -61,7 +62,7 @@ class DiscoverySyncTask:
     def start(self):
         if self._task and not self._task.done():
             return
-        self._task = asyncio.create_task(self._sync_loop())
+        self._task = start_worker("discovery-sync", self._sync_loop)
 
     async def stop(self):
         if self._task and not self._task.done():

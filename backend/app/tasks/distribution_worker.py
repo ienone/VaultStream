@@ -4,6 +4,7 @@
 基于队列的分发模型，支持多 Worker 并发、乐观锁、指数退避重试。
 """
 import asyncio
+from app.services.worker_runtime import start_worker
 from datetime import datetime, timedelta
 from typing import Optional, List
 from uuid import uuid4
@@ -121,9 +122,9 @@ class DistributionQueueWorker:
             return
         self.running = True
         for i in range(self.worker_count):
-            task = asyncio.create_task(
-                self._worker_loop(f"queue-worker-{i}"),
-                name=f"queue-worker-{i}",
+            task = start_worker(
+                f"queue-worker-{i}",
+                lambda name=f"queue-worker-{i}": self._worker_loop(name),
             )
             self._tasks.append(task)
         logger.info("分发队列Worker启动 worker_count={}", self.worker_count)

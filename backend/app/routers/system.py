@@ -129,7 +129,14 @@ async def health_check(
         background = await diagnostics.build_background_summary(db)
         providers = await diagnostics.build_provider_diagnostics(db)
     
-    status = "ok" if (queue_ok and db_ok and fts_ok) else "degraded"
+    from app.services.worker_runtime import worker_states
+    workers = worker_states()
+    parse_count = sum(name.startswith("parse-worker-") and state == "running" for name, state in workers.items())
+    queue_count = sum(name.startswith("queue-worker-") and state == "running" for name, state in workers.items())
+    workers_ok = (parse_count == settings.parse_worker_count
+                  and queue_count == settings.queue_worker_count
+                  and all(state == "running" for state in workers.values()))
+    status = "ok" if (queue_ok and db_ok and fts_ok and workers_ok) else "degraded"
     
     return {
         "status": status,
@@ -137,13 +144,17 @@ async def health_check(
         "components": {
             "db": "ok" if db_ok else "error",
             "queue": "ok" if queue_ok else "error",
+            "workers": "ok" if workers_ok else "error",
             "fts": "ok" if fts_ok else db_health.get("fts", {}).get("status", "error"),
         },
         "checks": {
             "database": db_health,
             "workers": {
-                "parse_worker_count": settings.parse_worker_count,
-                "queue_worker_count": settings.queue_worker_count,
+                "parse_worker_count": parse_count,
+                "queue_worker_count": queue_count,
+                "expected_parse_worker_count": settings.parse_worker_count,
+                "expected_queue_worker_count": settings.queue_worker_count,
+                "states": workers,
             },
             "providers": providers,
             "background_tasks": background,

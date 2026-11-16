@@ -1,7 +1,12 @@
 """Single-leader Telegram account synchronization; login is always explicit."""
 import asyncio
+from app.services.worker_runtime import start_worker
 from telethon.errors import FloodWaitError
 from pathlib import Path
+from sqlalchemy import select
+from app.core.db_adapter import AsyncSessionLocal
+from app.core.time_utils import utcnow
+from app.models import BackgroundTaskRun
 from app.services.telegram_account_client import create_account_client
 from app.services.telegram_account_login import TelegramAccountLogin
 
@@ -20,13 +25,14 @@ class TelegramAccountSyncTask:
         self.config = ConfigService()
         self._start_lock = asyncio.Lock()
         self.login = TelegramAccountLogin()
+        self._started_at = utcnow()
 
     @property
     def running(self):
         return self._running is not None and not self._running.done()
 
     def start(self):
-        self._scheduler = asyncio.create_task(self._loop())
+        self._scheduler = start_worker("telegram-account-sync", self._loop)
 
     async def stop(self):
         tasks = [task for task in (self._scheduler, self._running) if task and not task.done()]
@@ -114,9 +120,10 @@ class TelegramAccountSyncTask:
         client = None
         try:
             client = create_account_client()
-            await client.connect()
-            if not await client.is_user_authorized():
-                raise ValueError("Telegram 登录已失效")
+            async with asyncio.timeout(30):
+                await client.connect()
+                if not await client.is_user_authorized():
+                    raise ValueError("Telegram 登录已失效，请重新连接账号")
             result = await TelegramAccountSync(client).sync(channels=options["channels_enabled"], saved=options["saved_enabled"], source_id=source_id)
             await record_task_run_success("telegram_account_sync", run_id, **result)
         except asyncio.CancelledError:
@@ -130,6 +137,10 @@ class TelegramAccountSyncTask:
         except SourceCoolingDown as error:
             await record_task_run_error("telegram_account_sync", run_id, str(error),
                 retry_after_seconds=error.retry_after_seconds)
+        except TimeoutError:
+            await record_task_run_error("telegram_account_sync", run_id, "Telegram 连接超时，请检查网络后重试")
+        except ValueError as error:
+            await record_task_run_error("telegram_account_sync", run_id, str(error))
         except Exception as error:
             await record_task_run_error("telegram_account_sync", run_id, f"Telegram 同步失败：{type(error).__name__}")
         finally:
@@ -137,6 +148,16 @@ class TelegramAccountSyncTask:
                 await client.disconnect()
 
     async def _loop(self):
+        # Only this leader owns Telegram account synchronization. Old runs are
+        # interrupted records, not executable jobs to replay.
+        async with AsyncSessionLocal() as db:
+            interrupted = list(await db.scalars(select(BackgroundTaskRun.run_id).where(
+                BackgroundTaskRun.task == "telegram_account_sync",
+                BackgroundTaskRun.status.in_(["pending", "running"]),
+                BackgroundTaskRun.started_at < self._started_at,
+            )))
+        for run_id in interrupted:
+            await record_task_run_error("telegram_account_sync", run_id, "服务重启，同步已中断")
         while True:
             if not self.running:
                 try:
