@@ -76,7 +76,7 @@ class CommonFields(BaseModel):
     author_id: str | None = None
     author_avatar_url: str | None = None
     published_at: str | None = None
-    cover_url: str | None = None
+    cover_url: str | None = Field(default=None, description="明确的文章封面；没有则留空，不以网站图标、作者头像或正文首图补齐")
     view_count: int | None = Field(default=None, ge=0)
     like_count: int | None = Field(default=None, ge=0)
     collect_count: int | None = Field(default=None, ge=0)
@@ -153,6 +153,25 @@ async def _structured_call(llm: ChatOpenAI, schema: type[BaseModel], messages, *
 # Tool: DOM Analysis (rule-based, no LLM)
 # ============================================================
 
+def extract_page_cover(soup: BeautifulSoup, url: str) -> str | None:
+    """读取页面声明的文章封面，排除同页明确声明的网站图标。"""
+    icons = {
+        urljoin(url, link["href"].strip())
+        for link in soup.find_all("link", href=True)
+        if any(rel.lower() in {"icon", "apple-touch-icon", "apple-touch-icon-precomposed", "mask-icon"}
+               for rel in link.get("rel", []))
+    }
+    for name in ("og:image", "twitter:image"):
+        for meta in soup.find_all("meta"):
+            if (meta.get("property") or meta.get("name")) != name:
+                continue
+            value = (meta.get("content") or "").strip()
+            candidate = urljoin(url, value)
+            if value and urlsplit(candidate).scheme in {"http", "https"} and candidate not in icons:
+                return candidate
+    return None
+
+
 def tool_analyze_dom(html: str, url: str, verbose: bool = True) -> dict:
     """
     Rule-based DOM analysis.
@@ -192,10 +211,7 @@ def tool_analyze_dom(html: str, url: str, verbose: bool = True) -> dict:
     # 4. DOM + 图片摘要 (LLM targeting 备用)
     image_summary = _build_image_summary(soup, url)
 
-    # 5. OG 封面图
-    cover_url = og.get("og:image", "")
-    if cover_url and not cover_url.startswith("http"):
-        cover_url = urljoin(url, cover_url)
+    cover_url = extract_page_cover(soup, url) or ""
 
 
     return {
@@ -503,9 +519,9 @@ def _extract_semantic_content(url: str, fetch_result) -> ProcessResult | None:
     published = (date.get("datetime") or date.get("content")) if date else meta("article:published_time")
     if published:
         fields["published_at"] = published
-    cover = meta("og:image")
+    cover = extract_page_cover(soup, url)
     if cover:
-        fields["cover_url"] = urljoin(url, cover)
+        fields["cover_url"] = cover
     for tag in body.find_all(["script", "style", "nav", "aside", "form"]):
         tag.decompose()
     markdown = tool_convert_html(str(body), url, selector, verbose=False)
@@ -577,7 +593,8 @@ async def process_content(
     # Merge tags & cover
     if tags:
         common_fields["source_tags"] = tags
-    if cover_url and "cover_url" not in common_fields:
+    if fetch_result.content_type == "html":
+        # HTML 封面归属由页面声明决定，模型不负责补图或覆盖 DOM 结果。
         common_fields["cover_url"] = cover_url
 
     # ═══ Apply ═══
